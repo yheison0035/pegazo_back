@@ -6,6 +6,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Min,
 } from 'class-validator';
 
@@ -14,8 +15,11 @@ export class CheckInDto {
   @IsString()
   customerName: string;
 
+  // Celular colombiano: 10 dígitos y empieza por 3.
   @IsOptional()
-  @IsString()
+  @Matches(/^3\d{9}$/, {
+    message: 'El celular debe tener 10 dígitos y empezar por 3.',
+  })
   customerPhone?: string;
 
   @IsOptional()
