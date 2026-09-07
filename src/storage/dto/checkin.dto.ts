@@ -44,6 +44,13 @@ export class CheckInDto {
   @IsBoolean()
   washRequested?: boolean;
 
+  // Cuántos de los cascos se van a lavar (0 = ninguno). Si no viene y
+  // washRequested es true, se lavan todos.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  washCount?: number;
+
   @IsOptional()
   @IsString()
   notes?: string;

@@ -60,9 +60,12 @@ export class StorageService {
     return { success: true, data: s };
   }
 
-  // Calcula el cobro del guardado según el tiempo transcurrido y la tarifa.
+  // Calcula el cobro del guardado según el tiempo transcurrido, la tarifa y la
+  // CANTIDAD de cascos. Devuelve el valor por casco y el total.
   private computeCharge(settings: any, ticket: any, at: Date) {
+    const helmets = Math.max(1, ticket.helmetCount || 1);
     const mode = ticket.billingMode || settings.defaultMode || 'HORA';
+    const ms = at.getTime() - new Date(ticket.checkInAt).getTime();
     if (mode === 'MENSUALIDAD') {
       return {
         mode,
@@ -70,13 +73,12 @@ export class StorageService {
         units: 0,
         unit: 'mes',
         rate: 0,
+        helmets,
+        perHelmet: 0,
         storageCharge: 0,
-        elapsedLabel: this.elapsedLabel(
-          at.getTime() - new Date(ticket.checkInAt).getTime(),
-        ),
+        elapsedLabel: this.elapsedLabel(ms),
       };
     }
-    const ms = at.getTime() - new Date(ticket.checkInAt).getTime();
     const rawMin = Math.max(0, Math.floor(ms / 60000));
     const billable = Math.max(0, rawMin - (settings.graceMinutes || 0));
     let units = 0;
@@ -91,13 +93,16 @@ export class StorageService {
       unit = 'hora';
       units = billable <= 0 ? 0 : Math.max(1, Math.ceil(billable / 60));
     }
+    const perHelmet = Math.round(units * rate);
     return {
       mode,
       minutes: rawMin,
       units,
       unit,
       rate,
-      storageCharge: Math.round(units * rate),
+      helmets,
+      perHelmet,
+      storageCharge: perHelmet * helmets,
       elapsedLabel: this.elapsedLabel(ms),
     };
   }
@@ -165,6 +170,12 @@ export class StorageService {
     const settings = (await this.getSettings(user)).data;
     const localId = await this.localId(user.companyId);
 
+    const helmetCount = Math.max(1, Number(dto.helmetCount) || 1);
+    // Cuántos lavar: lo que venga; si pidió lavado sin número, se lavan todos.
+    let washCount = Number(dto.washCount) || 0;
+    if (dto.washRequested && washCount <= 0) washCount = helmetCount;
+    washCount = Math.min(washCount, helmetCount);
+
     const t = await this.prisma.storageTicket.create({
       data: {
         companyId: user.companyId,
@@ -175,8 +186,9 @@ export class StorageService {
         customerId: dto.customerId ?? null,
         checkInAt: dto.checkInAt ? new Date(dto.checkInAt) : new Date(),
         billingMode: dto.billingMode || settings.defaultMode || 'HORA',
-        helmetCount: dto.helmetCount ?? 1,
-        washRequested: !!dto.washRequested,
+        helmetCount,
+        washCount,
+        washRequested: washCount > 0,
         notes: dto.notes?.trim() || null,
         userId: user.id,
       },
@@ -237,26 +249,33 @@ export class StorageService {
     const charge = this.computeCharge(settings, t, at);
     const includeWash =
       dto.includeWash != null ? dto.includeWash : t.washRequested;
+    // Cuántos cascos se lavan: los que pidió (washCount); si no hay número pero
+    // marcó lavado, todos.
+    const washUnits = includeWash
+      ? Math.max(1, t.washCount || t.helmetCount || 1)
+      : 0;
 
     const items: any[] = [];
 
-    if (charge.storageCharge > 0) {
+    // Guardado: valor por casco × cantidad de cascos (cantidad en la factura).
+    if (charge.perHelmet > 0 && charge.helmets > 0) {
       const guardadoId = await this.ensureService(
         user.companyId,
         GUARDADO_SERVICE,
       );
       items.push({
         serviceId: guardadoId,
-        quantity: 1,
-        priceOverride: charge.storageCharge,
+        quantity: charge.helmets,
+        priceOverride: charge.perHelmet,
       });
     }
 
-    if (includeWash && (settings.washPrice || 0) > 0) {
+    // Lavado: precio unitario × cascos lavados.
+    if (washUnits > 0 && (settings.washPrice || 0) > 0) {
       const lavadoId = await this.ensureService(user.companyId, LAVADO_SERVICE);
       items.push({
         serviceId: lavadoId,
-        quantity: 1,
+        quantity: washUnits,
         priceOverride: settings.washPrice,
       });
     }
