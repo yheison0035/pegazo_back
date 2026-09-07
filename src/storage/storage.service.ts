@@ -354,9 +354,11 @@ export class StorageService {
         userId: t.userId ?? user.id,
         customerId: t.customerId ?? undefined,
         cashReceived: dto.cashReceived,
+        // Observaciones de la factura = la nota que se puso al RECIBIR el casco
+        // (+ la del cobro si la hay). Aparece en el recuadro de Observaciones.
         notes:
-          `Guarda cascos · ${t.customerName}` +
-          (dto.notes ? ` · ${dto.notes}` : ''),
+          [t.notes, dto.notes].filter((x) => x && String(x).trim()).join(' · ') ||
+          null,
         items,
       };
       const res = await this.sales.create(saleDto, user);
