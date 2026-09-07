@@ -26,6 +26,14 @@ export class CreateSaleItemDto {
 
   @IsOptional()
   discount?: number;
+
+  // Precio unitario DINÁMICO por línea. Solo lo usa el módulo de Guarda Cascos
+  // para el guardado (calculado por tiempo). Si no viene, la venta usa el precio
+  // normal del producto/servicio — el resto de negocios NO lo envían, así que su
+  // comportamiento no cambia.
+  @IsOptional()
+  @IsNumber()
+  priceOverride?: number;
 }
 
 export class CreateSaleDto {

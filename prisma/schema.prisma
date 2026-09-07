@@ -584,6 +584,7 @@ model Local {
   expenses        Expense[]        @relation("LocalExpenses")
   fixedExpenses   FixedExpense[]   @relation("LocalFixedExpenses")
   memberships     Membership[]     @relation("LocalMemberships")
+  storageTickets  StorageTicket[]  @relation("LocalStorageTickets")
   sales           Sale[]           @relation("LocalSales")
   categories      Category[]       @relation("LocalCategory")
   brand           Brand[]          @relation("LocalBrand")
@@ -886,6 +887,55 @@ model MembershipPayment {
   @@index([membershipId])
   @@index([companyId])
   @@index([paidDate])
+}
+
+// GUARDA CASCOS — Configuración de tarifas por empresa (SOLO tipo GUARDA_CASCOS).
+// El dueño define cuánto vale el guardado por hora/día, el lavado del casco y los
+// minutos de gracia. Se usa para calcular el cobro dinámico al entregar.
+model StorageSettings {
+  id           Int    @id @default(autoincrement())
+  companyId    Int    @unique
+  hourRate     Float  @default(0) // $ por hora de guardado
+  dayRate      Float  @default(0) // $ por día de guardado
+  washPrice    Float  @default(0) // $ del lavado de casco
+  graceMinutes Int    @default(0) // minutos sin cobro al inicio
+  defaultMode  String @default("HORA") // HORA | DIA | MENSUALIDAD
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// GUARDA CASCOS — Ticket de guardado (custodia del casco). El asesor registra la
+// hora de ingreso y los datos del cliente; al entregar, se calcula el tiempo bajo
+// la tarifa configurada y se genera una venta (guardado + lavado + productos).
+model StorageTicket {
+  id            Int       @id @default(autoincrement())
+  companyId     Int
+  localId       Int
+  customerName  String
+  customerPhone String?
+  customerEmail String?
+  customerId    Int? // vínculo opcional a un cliente registrado (mensualidad)
+  checkInAt     DateTime  @default(now()) // hora de ingreso
+  checkOutAt    DateTime? // hora de entrega (null mientras está en custodia)
+  status        String    @default("EN_CUSTODIA") // EN_CUSTODIA | ENTREGADO | ANULADO
+  billingMode   String    @default("HORA") // HORA | DIA | MENSUALIDAD
+  helmetCount   Int       @default(1)
+  washRequested Boolean   @default(false)
+  washDone      Boolean   @default(false)
+  notes         String?
+  amount        Float? // total cobrado al entregar
+  saleId        Int? // venta generada al cobrar
+  userId        Int? // asesor que recibió el casco
+
+  local Local @relation("LocalStorageTickets", fields: [localId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([localId])
+  @@index([status])
 }
 
 // Fechas puntuales de descanso/ausencia de un empleado (vacaciones, día libre…).

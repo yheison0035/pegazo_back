@@ -955,17 +955,25 @@ export class SalesService {
             throw new NotFoundException('Servicio no válido');
           }
 
-          const serviceLocal = service.serviceLocals.find(
-            (sl) => sl.localId === dto.localId,
-          );
-
-          if (!serviceLocal) {
-            throw new BadRequestException(
-              'Servicio no disponible en este local',
+          // Precio dinámico por línea (Guarda Cascos: guardado calculado por
+          // tiempo). Si viene priceOverride, se usa tal cual y NO se exige que el
+          // servicio tenga precio configurado en el local. Sin override, el flujo
+          // es idéntico al de siempre (los demás negocios nunca lo envían).
+          let price: number;
+          if ((item as any).priceOverride != null) {
+            price = Number((item as any).priceOverride);
+          } else {
+            const serviceLocal = service.serviceLocals.find(
+              (sl) => sl.localId === dto.localId,
             );
-          }
 
-          const price = serviceLocal.price;
+            if (!serviceLocal) {
+              throw new BadRequestException(
+                'Servicio no disponible en este local',
+              );
+            }
+            price = serviceLocal.price;
+          }
           // Descuento de fidelización GARANTIZADO: al menos el % que le toca a
           // la visita (aunque el POS no lo haya aplicado); nunca por debajo de
           // un descuento manual mayor.
