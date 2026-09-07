@@ -152,7 +152,8 @@ export class StorageService {
     const settings = (await this.getSettings(user)).data;
     const tickets = await this.prisma.storageTicket.findMany({
       where: { companyId: user.companyId, status: 'EN_CUSTODIA' },
-      orderBy: { checkInAt: 'asc' },
+      // Los recién recibidos aparecen de primero.
+      orderBy: { checkInAt: 'desc' },
     });
     const now = new Date();
     const names = await this.namesByUser(tickets.map((t) => t.userId));
