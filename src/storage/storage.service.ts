@@ -84,14 +84,19 @@ export class StorageService {
         elapsedLabel: label,
       };
     }
-    const billable = Math.max(0, rawMin - (settings.graceMinutes || 0));
+    const grace = settings.graceMinutes || 0;
     const rate = mode === 'DIA' ? settings.dayRate || 0 : settings.hourRate || 0;
     const unitMin = mode === 'DIA' ? 1440 : 60;
     let perHelmet = 0;
-    if (billable > 0) {
+    let billable = 0;
+    // Dentro del periodo de gracia que configure el dueño no se cobra. Superado
+    // ese punto, desde el minuto 1 se cobra la primera unidad completa (primera
+    // hora / primer día); al pasar la unidad, el cobro es proporcional.
+    if (rawMin >= grace) {
+      billable = Math.max(1, rawMin - grace);
       perHelmet =
         billable <= unitMin
-          ? Math.round(rate) // 1 unidad completa (mínimo)
+          ? Math.round(rate) // 1 unidad completa (mínimo, desde el minuto 1)
           : Math.round((rate * billable) / unitMin); // proporcional (fracción)
     }
     return {
