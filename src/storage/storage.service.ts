@@ -247,7 +247,11 @@ export class StorageService {
         userId: receivedById,
       },
     });
-    return { success: true, data: t };
+    const names = await this.namesByUser([receivedById]);
+    return {
+      success: true,
+      data: { ...t, receivedByName: names[receivedById] || null },
+    };
   }
 
   async toggleWash(user: any, id: number, done: boolean) {
