@@ -136,8 +136,8 @@ export class StorageService {
 
   // Mapa id->nombre de los usuarios que recibieron (para mostrar quién quedó a
   // cargo).
-  private async namesByUser(userIds: number[]) {
-    const ids = [...new Set(userIds.filter((x) => x != null))];
+  private async namesByUser(userIds: (number | null | undefined)[]) {
+    const ids = [...new Set(userIds.filter((x): x is number => x != null))];
     if (!ids.length) return {};
     const users = await this.prisma.user.findMany({
       where: { id: { in: ids } },
