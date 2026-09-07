@@ -30,6 +30,11 @@ export class CheckInDto {
   @IsInt()
   customerId?: number;
 
+  // Quién recibe el casco (asesor/usuario a cargo). Si no viene, el que registra.
+  @IsOptional()
+  @IsInt()
+  receivedById?: number;
+
   // Hora de ingreso (por defecto ahora).
   @IsOptional()
   @IsDateString()

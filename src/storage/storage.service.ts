@@ -134,6 +134,20 @@ export class StorageService {
     return s.id;
   }
 
+  // Mapa id->nombre de los usuarios que recibieron (para mostrar quién quedó a
+  // cargo).
+  private async namesByUser(userIds: number[]) {
+    const ids = [...new Set(userIds.filter((x) => x != null))];
+    if (!ids.length) return {};
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true },
+    });
+    const map: Record<number, string> = {};
+    for (const u of users) map[u.id] = u.name;
+    return map;
+  }
+
   async listActive(user: any) {
     const settings = (await this.getSettings(user)).data;
     const tickets = await this.prisma.storageTicket.findMany({
@@ -141,8 +155,10 @@ export class StorageService {
       orderBy: { checkInAt: 'asc' },
     });
     const now = new Date();
+    const names = await this.namesByUser(tickets.map((t) => t.userId));
     const data = tickets.map((t) => ({
       ...t,
+      receivedByName: t.userId ? names[t.userId] || null : null,
       quote: this.computeCharge(settings, t, now),
     }));
     const summary = {
@@ -158,7 +174,33 @@ export class StorageService {
       orderBy: { checkOutAt: 'desc' },
       take: Number(limit) || 30,
     });
-    return { success: true, data: tickets };
+    const names = await this.namesByUser(tickets.map((t) => t.userId));
+    // Ventas vinculadas (para reimprimir la factura con el mismo formato).
+    const saleIds = tickets.map((t) => t.saleId).filter((x) => x != null);
+    const sales = saleIds.length
+      ? await this.prisma.sale.findMany({
+          where: { id: { in: saleIds as number[] } },
+          include: {
+            items: {
+              include: {
+                variant: { include: { inventory: true } },
+                service: true,
+              },
+            },
+            customer: true,
+            user: true,
+            local: true,
+          },
+        })
+      : [];
+    const saleById: Record<number, any> = {};
+    for (const s of sales) saleById[s.id] = s;
+    const data = tickets.map((t) => ({
+      ...t,
+      receivedByName: t.userId ? names[t.userId] || null : null,
+      sale: t.saleId ? saleById[t.saleId] || null : null,
+    }));
+    return { success: true, data };
   }
 
   async checkIn(user: any, dto: CheckInDto) {
@@ -169,6 +211,17 @@ export class StorageService {
 
     const settings = (await this.getSettings(user)).data;
     const localId = await this.localId(user.companyId);
+
+    // Quién recibe (asesor a cargo): el elegido si pertenece a la empresa, o el
+    // que registra.
+    let receivedById = user.id;
+    if (dto.receivedById) {
+      const u = await this.prisma.user.findFirst({
+        where: { id: Number(dto.receivedById), companyId: user.companyId },
+        select: { id: true },
+      });
+      if (u) receivedById = u.id;
+    }
 
     const helmetCount = Math.max(1, Number(dto.helmetCount) || 1);
     // Cuántos lavar: lo que venga; si pidió lavado sin número, se lavan todos.
@@ -190,7 +243,7 @@ export class StorageService {
         washCount,
         washRequested: washCount > 0,
         notes: dto.notes?.trim() || null,
-        userId: user.id,
+        userId: receivedById,
       },
     });
     return { success: true, data: t };
@@ -295,7 +348,9 @@ export class StorageService {
         paymentStatus: 'PAGADA',
         saleStatus: 'ENTREGADA',
         localId: t.localId,
-        userId: user.id,
+        // La venta se atribuye a quién recibió el casco (asesor a cargo), para
+        // que en Ventas realizadas / reportes quede a su nombre.
+        userId: t.userId ?? user.id,
         customerId: t.customerId ?? undefined,
         cashReceived: dto.cashReceived,
         notes:
