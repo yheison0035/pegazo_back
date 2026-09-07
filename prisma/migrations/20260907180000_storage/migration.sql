@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS "StorageTicket" (
   "billingMode" TEXT NOT NULL DEFAULT 'HORA',
   "helmetCount" INTEGER NOT NULL DEFAULT 1,
   "washRequested" BOOLEAN NOT NULL DEFAULT false,
+  "washCount" INTEGER NOT NULL DEFAULT 0,
   "washDone" BOOLEAN NOT NULL DEFAULT false,
   "notes" TEXT,
   "amount" DOUBLE PRECISION,
@@ -32,6 +33,8 @@ CREATE TABLE IF NOT EXISTS "StorageTicket" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+-- Por si la tabla ya existía sin washCount:
+ALTER TABLE "StorageTicket" ADD COLUMN IF NOT EXISTS "washCount" INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS "StorageTicket_companyId_idx" ON "StorageTicket"("companyId");
 CREATE INDEX IF NOT EXISTS "StorageTicket_localId_idx" ON "StorageTicket"("localId");
 CREATE INDEX IF NOT EXISTS "StorageTicket_status_idx" ON "StorageTicket"("status");

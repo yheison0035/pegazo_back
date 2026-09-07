@@ -922,6 +922,7 @@ model StorageTicket {
   billingMode   String    @default("HORA") // HORA | DIA | MENSUALIDAD
   helmetCount   Int       @default(1)
   washRequested Boolean   @default(false)
+  washCount     Int       @default(0) // cuántos de los cascos se van a lavar
   washDone      Boolean   @default(false)
   notes         String?
   amount        Float? // total cobrado al entregar
