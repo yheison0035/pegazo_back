@@ -100,10 +100,11 @@ export const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
     'customers', 'cartera', 'impuestos', 'loyalty', 'memberships', 'services', 'appointments',
     'sales', 'delivered_sales', 'cash', 'expenses', 'payables', 'statistics',
   ],
-  // Guarda cascos: custodia (storage, exclusivo) + mensualidad + productos.
+  // Guarda cascos: TODO desde 'storage' (un solo punto de cobro). Sin 'sales',
+  // 'cartera' ni 'services' para no duplicar el cobro.
   GUARDA_CASCOS: [
     'locals', 'users', 'categories', 'providers', 'inventory', 'purchases',
-    'customers', 'cartera', 'impuestos', 'loyalty', 'memberships', 'storage', 'services',
-    'sales', 'delivered_sales', 'cash', 'expenses', 'payables', 'statistics',
+    'customers', 'impuestos', 'loyalty', 'memberships', 'storage',
+    'delivered_sales', 'cash', 'expenses', 'payables', 'statistics',
   ],
 };
