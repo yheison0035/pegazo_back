@@ -19,6 +19,9 @@ export const BUSINESS_TYPE_LABELS: Record<string, string> = {
   COMIDA_RAPIDA: 'Comida rápida',
   CAFETERIA: 'Cafetería',
   CARNICERIA: 'Carnicería',
+  LAVADO_VEHICULOS: 'Lavado de vehículos',
+  CANCHAS_SINTETICAS: 'Canchas sintéticas',
+  GUARDA_CASCOS: 'Guarda cascos',
 };
 
 const RETAIL = [
@@ -80,5 +83,28 @@ export const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
     'locals', 'users', 'categories', 'brands', 'providers', 'inventory',
     'purchases', 'customers', 'cartera', 'impuestos', 'quotes', 'sales', 'delivered_sales',
     'returns', 'expenses', 'payables', 'statistics',
+  ],
+
+  // ---- Servicios con agenda / recurso ----
+  // Lavado de vehículos: como SERVICIOS (turnos, comisión al lavador,
+  // fidelización) + venta de productos (ceras, ambientadores).
+  LAVADO_VEHICULOS: [
+    'locals', 'users', 'categories', 'providers', 'inventory', 'purchases',
+    'customers', 'cartera', 'impuestos', 'loyalty', 'services', 'appointments',
+    'sales', 'delivered_sales', 'cash', 'expenses', 'payables', 'employee-charges', 'statistics',
+  ],
+  // Canchas sintéticas: cada cancha es un recurso con agenda; reserva por hora.
+  // Vende bebidas / alquiler de implementos como productos.
+  CANCHAS_SINTETICAS: [
+    'locals', 'users', 'categories', 'providers', 'inventory', 'purchases',
+    'customers', 'cartera', 'impuestos', 'loyalty', 'services', 'appointments',
+    'sales', 'delivered_sales', 'cash', 'expenses', 'payables', 'statistics',
+  ],
+  // Guarda cascos: guardado por uso o mensualidad + venta de productos
+  // (candados, forros). Sin agenda.
+  GUARDA_CASCOS: [
+    'locals', 'users', 'categories', 'providers', 'inventory', 'purchases',
+    'customers', 'cartera', 'impuestos', 'loyalty', 'services',
+    'sales', 'delivered_sales', 'cash', 'expenses', 'payables', 'statistics',
   ],
 };

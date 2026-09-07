@@ -139,6 +139,10 @@ enum BusinessType {
   COMIDA_RAPIDA
   CAFETERIA
   CARNICERIA
+  // Verticales de servicios con agenda / recurso
+  LAVADO_VEHICULOS
+  CANCHAS_SINTETICAS
+  GUARDA_CASCOS
 }
 
 enum DiscountType {
