@@ -577,6 +577,7 @@ model Local {
   users           User[]           @relation("LocalUsers")
   inventories     Inventory[]      @relation("LocalInventory")
   expenses        Expense[]        @relation("LocalExpenses")
+  fixedExpenses   FixedExpense[]   @relation("LocalFixedExpenses")
   sales           Sale[]           @relation("LocalSales")
   categories      Category[]       @relation("LocalCategory")
   brand           Brand[]          @relation("LocalBrand")
@@ -783,10 +784,14 @@ model Expense {
   // Categoría administrable por el negocio (opcional). El enum `type` se
   // mantiene sincronizado para compatibilidad (payables/estadísticas legacy).
   expenseCategoryId Int?
+  // Si este gasto nació de pagar un GASTO FIJO (arriendo, servicios…), queda
+  // vinculado para saber que ese fijo ya se pagó en el periodo.
+  fixedExpenseId    Int?
 
   provider        Provider?        @relation("ProviderExpenses", fields: [providerId], references: [id], onDelete: SetNull)
   local           Local            @relation("LocalExpenses", fields: [localId], references: [id], onDelete: Cascade)
   expenseCategory ExpenseCategory? @relation(fields: [expenseCategoryId], references: [id], onDelete: SetNull)
+  fixedExpense    FixedExpense?    @relation(fields: [fixedExpenseId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -795,6 +800,37 @@ model Expense {
   @@index([expenseDate])
   @@index([type])
   @@index([expenseCategoryId])
+  @@index([fixedExpenseId])
+}
+
+// Plantilla de GASTO FIJO / recurrente (arriendo, servicios, internet, plan
+// celular…). Se define una vez y cada periodo se marca como pagado, lo que
+// genera un Expense real vinculado (fixedExpenseId). Así el dueño ve de un
+// vistazo qué es lo fijo que debe pagar y qué falta por pagar este mes.
+model FixedExpense {
+  id                Int     @id @default(autoincrement())
+  companyId         Int
+  name              String // Ej: "Arriendo local", "Internet", "Energía (EPM)"
+  amount            Float // Monto habitual (se puede ajustar al pagar)
+  // Día del mes en que se suele pagar (1-31, opcional): sirve para ordenar y
+  // avisar. No genera cobros automáticos.
+  dueDay            Int?
+  expenseCategoryId Int? // Tipo de gasto (categoría administrable)
+  localId           Int
+  providerId        Int?
+  paidTo            String?
+  notes             String?
+  status            Status  @default(ACTIVO)
+
+  local           Local            @relation("LocalFixedExpenses", fields: [localId], references: [id], onDelete: Cascade)
+  expenseCategory ExpenseCategory? @relation(fields: [expenseCategoryId], references: [id], onDelete: SetNull)
+  payments        Expense[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([localId])
 }
 
 // Fechas puntuales de descanso/ausencia de un empleado (vacaciones, día libre…).
@@ -887,7 +923,8 @@ model ExpenseCategory {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  expenses Expense[]
+  expenses      Expense[]
+  fixedExpenses FixedExpense[]
 
   @@index([companyId])
 }
