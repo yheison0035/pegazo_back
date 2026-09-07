@@ -515,6 +515,7 @@ model Customer {
   sales        Sale[]        @relation("CustomerSales")
   appointments Appointment[]
   quotes       Quote[]
+  memberships  Membership[]  @relation("CustomerMemberships")
 
   // Perfil(es) de la tienda online (datos de envío/facturación) enlazados a
   // este cliente del CRM.
@@ -582,6 +583,7 @@ model Local {
   inventories     Inventory[]      @relation("LocalInventory")
   expenses        Expense[]        @relation("LocalExpenses")
   fixedExpenses   FixedExpense[]   @relation("LocalFixedExpenses")
+  memberships     Membership[]     @relation("LocalMemberships")
   sales           Sale[]           @relation("LocalSales")
   categories      Category[]       @relation("LocalCategory")
   brand           Brand[]          @relation("LocalBrand")
@@ -835,6 +837,55 @@ model FixedExpense {
 
   @@index([companyId])
   @@index([localId])
+}
+
+// MEMBRESÍA / MENSUALIDAD recurrente de un cliente (guarda cascos, canchas, gym,
+// parqueadero…). Se define una vez por cliente y cada periodo se "cobra", lo que
+// crea un MembershipPayment. El estado del mes (al día / vencido) se deriva de
+// los pagos. Es un ingreso recurrente (espejo de FixedExpense, que es egreso).
+model Membership {
+  id         Int     @id @default(autoincrement())
+  companyId  Int
+  customerId Int? // a quién pertenece la mensualidad (opcional)
+  name       String // Plan: "Mensualidad guarda cascos", "Plan cancha", etc.
+  amount     Float
+  dueDay     Int? // día del mes en que se cobra (1-31, opcional)
+  localId    Int
+  notes      String?
+  status     Status  @default(ACTIVO)
+
+  local    Local               @relation("LocalMemberships", fields: [localId], references: [id], onDelete: Cascade)
+  customer Customer?           @relation("CustomerMemberships", fields: [customerId], references: [id], onDelete: SetNull)
+  payments MembershipPayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([localId])
+  @@index([customerId])
+}
+
+// Cada cobro de una membresía (con su fecha y observación). El "pagado este mes"
+// se calcula buscando un pago ACTIVO dentro del mes calendario.
+model MembershipPayment {
+  id            Int            @id @default(autoincrement())
+  membershipId  Int
+  companyId     Int
+  amount        Float
+  paidDate      DateTime
+  paymentMethod PaymentMethod?
+  notes         String?
+  status        Status         @default(ACTIVO)
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([membershipId])
+  @@index([companyId])
+  @@index([paidDate])
 }
 
 // Fechas puntuales de descanso/ausencia de un empleado (vacaciones, día libre…).

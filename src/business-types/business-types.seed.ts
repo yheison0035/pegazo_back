@@ -97,14 +97,14 @@ export const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
   // Vende bebidas / alquiler de implementos como productos.
   CANCHAS_SINTETICAS: [
     'locals', 'users', 'categories', 'providers', 'inventory', 'purchases',
-    'customers', 'cartera', 'impuestos', 'loyalty', 'services', 'appointments',
+    'customers', 'cartera', 'impuestos', 'loyalty', 'memberships', 'services', 'appointments',
     'sales', 'delivered_sales', 'cash', 'expenses', 'payables', 'statistics',
   ],
   // Guarda cascos: guardado por uso o mensualidad + venta de productos
   // (candados, forros). Sin agenda.
   GUARDA_CASCOS: [
     'locals', 'users', 'categories', 'providers', 'inventory', 'purchases',
-    'customers', 'cartera', 'impuestos', 'loyalty', 'services',
+    'customers', 'cartera', 'impuestos', 'loyalty', 'memberships', 'services',
     'sales', 'delivered_sales', 'cash', 'expenses', 'payables', 'statistics',
   ],
 };
