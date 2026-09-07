@@ -7,6 +7,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { CustomersModule } from './customers/customers.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { FixedExpensesModule } from './fixed-expenses/fixed-expenses.module';
+import { MembershipsModule } from './memberships/memberships.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { LocalsModule } from './locals/locals.module';
 import { ProvidersModule } from './providers/providers.module';
@@ -69,6 +70,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
     CustomersModule,
     ExpensesModule,
     FixedExpensesModule,
+    MembershipsModule,
     InventoryModule,
     LocalsModule,
     ProvidersModule,
