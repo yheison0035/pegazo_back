@@ -143,8 +143,8 @@ export class FixedExpensesService {
   async create(user: any, dto: CreateFixedExpenseDto) {
     if (!dto.name?.trim())
       throw new BadRequestException('El nombre es obligatorio.');
-    if (!(Number(dto.amount) > 0))
-      throw new BadRequestException('El monto debe ser mayor a 0.');
+    // El monto es opcional: si varía cada mes, se deja vacío (0) y se define al
+    // pagar. No se exige mayor a 0 al crear.
 
     const localId = await this.resolveLocalId(user.companyId, dto.localId);
     const { expenseCategoryId } = await this.resolveType(
@@ -156,7 +156,7 @@ export class FixedExpensesService {
       data: {
         companyId: user.companyId,
         name: dto.name.trim(),
-        amount: Number(dto.amount),
+        amount: Number(dto.amount) > 0 ? Number(dto.amount) : 0,
         dueDay: dto.dueDay ?? null,
         expenseCategoryId,
         localId,
@@ -233,10 +233,14 @@ export class FixedExpensesService {
       throw new BadRequestException('Este gasto fijo ya se pagó este mes.');
 
     const { type } = await this.resolveType(fx.expenseCategoryId, user.companyId);
+    // El monto del pago manda. Si no viene, se usa el habitual del gasto fijo.
+    // Como el monto habitual ahora es opcional, exigimos un valor al pagar.
     const amount =
       dto.amount != null && Number(dto.amount) > 0
         ? Number(dto.amount)
         : fx.amount;
+    if (!(amount > 0))
+      throw new BadRequestException('Ingresa el monto del pago.');
 
     const expense = await this.prisma.expense.create({
       data: {
