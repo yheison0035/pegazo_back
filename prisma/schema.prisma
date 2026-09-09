@@ -333,6 +333,7 @@ model Company {
   salePayments        SalePayment[]
   inventory           Inventory[]          @relation("CompanyInventory")
   stockChangeRequests StockChangeRequest[] @relation("CompanyStockRequests")
+  notifications       Notification[]       @relation("CompanyNotifications")
   cashRegisters       CashRegister[]
   purchases           Purchase[]
   quotes              Quote[]
@@ -450,6 +451,7 @@ model User {
 
   stockRequestsMade    StockChangeRequest[] @relation("StockReqRequester")
   stockRequestsDecided StockChangeRequest[] @relation("StockReqDecider")
+  notifications        Notification[]       @relation("UserNotifications")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -774,6 +776,30 @@ model StockChangeRequest {
 
   @@index([companyId, status])
   @@index([inventoryId, status])
+}
+
+// Notificación in-app por usuario (campana). Estado leído/no leído; el contador
+// de la campana no baja hasta marcarlas leídas. Canal propio, en tiempo real
+// por sondeo (no depende del push del navegador). Genérico para cualquier
+// evento (solicitudes de stock, etc.).
+model Notification {
+  id        Int       @id @default(autoincrement())
+  companyId Int
+  userId    Int // destinatario
+  type      String // ej. STOCK_REQUEST_CREATED | STOCK_REQUEST_APPROVED | STOCK_REQUEST_REJECTED
+  title     String
+  body      String
+  url       String? // a dónde ir al tocarla
+  data      Json? // payload opcional
+  read      Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  company Company @relation("CompanyNotifications", fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([companyId])
 }
 
 model InventoryImage {

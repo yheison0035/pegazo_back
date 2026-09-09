@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '@/prisma.service';
 import { PushService } from '@/push/push.service';
 import { AuditService } from '@/audit/audit.service';
+import { NotificationsService } from '@/notifications/notifications.service';
 import { CreateStockRequestDto } from './dto/create-stock-request.dto';
 import { DecideStockRequestDto } from './dto/reject-stock-request.dto';
 
@@ -29,6 +30,7 @@ export class StockRequestsService {
     private prisma: PrismaService,
     private push: PushService,
     private audit: AuditService,
+    private notifications: NotificationsService,
   ) {}
 
   private isApprover(role: string) {
@@ -105,11 +107,20 @@ export class StockRequestsService {
       },
     });
 
-    // Avisar a dueño/administrador (push) — el badge/campana lo mantiene visible.
+    // Avisar a dueño/administrador. Notificación in-app (campana, en tiempo
+    // real) + push del navegador como refuerzo.
     const totalBaja = lines.reduce((s, l) => s + Math.abs(l.delta), 0);
+    const body = `${user.name} pide bajar ${totalBaja} de "${inventory.name}". Motivo: ${reason}`;
+    await this.notifications.createForRoles(user.companyId, APPROVER_ROLES, {
+      type: 'STOCK_REQUEST_CREATED',
+      title: 'Solicitud de disminución de stock',
+      body,
+      url: '/dashboard/inventory/stock-requests',
+      data: { requestId: created.id, inventoryId: inventory.id },
+    });
     await this.push.sendToCompanyRoles(user.companyId, APPROVER_ROLES, {
       title: '📦 Solicitud de disminución de stock',
-      body: `${user.name} pide bajar ${totalBaja} de "${inventory.name}". Motivo: ${reason}`,
+      body,
       url: '/dashboard/inventory/stock-requests',
       tag: `stockreq-${created.id}`,
     });
@@ -221,10 +232,18 @@ export class StockRequestsService {
       } as any,
     });
 
-    // Avisar al solicitante.
+    // Avisar al solicitante (campana en tiempo real + push).
+    const okBody = `Se aprobó tu disminución de "${req.inventory.name}".`;
+    await this.notifications.create(req.companyId, req.requestedById, {
+      type: 'STOCK_REQUEST_APPROVED',
+      title: 'Disminución aprobada',
+      body: okBody,
+      url: '/dashboard/inventory',
+      data: { requestId: req.id, inventoryId: req.inventoryId },
+    });
     await this.push.sendToUser(req.requestedById, {
       title: '✅ Disminución aprobada',
-      body: `Se aprobó la disminución de "${req.inventory.name}".`,
+      body: okBody,
       url: '/dashboard/inventory',
       tag: `stockreq-${req.id}`,
     });
@@ -253,9 +272,20 @@ export class StockRequestsService {
       },
     });
 
+    const note = dto?.note?.trim();
+    const rejBody = `Se rechazó tu disminución de "${req.inventory.name}".${
+      note ? ` Motivo: ${note}` : ''
+    }`;
+    await this.notifications.create(req.companyId, req.requestedById, {
+      type: 'STOCK_REQUEST_REJECTED',
+      title: 'Disminución rechazada',
+      body: rejBody,
+      url: '/dashboard/inventory',
+      data: { requestId: req.id, inventoryId: req.inventoryId },
+    });
     await this.push.sendToUser(req.requestedById, {
       title: '❌ Disminución rechazada',
-      body: `Se rechazó la disminución de "${req.inventory.name}".`,
+      body: rejBody,
       url: '/dashboard/inventory',
       tag: `stockreq-${req.id}`,
     });

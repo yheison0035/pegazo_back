@@ -11,6 +11,7 @@ import { MembershipsModule } from './memberships/memberships.module';
 import { StorageModule } from './storage/storage.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { StockRequestsModule } from './stock-requests/stock-requests.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { LocalsModule } from './locals/locals.module';
 import { ProvidersModule } from './providers/providers.module';
 import { SalesModule } from './sales/sales.module';
@@ -76,6 +77,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
     StorageModule,
     InventoryModule,
     StockRequestsModule,
+    NotificationsModule,
     LocalsModule,
     ProvidersModule,
     SalesModule,
