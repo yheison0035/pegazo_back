@@ -133,4 +133,50 @@ export class NotificationsService {
     });
     return { success: true };
   }
+
+  // Aviso de vencimiento del plan/suscripción del negocio. Solo dueño/admin.
+  // Se dispara desde el cliente al iniciar sesión / cargar el panel. Idempotente
+  // por fecha de vencimiento (una notificación por ciclo).
+  async createSubscriptionDueNotice(user: any) {
+    if (!['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
+      return { success: true, skipped: true };
+    }
+    const company = await this.prisma.company.findUnique({
+      where: { id: user.companyId },
+      select: { paidUntil: true },
+    });
+    if (!company?.paidUntil) return { success: true, skipped: true };
+
+    const now = new Date();
+    const due = new Date(company.paidUntil);
+    const days = Math.ceil((due.getTime() - now.getTime()) / 86400000);
+    // Avisar desde 3 días antes y hasta el vencimiento.
+    if (days > 3) return { success: true, skipped: true };
+
+    const dueKey = due.toISOString().slice(0, 10);
+    const existing = await this.prisma.notification.findFirst({
+      where: {
+        userId: user.id,
+        type: 'SUBSCRIPTION_DUE',
+        data: { path: ['dueKey'], equals: dueKey },
+      },
+      select: { id: true },
+    });
+    if (existing) return { success: true, skipped: true };
+
+    const body =
+      days > 0
+        ? `Faltan ${days} día(s) para vencer tu plan. Renueva para no perder el acceso.`
+        : days === 0
+          ? 'Tu plan vence hoy. Renueva para no perder el acceso.'
+          : 'Tu plan está vencido. Renueva para reactivar el acceso.';
+    await this.create(user.companyId, user.id, {
+      type: 'SUBSCRIPTION_DUE',
+      title: 'Vencimiento de tu plan',
+      body,
+      url: '/dashboard',
+      data: { dueKey },
+    });
+    return { success: true };
+  }
 }
