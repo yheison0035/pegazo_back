@@ -363,9 +363,24 @@ export class InventoryService {
       user.companyId,
     );
 
+    // Productos con una solicitud de disminución PENDIENTE (estado en la tabla).
+    const pendingReqs = await this.prisma.stockChangeRequest.findMany({
+      where: {
+        companyId: user.companyId,
+        status: 'PENDING',
+        inventoryId: { in: data.map((p) => p.id) },
+      },
+      select: { inventoryId: true },
+    });
+    const pendingSet = new Set(pendingReqs.map((r) => r.inventoryId));
+
     return {
       success: true,
-      data: data.map((p) => ({ ...p, lastAudit: auditMap[p.id] || null })),
+      data: data.map((p) => ({
+        ...p,
+        lastAudit: auditMap[p.id] || null,
+        stockRequestPending: pendingSet.has(p.id),
+      })),
       meta: {
         page,
         limit,
