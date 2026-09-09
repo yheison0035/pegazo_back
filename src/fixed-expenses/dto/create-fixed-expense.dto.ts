@@ -11,8 +11,11 @@ export class CreateFixedExpenseDto {
   @IsString()
   name: string;
 
+  // Monto habitual (opcional). Si el valor cambia cada mes, se deja vacío y se
+  // ingresa al momento de pagar. 0/vacío = "se define al pagar".
+  @IsOptional()
   @IsNumber()
-  amount: number;
+  amount?: number;
 
   // Día del mes en que se suele pagar (1-31). Opcional.
   @IsOptional()
