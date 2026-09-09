@@ -17,6 +17,7 @@ export class VariantsService {
     inventoryId: number,
     incoming: InventoryVariantSyncInput[],
     user: any,
+    opts: { allowDecrease?: boolean } = {},
   ) {
     if (
       !hasRole(user.role, [
@@ -27,6 +28,11 @@ export class VariantsService {
     ) {
       throw new BadRequestException('No tienes permisos');
     }
+
+    // Solo dueño/administrador pueden BAJAR stock directamente. Para los demás
+    // (allowDecrease=false) el stock nunca disminuye por esta vía: se conserva
+    // (clamp) y las disminuciones van por la solicitud de aprobación aparte.
+    const allowDecrease = opts.allowDecrease !== false;
 
     const inventory = await this.prisma.inventory.findUnique({
       where: { id: inventoryId },
@@ -40,11 +46,15 @@ export class VariantsService {
     const existing = await this.prisma.inventoryVariant.findMany({
       where: { inventoryId },
     });
+    const existingById = new Map(existing.map((v) => [v.id, v]));
 
     const incomingIds = incoming.filter((v) => v.id).map((v) => v.id);
 
     for (const variant of existing) {
       if (!incomingIds.includes(variant.id)) {
+        // Quitar una variante equivale a poner su stock en 0 (disminución).
+        // Sin permiso para bajar, no se desactiva: se conserva tal cual.
+        if (!allowDecrease && variant.isActive && variant.stock > 0) continue;
         await this.prisma.inventoryVariant.update({
           where: { id: variant.id },
           data: {
@@ -56,13 +66,19 @@ export class VariantsService {
     }
 
     for (const v of incoming.filter((v) => v.id)) {
+      let nextStock = v.stock ?? 0;
+      if (!allowDecrease) {
+        const current = existingById.get(v.id as number)?.stock ?? 0;
+        // Nunca por debajo del stock actual: solo se permite subir o dejar igual.
+        nextStock = Math.max(Number(nextStock), current);
+      }
       await this.prisma.inventoryVariant.update({
         where: { id: v.id },
         data: {
           color: v.color,
           size: v.size ?? null,
           isActive: true,
-          stock: v.stock ?? 0, // 🔥 permitir cero
+          stock: nextStock, // 🔥 permitir cero
         },
       });
     }
