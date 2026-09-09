@@ -1,9 +1,11 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   ParseIntPipe,
   Patch,
+  Post,
   Query,
   Req,
   UseGuards,
@@ -36,5 +38,11 @@ export class NotificationsController {
   @Patch(':id/read')
   markRead(@Req() req, @Param('id', ParseIntPipe) id: number) {
     return this.service.markRead(req.user, id);
+  }
+
+  // Lo llama el cliente cuando una cita entra en la ventana de recordatorio.
+  @Post('appointment-reminder')
+  appointmentReminder(@Req() req, @Body('appointmentId') appointmentId: number) {
+    return this.service.createAppointmentReminder(req.user, appointmentId);
   }
 }

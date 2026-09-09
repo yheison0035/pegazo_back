@@ -7,12 +7,14 @@ import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '@/prisma.service';
 import { parseBankSms } from './bank-sms.parser';
 import { PushService } from '@/push/push.service';
+import { NotificationsService } from '@/notifications/notifications.service';
 
 @Injectable()
 export class BankService {
   constructor(
     private prisma: PrismaService,
     private push: PushService,
+    private notifications: NotificationsService,
   ) {}
 
   // Webhook PÚBLICO: el reenviador (SMS/correo) manda aquí cada notificación
@@ -93,12 +95,23 @@ export class BankService {
       currency: 'COP',
       maximumFractionDigits: 0,
     }).format(deposit.amount || 0);
+    const depositBody = `${monto}${p.senderName ? ' de ' + p.senderName : ''}`;
     void this.push
       .sendToCompanyRoles(target.id, ['SUPER_ADMIN', 'ADMIN'], {
         title: '💰 Consignación recibida',
-        body: `${monto}${p.senderName ? ' de ' + p.senderName : ''}`,
+        body: depositBody,
         url: '/dashboard/bank',
         tag: `deposit-${deposit.id}`,
+      })
+      .catch(() => null);
+    // Notificación in-app (campana) para dueño/administrador.
+    void this.notifications
+      .createForRoles(target.id, ['SUPER_ADMIN', 'ADMIN'], {
+        type: 'BANK_DEPOSIT',
+        title: 'Consignación recibida',
+        body: depositBody,
+        url: '/dashboard/bank',
+        data: { depositId: deposit.id },
       })
       .catch(() => null);
 
