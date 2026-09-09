@@ -2059,3 +2059,18 @@ model PlanModuleGate {
   minPlan   String
   updatedAt DateTime @updatedAt
 }
+
+// Cuentas de pago de la PLATAFORMA (Pegazo). Config global única (una fila) que
+// alimenta el modal "Pagar" que ven los negocios: a qué cuenta consignar y a qué
+// WhatsApp enviar el comprobante. Se administra desde SUPER_PLATFORM.
+model PlatformPaymentSettings {
+  id             Int      @id @default(1)
+  bankName       String   @default("BANCOLOMBIA")
+  accountType    String   @default("AHORROS") // AHORROS | CORRIENTE
+  accountNumber  String   @default("")
+  accountHolder  String   @default("")
+  whatsappNumber String   @default("") // a dónde enviar el comprobante (solo dígitos, con indicativo)
+  instructions   String? // texto libre opcional para la columna del comprobante
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}

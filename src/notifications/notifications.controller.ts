@@ -45,4 +45,11 @@ export class NotificationsController {
   appointmentReminder(@Req() req, @Body('appointmentId') appointmentId: number) {
     return this.service.createAppointmentReminder(req.user, appointmentId);
   }
+
+  // Lo llama el cliente al iniciar sesión / cargar el panel: crea (idempotente)
+  // el aviso de vencimiento del plan si faltan ≤ 3 días.
+  @Post('subscription-due')
+  subscriptionDue(@Req() req) {
+    return this.service.createSubscriptionDueNotice(req.user);
+  }
 }
