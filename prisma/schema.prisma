@@ -332,6 +332,7 @@ model Company {
   comandas            Comanda[]
   salePayments        SalePayment[]
   inventory           Inventory[]          @relation("CompanyInventory")
+  stockChangeRequests StockChangeRequest[] @relation("CompanyStockRequests")
   cashRegisters       CashRegister[]
   purchases           Purchase[]
   quotes              Quote[]
@@ -446,6 +447,9 @@ model User {
   purchases     Purchase[]     @relation("PurchaseUser")
   quotes        Quote[]        @relation("QuoteUser")
   returns       Return[]       @relation("ReturnUser")
+
+  stockRequestsMade    StockChangeRequest[] @relation("StockReqRequester")
+  stockRequestsDecided StockChangeRequest[] @relation("StockReqDecider")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -706,6 +710,8 @@ model Inventory {
   specifications InventorySpecification[]
   recipeItems    RecipeItem[]
 
+  stockChangeRequests StockChangeRequest[] @relation("InventoryStockRequests")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -736,6 +742,38 @@ model InventoryVariant {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Solicitud de DISMINUCIÓN de stock hecha por un usuario sin permiso para bajar
+// inventario (todos menos dueño/administrador). El dueño o administrador la
+// aprueba (se aplica el descuento) o la rechaza (no se toca el stock). Deja
+// rastro auditable de quién pidió bajar qué, cuánto y por qué. Aplica a todos
+// los tipos de negocio.
+model StockChangeRequest {
+  id           Int       @id @default(autoincrement())
+  companyId    Int
+  inventoryId  Int
+  status       String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  reason       String // motivo obligatorio del solicitante
+  decisionNote String? // nota opcional del dueño/admin al aprobar o rechazar
+  // Detalle por variante: [{ variantId, sku, label, currentStock, requestedStock, delta }]
+  lines        Json
+  // Bandera para el contador/campana del aprobador (dueño/admin).
+  seen         Boolean   @default(false)
+  requestedById Int
+  decidedById   Int?
+  decidedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company     Company   @relation("CompanyStockRequests", fields: [companyId], references: [id], onDelete: Cascade)
+  inventory   Inventory @relation("InventoryStockRequests", fields: [inventoryId], references: [id], onDelete: Cascade)
+  requestedBy User      @relation("StockReqRequester", fields: [requestedById], references: [id])
+  decidedBy   User?     @relation("StockReqDecider", fields: [decidedById], references: [id])
+
+  @@index([companyId, status])
+  @@index([inventoryId, status])
 }
 
 model InventoryImage {

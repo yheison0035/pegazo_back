@@ -762,7 +762,13 @@ export class InventoryService {
     });
 
     if (Array.isArray(dto.variants)) {
-      await this.variantsService.syncVariants(id, dto.variants, user);
+      // Solo dueño/administrador pueden bajar stock desde la edición. Para los
+      // demás roles el stock nunca disminuye por aquí (se conserva); las bajas
+      // van por la solicitud de aprobación (POST /stock-requests).
+      const allowDecrease = hasRole(user.role, [Role.SUPER_ADMIN, Role.ADMIN]);
+      await this.variantsService.syncVariants(id, dto.variants, user, {
+        allowDecrease,
+      });
     }
 
     const changes = this.audit.diff(before, dto, [
