@@ -92,4 +92,45 @@ export class NotificationsService {
     });
     return { success: true };
   }
+
+  // Persiste en la campana el recordatorio de una cita próxima. Lo dispara el
+  // cliente (AppointmentsHub) cuando la cita entra en la ventana de aviso.
+  // Idempotente: una sola por usuario y cita.
+  async createAppointmentReminder(user: any, appointmentId: number) {
+    const id = Number(appointmentId);
+    if (!id) return { success: true, skipped: true };
+
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id, companyId: user.companyId },
+      select: {
+        id: true,
+        startTime: true,
+        service: { select: { name: true } },
+        customer: { select: { name: true } },
+      },
+    });
+    if (!appt) return { success: true, skipped: true };
+
+    const existing = await this.prisma.notification.findFirst({
+      where: {
+        userId: user.id,
+        type: 'APPOINTMENT_REMINDER',
+        data: { path: ['appointmentId'], equals: id },
+      },
+      select: { id: true },
+    });
+    if (existing) return { success: true, skipped: true };
+
+    const body = `${appt.startTime} · ${appt.service?.name || 'Cita'}${
+      appt.customer?.name ? ' · ' + appt.customer.name : ''
+    }`;
+    await this.create(user.companyId, user.id, {
+      type: 'APPOINTMENT_REMINDER',
+      title: 'Recordatorio de cita',
+      body,
+      url: '/dashboard/appointments',
+      data: { appointmentId: id },
+    });
+    return { success: true };
+  }
 }
