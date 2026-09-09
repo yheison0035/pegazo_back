@@ -260,6 +260,9 @@ model Company {
   paidUntil  DateTime? // fecha hasta la que la empresa está al día; si vence, se auto-suspende
   startDate  DateTime? // fecha en que la empresa empezó con nosotros (si null, se usa createdAt)
   couponCode String? // cupón de descuento con el que se registró (informativo)
+  // Día del mes en que le toca pagar (1-31, ej. paga cada 22). Informativo para
+  // el modal de pago; la fecha de vencimiento efectiva sigue siendo paidUntil.
+  paymentDay Int?
 
   // Control MANUAL de módulos por empresa (superplatform). Si tiene valores,
   // manda sobre el plan: el cliente solo ve/usa los módulos de esta lista.

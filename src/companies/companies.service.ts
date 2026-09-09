@@ -1400,6 +1400,9 @@ export class CompaniesService {
           monthlyPrice:
             dto.monthlyPrice === null ? null : Number(dto.monthlyPrice),
         }),
+        ...(dto.paymentDay !== undefined && {
+          paymentDay: dto.paymentDay === null ? null : Number(dto.paymentDay),
+        }),
         ...(dto.discountedPrice !== undefined && {
           discountedPrice:
             dto.discountedPrice === null ? null : Number(dto.discountedPrice),
