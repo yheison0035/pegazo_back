@@ -510,6 +510,7 @@ export class UsersService {
             // Vencimiento del pago y precio acordado: el CRM del dueño los usa
             // para el aviso de renovación (banner) antes/al vencer.
             paidUntil: true,
+            paymentDay: true,
             monthlyPrice: true,
             discountedPrice: true,
             discountUntil: true,

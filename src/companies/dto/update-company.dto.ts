@@ -7,6 +7,7 @@ import {
   IsArray,
   IsInt,
   Min,
+  Max,
 } from 'class-validator';
 import { Status } from '@prisma/client';
 
@@ -98,6 +99,13 @@ export class UpdateCompanyDto {
   @IsInt()
   @Min(0)
   monthlyPrice?: number | null;
+
+  // Día del mes en que le toca pagar (1-31).
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  paymentDay?: number | null;
 
   @IsOptional()
   @IsInt()
