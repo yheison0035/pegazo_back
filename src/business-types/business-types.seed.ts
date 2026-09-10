@@ -54,7 +54,7 @@ export const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
     'cash', 'expenses', 'payables', 'statistics',
   ],
   FERIA: [
-    'locals', 'users', 'categories', 'inventory', 'purchases', 'customers', 'cartera', 'impuestos',
+    'locals', 'users', 'categories', 'providers', 'inventory', 'purchases', 'customers', 'cartera', 'impuestos',
     'sales', 'delivered_sales', 'returns', 'cash', 'expenses', 'payables', 'statistics',
   ],
   RESTAURANTE: COMIDA,
