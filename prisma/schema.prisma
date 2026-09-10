@@ -346,6 +346,7 @@ model Company {
   inventory           Inventory[]          @relation("CompanyInventory")
   stockChangeRequests StockChangeRequest[] @relation("CompanyStockRequests")
   notifications       Notification[]       @relation("CompanyNotifications")
+  supportMessages     SupportMessage[]     @relation("CompanySupport")
   cashRegisters       CashRegister[]
   purchases           Purchase[]
   quotes              Quote[]
@@ -812,6 +813,27 @@ model Notification {
 
   @@index([userId, read])
   @@index([companyId])
+}
+
+// Chat de soporte en tiempo real (por sondeo) entre el negocio y la plataforma.
+// Un hilo por empresa. fromPlatform=false → lo escribió el cliente (negocio);
+// fromPlatform=true → respuesta de SUPER_PLATFORM. Los "read" controlan los
+// contadores de no leídos de cada lado.
+model SupportMessage {
+  id             Int      @id @default(autoincrement())
+  companyId      Int
+  fromPlatform   Boolean  @default(false)
+  senderUserId   Int?
+  senderName     String
+  body           String
+  readByPlatform Boolean  @default(false) // el mensaje del cliente ya lo vio soporte
+  readByClient   Boolean  @default(true) // la respuesta de soporte ya la vio el cliente
+  createdAt      DateTime @default(now())
+
+  company Company @relation("CompanySupport", fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([readByPlatform])
 }
 
 model InventoryImage {
