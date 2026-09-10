@@ -222,23 +222,44 @@ export class MailService {
   }
 
   async sendPasswordReset(to: string, resetUrl: string, name?: string) {
-    const subject = 'Restablece tu contraseña';
+    const subject = 'Restablece tu contraseña · Pegazo';
+    const base = process.env.FRONTEND_URL || 'https://pegazo.co';
+    const logo = `${base}/images/logo_pegazo.png`;
     const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; color: #111;">
-        <h2 style="color:#1d4ed8;">Restablecer contraseña</h2>
-        <p>Hola${name ? ' ' + name : ''},</p>
-        <p>Recibimos una solicitud para restablecer la contraseña de tu cuenta.
-        Si fuiste tú, haz clic en el botón. El enlace vence en 30 minutos.</p>
-        <p style="text-align:center; margin: 24px 0;">
-          <a href="${resetUrl}"
-             style="background:#1d4ed8; color:#fff; text-decoration:none; padding:12px 22px; border-radius:8px; display:inline-block;">
-            Restablecer mi contraseña
-          </a>
-        </p>
-        <p style="font-size:12px; color:#666;">Si el botón no funciona, copia y pega este enlace:<br>
-          <a href="${resetUrl}">${resetUrl}</a>
-        </p>
-        <p style="font-size:12px; color:#666;">Si tú no lo solicitaste, ignora este correo; tu contraseña no cambiará.</p>
+      <div style="background:#f4f2ee; padding:28px 0; font-family:Arial,Helvetica,sans-serif;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:18px; overflow:hidden; box-shadow:0 8px 30px rgba(0,0,0,0.06);">
+          <tr>
+            <td style="background:linear-gradient(135deg,#EA5B0C,#F59E0B); padding:28px 24px; text-align:center;">
+              <img src="${logo}" alt="Pegazo" width="150" style="display:inline-block; max-width:150px; height:auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 28px 8px;">
+              <h1 style="margin:0 0 6px; font-size:20px; color:#1F1B16;">Restablece tu contraseña</h1>
+              <p style="margin:0 0 14px; font-size:14px; color:#5b5349; line-height:1.6;">
+                Hola${name ? ' ' + name : ''}, recibimos una solicitud para restablecer la contraseña de tu cuenta.
+                Si fuiste tú, toca el botón. El enlace vence en <b>30 minutos</b>.
+              </p>
+              <p style="text-align:center; margin:24px 0;">
+                <a href="${resetUrl}" style="background:linear-gradient(135deg,#EA5B0C,#F59E0B); color:#ffffff; text-decoration:none; font-weight:bold; padding:13px 26px; border-radius:12px; display:inline-block; font-size:14px;">
+                  Crear nueva contraseña
+                </a>
+              </p>
+              <p style="font-size:12px; color:#8a8073; line-height:1.6;">
+                Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
+                <a href="${resetUrl}" style="color:#B4480A; word-break:break-all;">${resetUrl}</a>
+              </p>
+              <p style="font-size:12px; color:#8a8073; margin-top:14px;">
+                Si tú no lo solicitaste, ignora este correo; tu contraseña no cambiará.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 24px 26px; text-align:center; border-top:1px solid #eee;">
+              <p style="margin:0; font-size:11px; color:#a89f92;">© ${new Date().getFullYear()} Pegazo · El sistema que hace despegar tu negocio</p>
+            </td>
+          </tr>
+        </table>
       </div>
     `;
 
