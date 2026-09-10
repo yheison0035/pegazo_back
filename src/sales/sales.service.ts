@@ -17,6 +17,7 @@ import {
 } from '@prisma/client';
 import { StockService } from '@/inventory/stock.service';
 import { PlanLimitsService } from '@/common/plan-limits.service';
+import { assertPeriodOpen } from '@/common/period-close.util';
 import {
   formatLocalDate,
   getDayRange,
@@ -754,6 +755,13 @@ export class SalesService {
     if (!dto.localId || !dto.paymentMethod) {
       throw new BadRequestException('Faltan datos obligatorios');
     }
+
+    // Cierre de periodo: no registrar ventas en fechas ya cerradas.
+    await assertPeriodOpen(
+      this.prisma,
+      user.companyId,
+      dto.saleDate || new Date(),
+    );
 
     // Si llega un método del catálogo, su "code" define el comportamiento base
     // (enum paymentMethod) que usa toda la lógica de caja/banco/fiado.

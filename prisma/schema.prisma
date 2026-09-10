@@ -242,6 +242,16 @@ model Company {
   // de hoy en la sede). El dueño lo enciende/apaga en Configuración.
   requireCashOpen Boolean @default(false)
 
+  // Base contable de los reportes (lo elige el dueño en Configuración):
+  //  CASH     = base caja: solo ventas cobradas y gastos pagados (por defecto).
+  //  ACCRUAL  = base causación: la venta cuenta al emitirse (incluye fiado).
+  accountingBasis String @default("CASH")
+
+  // Cierre de periodo: fecha hasta la cual los libros están CERRADOS. No se
+  // permite crear/editar ventas ni gastos con fecha ≤ esta. El dueño la fija y
+  // la puede reabrir en Configuración. Null = sin cierre.
+  booksClosedUntil DateTime?
+
   // Configuración fiscal (facturación con impuestos / electrónica DIAN).
   responsableIVA     Boolean @default(false)
   preciosIncluyenIVA Boolean @default(false)
