@@ -17,12 +17,26 @@ export class AssetsService {
   }
 
   // Deriva depreciación acumulada, valor en libros y cuota mensual de un activo.
+  // Si no tiene vida útil (null/0) el activo NO se deprecia: su valor en libros
+  // es siempre el costo (p. ej. terrenos o bienes que el dueño no deprecia).
   private withDepreciation(a: any) {
     const cost = a.cost || 0;
     const salvage = a.salvageValue || 0;
     const life = a.usefulLifeMonths || 0;
+
+    if (!life) {
+      return {
+        ...a,
+        monthlyDepreciation: 0,
+        accumulatedDepreciation: 0,
+        bookValue: cost,
+        monthsElapsed: 0,
+        fullyDepreciated: false,
+      };
+    }
+
     const depreciable = Math.max(0, cost - salvage);
-    const monthly = life > 0 ? depreciable / life : 0;
+    const monthly = depreciable / life;
 
     // Si el activo fue dado de baja/vendido, la depreciación se congela en esa
     // fecha. Si sigue activo, corre hasta hoy.
@@ -39,7 +53,7 @@ export class AssetsService {
       Math.round(monthly * monthsElapsed),
     );
     const bookValue = cost - accumulated;
-    const fullyDepreciated = life > 0 && monthsElapsed >= life;
+    const fullyDepreciated = monthsElapsed >= life;
 
     return {
       ...a,
@@ -94,27 +108,51 @@ export class AssetsService {
   }
 
   private normalize(dto: any) {
-    const cost = Number(dto.cost);
-    const life = Number(dto.usefulLifeMonths);
     if (!dto.name || !String(dto.name).trim())
       throw new BadRequestException('El nombre del activo es obligatorio.');
-    if (!Number.isFinite(cost) || cost < 0)
-      throw new BadRequestException('El costo no es válido.');
-    if (!Number.isInteger(life) || life <= 0)
-      throw new BadRequestException('La vida útil (en meses) no es válida.');
+    if (!dto.acquisitionDate)
+      throw new BadRequestException('La fecha de compra es obligatoria.');
+
+    // Cantidad + valor unitario → costo total. Se acepta también `cost` directo
+    // (compatibilidad), del que se deriva el unitario.
+    const quantity = Math.max(1, Math.round(Number(dto.quantity) || 1));
+    let unitCost = dto.unitCost != null ? Number(dto.unitCost) : null;
+    let cost: number;
+    if (unitCost != null && Number.isFinite(unitCost)) {
+      if (unitCost < 0)
+        throw new BadRequestException('El valor unitario no es válido.');
+      cost = Math.round(unitCost) * quantity;
+    } else {
+      cost = Number(dto.cost);
+      if (!Number.isFinite(cost) || cost < 0)
+        throw new BadRequestException('El costo no es válido.');
+      cost = Math.round(cost);
+      unitCost = Math.round(cost / quantity);
+    }
+
+    // Vida útil OPCIONAL: vacío/0 = el activo no se deprecia.
+    let life: number | null = null;
+    if (dto.usefulLifeMonths != null && String(dto.usefulLifeMonths) !== '') {
+      const l = Number(dto.usefulLifeMonths);
+      if (!Number.isInteger(l) || l < 0)
+        throw new BadRequestException('La vida útil (en meses) no es válida.');
+      life = l > 0 ? l : null;
+    }
+
     const salvage = Number(dto.salvageValue) || 0;
     if (salvage < 0 || salvage > cost)
       throw new BadRequestException(
-        'El valor de salvamento debe estar entre 0 y el costo.',
+        'El valor de salvamento debe estar entre 0 y el costo total.',
       );
-    if (!dto.acquisitionDate)
-      throw new BadRequestException('La fecha de compra es obligatoria.');
+
     return {
       name: String(dto.name).trim(),
       category: dto.category ? String(dto.category).trim() : null,
       reference: dto.reference ? String(dto.reference).trim() : null,
       acquisitionDate: new Date(dto.acquisitionDate),
-      cost: Math.round(cost),
+      quantity,
+      unitCost: Math.round(unitCost),
+      cost,
       salvageValue: Math.round(salvage),
       usefulLifeMonths: life,
       method: 'STRAIGHT_LINE',
