@@ -42,6 +42,7 @@ export class CompaniesService {
         requireCashOpen: true,
         accountingBasis: true,
         booksClosedUntil: true,
+        accountingEnabled: true,
         responsableIVA: true,
         preciosIncluyenIVA: true,
         defaultTaxRate: true,
@@ -481,6 +482,16 @@ export class CompaniesService {
       where: { id: user.companyId },
       data: { requireCashOpen: !!requireCashOpen },
       select: { requireCashOpen: true },
+    });
+    return { success: true, data: company };
+  }
+
+  // Interruptor de la sección Contabilidad (activos fijos, etc.).
+  async updateAccountingEnabled(user: any, enabled: boolean) {
+    const company = await this.prisma.company.update({
+      where: { id: user.companyId },
+      data: { accountingEnabled: !!enabled },
+      select: { accountingEnabled: true },
     });
     return { success: true, data: company };
   }

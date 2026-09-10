@@ -110,6 +110,16 @@ export class CompanySettingsController {
     return this.service.updateBooksClose(req.user, date);
   }
 
+  // Interruptor de la sección Contabilidad (activos, etc.). Lo activa el dueño.
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Patch('accounting-enabled')
+  updateAccountingEnabled(
+    @Body('enabled') enabled: boolean,
+    @Req() req,
+  ) {
+    return this.service.updateAccountingEnabled(req.user, enabled);
+  }
+
   @Roles('SUPER_ADMIN', 'ADMIN')
   @Patch('fiscal')
   updateFiscal(@Body() dto: any, @Req() req) {

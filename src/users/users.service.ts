@@ -499,6 +499,8 @@ export class UsersService {
             // Base contable de reportes (CASH|ACCRUAL) y cierre de periodo.
             accountingBasis: true,
             booksClosedUntil: true,
+            // Interruptor de la sección Contabilidad (activos, etc.).
+            accountingEnabled: true,
             // Aviso de consignaciones al banco (voz + notificación).
             bankNotifyEnabled: true,
             // Facturación electrónica DIAN habilitada por la plataforma.
