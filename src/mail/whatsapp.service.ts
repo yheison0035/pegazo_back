@@ -24,6 +24,20 @@ export class WhatsappService {
     // Agrega indicativo Colombia (57) si el número viene sin él (10 dígitos).
     const to = digits.length === 10 ? `57${digits}` : digits;
 
+    // El botón "copiar código" solo aplica a plantillas de AUTENTICACIÓN con ese
+    // botón. Para una plantilla simple, deja WHATSAPP_COPY_CODE sin poner.
+    const components: any[] = [
+      { type: 'body', parameters: [{ type: 'text', text: code }] },
+    ];
+    if (process.env.WHATSAPP_COPY_CODE === 'true') {
+      components.push({
+        type: 'button',
+        sub_type: 'copy_code',
+        index: '0',
+        parameters: [{ type: 'coupon_code', coupon_code: code }],
+      });
+    }
+
     const body = {
       messaging_product: 'whatsapp',
       to,
@@ -31,15 +45,7 @@ export class WhatsappService {
       template: {
         name: template,
         language: { code: lang },
-        components: [
-          { type: 'body', parameters: [{ type: 'text', text: code }] },
-          {
-            type: 'button',
-            sub_type: 'copy_code',
-            index: '0',
-            parameters: [{ type: 'coupon_code', coupon_code: code }],
-          },
-        ],
+        components,
       },
     };
 
