@@ -74,10 +74,11 @@ export class PayablesService {
   }
 
   // Resumen para las tarjetas: por pagar, vencido y pagado (del periodo actual).
+  // Incluye antigüedad de saldos (aging) y estado de cuenta por proveedor.
   async summary(user: any) {
     const pend = await this.prisma.payable.findMany({
       where: { companyId: user.companyId, status: 'PENDIENTE' },
-      select: { amount: true, dueDate: true },
+      select: { amount: true, dueDate: true, paidTo: true },
     });
     const today = PayablesService.colombiaTodayMidnightUtc();
     const soonLimit = new Date(today.getTime() + 3 * 86400000); // hoy + 3 días
@@ -94,6 +95,41 @@ export class PayablesService {
     );
     const sum = (arr: { amount: number }[]) =>
       arr.reduce((s, p) => s + p.amount, 0);
+
+    // Antigüedad de saldos: por vencer (o sin fecha) y tramos de mora.
+    const daysPast = (d: Date) =>
+      Math.floor((today.getTime() - new Date(d).getTime()) / 86400000);
+    const aging = { corriente: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90: 0 };
+    for (const p of pend) {
+      if (!p.dueDate || new Date(p.dueDate) >= today) {
+        aging.corriente += p.amount;
+        continue;
+      }
+      const dp = daysPast(p.dueDate);
+      if (dp <= 30) aging.d1_30 += p.amount;
+      else if (dp <= 60) aging.d31_60 += p.amount;
+      else if (dp <= 90) aging.d61_90 += p.amount;
+      else aging.d90 += p.amount;
+    }
+
+    // Estado de cuenta por proveedor (top por saldo pendiente).
+    const provMap: Record<string, { total: number; overdue: number }> = {};
+    for (const p of pend) {
+      const name = (p.paidTo || '').trim() || 'Sin proveedor';
+      if (!provMap[name]) provMap[name] = { total: 0, overdue: 0 };
+      provMap[name].total += p.amount;
+      if (p.dueDate && new Date(p.dueDate) < today)
+        provMap[name].overdue += p.amount;
+    }
+    const byProvider = Object.entries(provMap)
+      .map(([provider, v]) => ({
+        provider,
+        total: Math.round(v.total),
+        overdue: Math.round(v.overdue),
+      }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 12);
+
     return {
       success: true,
       data: {
@@ -103,6 +139,14 @@ export class PayablesService {
         dueSoon: sum(soonPs),
         dueSoonCount: soonPs.length,
         count: pend.length,
+        aging: {
+          corriente: Math.round(aging.corriente),
+          d1_30: Math.round(aging.d1_30),
+          d31_60: Math.round(aging.d31_60),
+          d61_90: Math.round(aging.d61_90),
+          d90: Math.round(aging.d90),
+        },
+        byProvider,
       },
     };
   }
