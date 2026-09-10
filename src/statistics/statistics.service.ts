@@ -191,7 +191,7 @@ export class StatisticsService {
     const expStart = new Date(Date.UTC(year, 0, 1));
     const expEnd = new Date(Date.UTC(year + 1, 0, 1));
 
-    const [sales, expenses] = await Promise.all([
+    const [sales, expenses, memberships] = await Promise.all([
       this.prisma.sale.findMany({
         where: {
           local: { companyId },
@@ -222,11 +222,21 @@ export class StatisticsService {
         },
         select: { expenseDate: true, amount: true },
       }),
+      this.prisma.membershipPayment.findMany({
+        where: {
+          companyId,
+          status: { not: 'ELIMINADO' as any },
+          paidDate: { gte: start, lt: end },
+          ...(Object.keys(localFilter).length ? { membership: localFilter } : {}),
+        },
+        select: { paidDate: true, amount: true },
+      }),
     ]);
 
     const months = Array.from({ length: 12 }, (_, i) => ({
       month: i + 1,
       ventas: 0,
+      membresias: 0,
       gastos: 0,
       costoVentas: 0,
       count: 0,
@@ -243,6 +253,10 @@ export class StatisticsService {
         }
       }
     }
+    for (const mp of memberships) {
+      const m = Number(colombiaDay(mp.paidDate).slice(5, 7)) - 1;
+      months[m].membresias += mp.amount;
+    }
     for (const e of expenses) {
       const m = Number(utcDay(e.expenseDate).slice(5, 7)) - 1;
       months[m].gastos += e.amount;
@@ -252,21 +266,31 @@ export class StatisticsService {
       month: m.month,
       count: m.count,
       ventas: Math.round(m.ventas),
+      membresias: Math.round(m.membresias),
       gastos: Math.round(m.gastos),
       costoVentas: Math.round(m.costoVentas),
       utilidadBruta: Math.round(m.ventas - m.costoVentas),
-      utilidad: Math.round(m.ventas - m.gastos),
+      // La utilidad incluye ventas + membresías − gastos.
+      utilidad: Math.round(m.ventas + m.membresias - m.gastos),
     }));
 
     const totals = data.reduce(
       (a, m) => ({
         ventas: a.ventas + m.ventas,
+        membresias: a.membresias + m.membresias,
         gastos: a.gastos + m.gastos,
         costoVentas: a.costoVentas + m.costoVentas,
         utilidad: a.utilidad + m.utilidad,
         count: a.count + m.count,
       }),
-      { ventas: 0, gastos: 0, costoVentas: 0, utilidad: 0, count: 0 },
+      {
+        ventas: 0,
+        membresias: 0,
+        gastos: 0,
+        costoVentas: 0,
+        utilidad: 0,
+        count: 0,
+      },
     );
 
     return { success: true, data: { year, months: data, totals } };
