@@ -13,6 +13,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { StockRequestsModule } from './stock-requests/stock-requests.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PlatformPaymentModule } from './platform-payment/platform-payment.module';
+import { SupportModule } from './support/support.module';
 import { LocalsModule } from './locals/locals.module';
 import { ProvidersModule } from './providers/providers.module';
 import { SalesModule } from './sales/sales.module';
@@ -80,6 +81,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
     StockRequestsModule,
     NotificationsModule,
     PlatformPaymentModule,
+    SupportModule,
     LocalsModule,
     ProvidersModule,
     SalesModule,
