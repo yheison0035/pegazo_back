@@ -1182,8 +1182,8 @@ export class CompaniesService {
       where: { type },
       select: { active: true },
     });
-    // Si hay fila de config, manda su estado (un base desactivado, ej. ZORVEX,
-    // queda inválido). Sin fila, se acepta solo si es uno de los base del enum.
+    // Si hay fila de config, manda su estado (un tipo desactivado queda
+    // inválido). Sin fila, se acepta solo si es uno de los base del enum.
     if (cfg) {
       if (!cfg.active) throw new BadRequestException('Tipo de negocio no válido.');
       return;

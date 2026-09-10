@@ -67,9 +67,8 @@ export class EnumsService {
     const map = new Map(
       configs.filter((c) => c.active).map((c) => [c.type, c.label]),
     );
-    // Un tipo YA configurado (aunque esté inactivo, ej. ZORVEX desactivado) no
-    // se re-agrega. Solo los base del enum que nunca tuvieron fila entran como
-    // respaldo.
+    // Un tipo YA configurado (aunque esté inactivo) no se re-agrega. Solo los
+    // base del enum que nunca tuvieron fila entran como respaldo.
     const configured = new Set(configs.map((c) => c.type));
     for (const t of Object.values(BusinessType)) {
       if (!configured.has(t)) map.set(t, (t as string).replace(/_/g, ' '));
