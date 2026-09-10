@@ -826,6 +826,7 @@ model SupportMessage {
   senderUserId   Int?
   senderName     String
   body           String
+  imageUrl       String? // adjunto opcional (Cloudinary)
   readByPlatform Boolean  @default(false) // el mensaje del cliente ya lo vio soporte
   readByClient   Boolean  @default(true) // la respuesta de soporte ya la vio el cliente
   createdAt      DateTime @default(now())

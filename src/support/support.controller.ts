@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -6,17 +7,49 @@ import {
   ParseIntPipe,
   Post,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
 import { Roles } from '@/auth/roles.decorator';
+import { CloudinaryService } from '@/cloudinary/cloudinary.service';
 import { SupportService } from './support.service';
 
 @Controller('support')
 @UseGuards(JwtAuthGuard)
 export class SupportController {
-  constructor(private readonly service: SupportService) {}
+  constructor(
+    private readonly service: SupportService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
+
+  // Sube un adjunto del chat (cliente o soporte) a Cloudinary y devuelve su URL.
+  @Post('upload')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+      fileFilter: (_req, file, cb) => {
+        if (!/^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)) {
+          return cb(
+            new BadRequestException('El adjunto debe ser una imagen.'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async upload(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No se recibió ninguna imagen.');
+    const { url, publicId } = await this.cloudinary.uploadImage(
+      file,
+      'support',
+    );
+    return { success: true, data: { url, publicId } };
+  }
 
   // ----- Negocio (cualquier usuario autenticado de una empresa) -----
   @Get()
@@ -25,8 +58,12 @@ export class SupportController {
   }
 
   @Post()
-  clientSend(@Req() req, @Body('body') body: string) {
-    return this.service.clientSend(req.user, body);
+  clientSend(
+    @Req() req,
+    @Body('body') body: string,
+    @Body('imageUrl') imageUrl: string,
+  ) {
+    return this.service.clientSend(req.user, body, imageUrl);
   }
 
   @Get('unread-count')
@@ -63,7 +100,8 @@ export class SupportController {
     @Req() req,
     @Param('companyId', ParseIntPipe) companyId: number,
     @Body('body') body: string,
+    @Body('imageUrl') imageUrl: string,
   ) {
-    return this.service.platformSend(req.user, companyId, body);
+    return this.service.platformSend(req.user, companyId, body, imageUrl);
   }
 }
