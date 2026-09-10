@@ -34,9 +34,11 @@ export class SupportService {
     return { success: true, data };
   }
 
-  async clientSend(user: any, body: string) {
+  async clientSend(user: any, body: string, imageUrl?: string) {
     const text = (body || '').trim();
-    if (!text) throw new BadRequestException('El mensaje está vacío.');
+    const img = (imageUrl || '').trim() || null;
+    if (!text && !img)
+      throw new BadRequestException('El mensaje está vacío.');
     if (!user.companyId)
       throw new BadRequestException('Usuario sin empresa.');
     const msg = await this.prisma.supportMessage.create({
@@ -46,6 +48,7 @@ export class SupportService {
         senderUserId: user.id,
         senderName: user.name || 'Cliente',
         body: text.slice(0, 4000),
+        imageUrl: img,
         readByPlatform: false,
         readByClient: true,
       },
@@ -88,7 +91,7 @@ export class SupportService {
         companyName: c.name,
         logo: c.logo,
         type: c.type,
-        lastMessage: last?.body || '',
+        lastMessage: last?.body || (last?.imageUrl ? '📷 Imagen' : ''),
         lastAt: last?.createdAt || null,
         lastFromPlatform: last?.fromPlatform || false,
         unread,
@@ -119,9 +122,16 @@ export class SupportService {
     return { success: true, data: { company, messages: data } };
   }
 
-  async platformSend(user: any, companyId: number, body: string) {
+  async platformSend(
+    user: any,
+    companyId: number,
+    body: string,
+    imageUrl?: string,
+  ) {
     const text = (body || '').trim();
-    if (!text) throw new BadRequestException('El mensaje está vacío.');
+    const img = (imageUrl || '').trim() || null;
+    if (!text && !img)
+      throw new BadRequestException('El mensaje está vacío.');
     const msg = await this.prisma.supportMessage.create({
       data: {
         companyId,
@@ -129,22 +139,24 @@ export class SupportService {
         senderUserId: user.id,
         senderName: 'Soporte Pegazo',
         body: text.slice(0, 4000),
+        imageUrl: img,
         readByPlatform: true,
         readByClient: false,
       },
     });
+    const preview = text.slice(0, 140) || '📷 Imagen';
     // Avisar al negocio (campana + push) que soporte respondió.
     await this.notifications.createForRoles(companyId, OWNER_ROLES, {
       type: 'SUPPORT_REPLY',
       title: 'Soporte te respondió',
-      body: text.slice(0, 140),
+      body: preview,
       url: '/dashboard',
       data: { support: true },
     });
     void this.push
       .sendToCompanyRoles(companyId, OWNER_ROLES, {
         title: '💬 Soporte Pegazo',
-        body: text.slice(0, 140),
+        body: preview,
         url: '/dashboard',
         tag: `support-${companyId}`,
       })
