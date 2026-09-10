@@ -857,9 +857,11 @@ model Asset {
   category         String? // libre: Equipo, Vehículo, Muebles, Inmueble…
   reference        String? // placa / serie / código interno
   acquisitionDate  DateTime
-  cost             Int // costo de adquisición (COP, sin decimales)
+  quantity         Int       @default(1) // nº de unidades del activo
+  unitCost         Int? // valor unitario (COP); cost = quantity * unitCost
+  cost             Int // costo total de adquisición (COP, sin decimales)
   salvageValue     Int       @default(0) // valor residual estimado
-  usefulLifeMonths Int // vida útil en meses
+  usefulLifeMonths Int? // vida útil en meses (opcional; null = no se deprecia)
   method           String    @default("STRAIGHT_LINE") // depreciación línea recta
   status           String    @default("ACTIVE") // ACTIVE | DISPOSED | SOLD
   disposalDate     DateTime? // fecha de baja/venta
