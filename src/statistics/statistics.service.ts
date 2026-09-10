@@ -1314,6 +1314,16 @@ export class StatisticsService {
       expenseDate: { gte: from, lt: to },
     });
 
+    // Ingresos por membresías (mensualidades recurrentes): son ingreso real del
+    // negocio (gimnasios, canchas, parqueaderos…) pero NO son ventas con ítems,
+    // así que se cuentan como una línea de ingreso aparte, no dentro de "ventas".
+    const membershipWhere = (from: Date, to: Date) => ({
+      companyId,
+      status: { not: 'ELIMINADO' as any },
+      paidDate: { gte: from, lt: to },
+      ...(Object.keys(localFilter).length ? { membership: localFilter } : {}),
+    });
+
     const [
       sales,
       prevSales,
@@ -1322,6 +1332,8 @@ export class StatisticsService {
       newCustomers,
       prevNewCustomers,
       locals,
+      membershipPayments,
+      prevMembershipAgg,
     ] = await Promise.all([
       this.prisma.sale.findMany({
         where: saleWhere(start, end),
@@ -1383,6 +1395,14 @@ export class StatisticsService {
       this.prisma.local.findMany({
         where: { companyId },
         select: { id: true, name: true },
+      }),
+      this.prisma.membershipPayment.findMany({
+        where: membershipWhere(start, end),
+        select: { amount: true, paidDate: true },
+      }),
+      this.prisma.membershipPayment.aggregate({
+        where: membershipWhere(prevStart, prevEnd),
+        _sum: { amount: true },
       }),
     ]);
 
@@ -1453,6 +1473,16 @@ export class StatisticsService {
       expensesByDay[day] = (expensesByDay[day] || 0) + e.amount;
     }
 
+    // Ingresos por membresías del periodo (línea de ingreso aparte).
+    let membershipIncome = 0;
+    const membershipByDay: Record<string, number> = {};
+    for (const mp of membershipPayments) {
+      membershipIncome += mp.amount;
+      const day = utcDay(mp.paidDate);
+      membershipByDay[day] = (membershipByDay[day] || 0) + mp.amount;
+    }
+    const prevMembershipIncome = prevMembershipAgg._sum.amount || 0;
+
     // Rentabilidad por producto: vendido − costo = utilidad, con margen %.
     const productProfit = Object.entries(productMap)
       .map(([name, v]) => {
@@ -1501,7 +1531,8 @@ export class StatisticsService {
       const key = cursor.toISOString().slice(0, 10);
       series.push({
         date: key,
-        ventas: Math.round(salesByDay[key] || 0),
+        // "ventas" es la línea de INGRESOS del gráfico: ventas + membresías.
+        ventas: Math.round((salesByDay[key] || 0) + (membershipByDay[key] || 0)),
         gastos: Math.round(expensesByDay[key] || 0),
       });
       cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -1509,7 +1540,9 @@ export class StatisticsService {
 
     const salesCount = sales.length;
     const avgTicket = salesCount ? totalSales / salesCount : 0;
-    const profit = totalSales - totalExpenses;
+    // Ingreso total = ventas + membresías. La utilidad ya lo incluye.
+    const totalIncome = totalSales + membershipIncome;
+    const profit = totalIncome - totalExpenses;
     // Margen bruto = ventas - costo de la mercancía vendida (sin gastos).
     const grossMargin = totalSales - costOfGoods;
     const grossMarginPct = totalSales ? (grossMargin / totalSales) * 100 : 0;
@@ -1518,7 +1551,8 @@ export class StatisticsService {
     const prevSalesCount = prevSales.length;
     const prevAvgTicket = prevSalesCount ? prevTotalSales / prevSalesCount : 0;
     const prevTotalExpenses = prevExpensesAgg._sum.amount || 0;
-    const prevProfit = prevTotalSales - prevTotalExpenses;
+    const prevProfit =
+      prevTotalSales + prevMembershipIncome - prevTotalExpenses;
 
     // Por cobrar (fiado): ventas a crédito aún sin pagar. Se listan TODAS las
     // pendientes sin importar el periodo, porque una deuda vieja sigue vigente
@@ -1569,6 +1603,8 @@ export class StatisticsService {
         range: { startDate: startStr, endDate: endStr },
         summary: {
           totalSales: Math.round(totalSales),
+          membershipIncome: Math.round(membershipIncome),
+          totalIncome: Math.round(totalIncome),
           salesCount,
           avgTicket: Math.round(avgTicket),
           totalExpenses: Math.round(totalExpenses),
