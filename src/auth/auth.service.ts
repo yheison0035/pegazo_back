@@ -141,7 +141,9 @@ export class AuthService {
         { secret, expiresIn: '30m' },
       );
 
-      const base = process.env.FRONTEND_URL || 'http://localhost:3000';
+      // Base del enlace: FRONTEND_URL en Railway; si falta, producción (pegazo.co)
+      // para NO armar un enlace a localhost que el usuario no pueda abrir.
+      const base = process.env.FRONTEND_URL || 'https://pegazo.co';
       const resetUrl = `${base}/reset-password?token=${token}`;
 
       await this.mail.sendPasswordReset(user.email, resetUrl, user.name);
