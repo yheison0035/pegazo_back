@@ -128,7 +128,6 @@ enum BusinessType {
   SERVICIOS
   ECOMMERCE
   DISTRIBUCION
-  ZORVEX
   // Verticales específicas (multi-negocio)
   ODONTOLOGIA
   SUPERMERCADO
@@ -202,7 +201,7 @@ model Company {
   email   String?
   // Clave del tipo de negocio. Es TEXTO (no enum) para permitir tipos nuevos
   // creados desde la plataforma (BusinessTypeConfig). El enum BusinessType se
-  // conserva como catálogo de referencia/semilla de los 17 tipos base.
+  // conserva como catálogo de referencia/semilla de los 19 tipos.
   type    String  @default("COMERCIO")
   status  Status  @default(ACTIVO)
   phone   String?
