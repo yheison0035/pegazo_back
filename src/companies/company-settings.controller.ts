@@ -96,6 +96,20 @@ export class CompanySettingsController {
     return this.service.updateCashPolicy(req.user, requireCashOpen);
   }
 
+  // Base contable de los reportes (CASH | ACCRUAL). Lo elige el dueño.
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Patch('accounting-basis')
+  updateAccountingBasis(@Body('basis') basis: string, @Req() req) {
+    return this.service.updateAccountingBasis(req.user, basis);
+  }
+
+  // Cierre de periodo: fija/reabre la fecha de cierre de libros.
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Patch('books-close')
+  updateBooksClose(@Body('date') date: string | null, @Req() req) {
+    return this.service.updateBooksClose(req.user, date);
+  }
+
   @Roles('SUPER_ADMIN', 'ADMIN')
   @Patch('fiscal')
   updateFiscal(@Body() dto: any, @Req() req) {

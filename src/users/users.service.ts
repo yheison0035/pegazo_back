@@ -496,6 +496,9 @@ export class UsersService {
             terminology: true,
             // Si exige "abrir el día" (caja) para poder vender.
             requireCashOpen: true,
+            // Base contable de reportes (CASH|ACCRUAL) y cierre de periodo.
+            accountingBasis: true,
+            booksClosedUntil: true,
             // Aviso de consignaciones al banco (voz + notificación).
             bankNotifyEnabled: true,
             // Facturación electrónica DIAN habilitada por la plataforma.

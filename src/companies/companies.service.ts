@@ -40,6 +40,8 @@ export class CompaniesService {
         crmFont: true,
         terminology: true,
         requireCashOpen: true,
+        accountingBasis: true,
+        booksClosedUntil: true,
         responsableIVA: true,
         preciosIncluyenIVA: true,
         defaultTaxRate: true,
@@ -479,6 +481,35 @@ export class CompaniesService {
       where: { id: user.companyId },
       data: { requireCashOpen: !!requireCashOpen },
       select: { requireCashOpen: true },
+    });
+    return { success: true, data: company };
+  }
+
+  // Base contable de los reportes: CASH (caja) o ACCRUAL (causación).
+  async updateAccountingBasis(user: any, basis: string) {
+    const value = String(basis || '').toUpperCase();
+    if (!['CASH', 'ACCRUAL'].includes(value)) {
+      throw new BadRequestException('Base contable no válida.');
+    }
+    const company = await this.prisma.company.update({
+      where: { id: user.companyId },
+      data: { accountingBasis: value },
+      select: { accountingBasis: true },
+    });
+    return { success: true, data: company };
+  }
+
+  // Cierre de periodo: fija (o reabre) la fecha hasta la cual los libros están
+  // cerrados. date = null reabre todo.
+  async updateBooksClose(user: any, date: string | null) {
+    const value = date ? new Date(date) : null;
+    if (date && Number.isNaN(value?.getTime())) {
+      throw new BadRequestException('Fecha de cierre no válida.');
+    }
+    const company = await this.prisma.company.update({
+      where: { id: user.companyId },
+      data: { booksClosedUntil: value },
+      select: { booksClosedUntil: true },
     });
     return { success: true, data: company };
   }

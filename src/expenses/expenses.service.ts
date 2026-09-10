@@ -12,6 +12,7 @@ import { UpdateExpenseDto } from './dto/update-expenses.dto';
 import { applyLocalFilter } from '@/common/local-filter.util';
 import { PlanLimitsService } from '@/common/plan-limits.service';
 import { AuditService } from '@/audit/audit.service';
+import { assertPeriodOpen } from '@/common/period-close.util';
 
 @Injectable()
 export class ExpensesService {
@@ -206,6 +207,12 @@ export class ExpensesService {
     if (!hasRole(user.role, [Role.SUPER_ADMIN, Role.ADMIN, Role.RECEPCIONISTA])) {
       throw new ForbiddenException('No tienes permisos');
     }
+    // Cierre de periodo: no registrar en fechas ya cerradas.
+    await assertPeriodOpen(
+      this.prisma,
+      user.companyId,
+      dto.expenseDate || new Date(),
+    );
 
     // 🔥 VALIDAR QUE EL LOCAL SEA DE LA EMPRESA
     const local = await this.prisma.local.findFirst({
@@ -284,6 +291,11 @@ export class ExpensesService {
     if (!found || found.status === Status.ELIMINADO) {
       throw new NotFoundException(`Gasto con ID ${id} no encontrado`);
     }
+
+    // Cierre de periodo: ni la fecha actual ni la nueva pueden caer en cerrado.
+    await assertPeriodOpen(this.prisma, user.companyId, found.expenseDate);
+    if (dto.expenseDate)
+      await assertPeriodOpen(this.prisma, user.companyId, dto.expenseDate);
 
     // Si cambian la categoría, re-derivamos el enum `type`.
     const catData =
