@@ -52,6 +52,22 @@ export class StatisticsController {
     return this.statisticsService.getTaxReport(req.user, dto);
   }
 
+  // Libro de movimientos (ingresos + egresos) para el contador.
+  @Roles('SUPER_ADMIN', 'ADMIN', 'COORDINADOR')
+  @Get('movements')
+  movements(
+    @Req() req,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('localId') localId?: string,
+  ) {
+    return this.statisticsService.movements(req.user, {
+      startDate,
+      endDate,
+      localId,
+    });
+  }
+
   // Resumen del Home (para cualquier usuario del dashboard).
   @Roles(
     'SUPER_ADMIN',

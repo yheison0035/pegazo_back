@@ -1639,6 +1639,145 @@ export class StatisticsService {
     };
   }
 
+  // Libro de movimientos: TODO ingreso (ventas cobradas + membresías) y TODO
+  // egreso (gastos) del periodo, en filas planas para entregar al contador.
+  async movements(user: any, query: any = {}) {
+    const companyId = user.companyId;
+    const localId = query.localId ? Number(query.localId) : null;
+
+    const today = colombiaDay(new Date());
+    const endStr: string = query.endDate || today;
+    const startStr: string =
+      query.startDate || colombiaDay(new Date(Date.now() - 29 * 86400000));
+    const [sy, sm, sd] = startStr.split('-').map(Number);
+    const [ey, em, ed] = endStr.split('-').map(Number);
+    const start = dayStartUtc(sy, sm, sd);
+    const end = dayStartUtc(ey, em, ed + 1);
+    const expStart = new Date(Date.UTC(sy, sm - 1, sd));
+    const expEnd = new Date(Date.UTC(ey, em - 1, ed + 1));
+
+    const accessible = await getAccessibleLocalIds(this.prisma, user);
+    let localFilter: any = {};
+    if (localId) {
+      localFilter =
+        accessible && !accessible.includes(localId)
+          ? { localId: { in: [] } }
+          : { localId };
+    } else if (accessible) {
+      localFilter = { localId: { in: accessible } };
+    }
+
+    const [sales, expenses, memberships] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: {
+          local: { companyId },
+          ...localFilter,
+          saleDate: { gte: start, lt: end },
+          paymentStatus: 'PAGADA' as any,
+        },
+        select: {
+          code: true,
+          saleDate: true,
+          totalAmount: true,
+          customer: { select: { name: true } },
+          paymentMethod: true,
+          paymentMethodCatalog: { select: { name: true } },
+          local: { select: { name: true } },
+        },
+      }),
+      this.prisma.expense.findMany({
+        where: {
+          local: { companyId },
+          ...localFilter,
+          status: { not: 'ELIMINADO' as any },
+          expenseDate: { gte: expStart, lt: expEnd },
+        },
+        select: {
+          concept: true,
+          type: true,
+          amount: true,
+          paidTo: true,
+          provider: { select: { name: true } },
+          expenseDate: true,
+          paymentMethod: true,
+          expenseCategory: { select: { name: true } },
+          local: { select: { name: true } },
+        },
+      }),
+      this.prisma.membershipPayment.findMany({
+        where: {
+          companyId,
+          status: { not: 'ELIMINADO' as any },
+          paidDate: { gte: start, lt: end },
+          ...(Object.keys(localFilter).length ? { membership: localFilter } : {}),
+        },
+        select: {
+          amount: true,
+          paidDate: true,
+          paymentMethod: true,
+          membership: {
+            select: {
+              customer: { select: { name: true } },
+              local: { select: { name: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const rows: any[] = [];
+    for (const s of sales)
+      rows.push({
+        date: colombiaDay(s.saleDate),
+        kind: 'INGRESO',
+        category: 'Ventas',
+        concept: `Venta ${s.code || ''}`.trim(),
+        thirdParty: s.customer?.name || 'Consumidor final',
+        method: s.paymentMethodCatalog?.name || s.paymentMethod || '',
+        local: s.local?.name || '',
+        amount: Math.round(s.totalAmount),
+      });
+    for (const mp of memberships)
+      rows.push({
+        date: colombiaDay(mp.paidDate),
+        kind: 'INGRESO',
+        category: 'Membresías',
+        concept: 'Membresía',
+        thirdParty: mp.membership?.customer?.name || '',
+        method: mp.paymentMethod || '',
+        local: mp.membership?.local?.name || '',
+        amount: Math.round(mp.amount),
+      });
+    for (const e of expenses)
+      rows.push({
+        date: colombiaDay(e.expenseDate),
+        kind: 'EGRESO',
+        category: e.expenseCategory?.name || e.type,
+        concept: e.concept,
+        thirdParty: e.paidTo || e.provider?.name || '',
+        method: e.paymentMethod || '',
+        local: e.local?.name || '',
+        amount: Math.round(e.amount),
+      });
+
+    rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const income = rows
+      .filter((r) => r.kind === 'INGRESO')
+      .reduce((a, r) => a + r.amount, 0);
+    const expense = rows
+      .filter((r) => r.kind === 'EGRESO')
+      .reduce((a, r) => a + r.amount, 0);
+
+    return {
+      success: true,
+      data: {
+        range: { startDate: startStr, endDate: endStr },
+        rows,
+        totals: { income, expense, net: income - expense },
+      },
+    };
+  }
+
   // Reporte de IVA de un periodo: IVA generado (ventas) vs IVA descontable
   // (compras) → neto a pagar o saldo a favor. Base de la declaración de IVA.
   async getTaxReport(user: any, dto: any) {
