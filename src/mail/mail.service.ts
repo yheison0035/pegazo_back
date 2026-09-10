@@ -242,16 +242,22 @@ export class MailService {
       </div>
     `;
 
-    // Sin SMTP configurado: se registra el enlace en el log para poder validar
-    // durante la puesta en marcha (no se expone al usuario final).
+    // Entrega por la cuenta central: Resend (HTTP, funciona en Railway) →
+    // Brevo → SMTP. Antes solo intentaba SMTP y, sin él, el enlace no salía.
+    if (this.resendEnabled()) {
+      await this.sendViaResend({ to, subject, html, fromName: 'Pegazo' });
+      return;
+    }
+    if (this.brevoEnabled()) {
+      await this.sendViaBrevo({ to, subject, html, fromName: 'Pegazo' });
+      return;
+    }
     if (!this.transporter) {
       this.logger.warn(`[SIN CORREO] Enlace para ${to}: ${resetUrl}`);
       return;
     }
-
     const from =
       process.env.MAIL_FROM || process.env.MAIL_USER || 'no-reply@localhost';
-
     await this.transporter.sendMail({ from, to, subject, html });
   }
 
