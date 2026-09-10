@@ -14,6 +14,7 @@ import { StockRequestsModule } from './stock-requests/stock-requests.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PlatformPaymentModule } from './platform-payment/platform-payment.module';
 import { SupportModule } from './support/support.module';
+import { AssetsModule } from './assets/assets.module';
 import { LocalsModule } from './locals/locals.module';
 import { ProvidersModule } from './providers/providers.module';
 import { SalesModule } from './sales/sales.module';
@@ -82,6 +83,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
     NotificationsModule,
     PlatformPaymentModule,
     SupportModule,
+    AssetsModule,
     LocalsModule,
     ProvidersModule,
     SalesModule,

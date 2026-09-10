@@ -253,6 +253,11 @@ model Company {
   // la puede reabrir en Configuración. Null = sin cierre.
   booksClosedUntil DateTime?
 
+  // Interruptor de la sección "Contabilidad" (activos fijos y, a futuro, plan de
+  // cuentas / estados financieros). El dueño la activa en Configuración; además
+  // el plan (Altura+) decide si queda desbloqueada. Off por defecto.
+  accountingEnabled Boolean @default(false)
+
   // Configuración fiscal (facturación con impuestos / electrónica DIAN).
   responsableIVA     Boolean @default(false)
   preciosIncluyenIVA Boolean @default(false)
@@ -348,6 +353,7 @@ model Company {
   stockChangeRequests StockChangeRequest[] @relation("CompanyStockRequests")
   notifications       Notification[]       @relation("CompanyNotifications")
   supportMessages     SupportMessage[]     @relation("CompanySupport")
+  assets              Asset[]              @relation("CompanyAssets")
   cashRegisters       CashRegister[]
   purchases           Purchase[]
   quotes              Quote[]
@@ -836,6 +842,36 @@ model SupportMessage {
 
   @@index([companyId, createdAt])
   @@index([readByPlatform])
+}
+
+// Activo fijo (Contabilidad · Fase A). Bien de la empresa que se deprecia en el
+// tiempo (equipos, muebles, vehículos, inmuebles…). La depreciación y el valor
+// en libros se CALCULAN al vuelo en el servicio (línea recta), no se almacenan,
+// para que siempre reflejen la fecha actual. A futuro cada activo posteará su
+// asiento contra el plan de cuentas (fases siguientes).
+model Asset {
+  id               Int       @id @default(autoincrement())
+  companyId        Int
+  localId          Int? // sede (scalar; sin relación para no tocar Local)
+  name             String
+  category         String? // libre: Equipo, Vehículo, Muebles, Inmueble…
+  reference        String? // placa / serie / código interno
+  acquisitionDate  DateTime
+  cost             Int // costo de adquisición (COP, sin decimales)
+  salvageValue     Int       @default(0) // valor residual estimado
+  usefulLifeMonths Int // vida útil en meses
+  method           String    @default("STRAIGHT_LINE") // depreciación línea recta
+  status           String    @default("ACTIVE") // ACTIVE | DISPOSED | SOLD
+  disposalDate     DateTime? // fecha de baja/venta
+  disposalValue    Int? // valor recibido si se vendió
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  company Company @relation("CompanyAssets", fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([companyId, status])
 }
 
 model InventoryImage {
