@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -150,6 +151,44 @@ export class AccountantController {
     if (!file) throw new BadRequestException('No se recibió el archivo.');
     const { url } = await this.cloudinary.uploadFile(file, 'accounting');
     return { success: true, data: { url, name: file.originalname } };
+  }
+
+  // ----- Terceros de una empresa enlazada -----
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Get('companies/:companyId/parties')
+  cParties(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Query() q) {
+    return this.service.companyPartiesList(req.user.id, companyId, q);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Post('companies/:companyId/parties')
+  cPartyCreate(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Body() dto) {
+    return this.service.companyPartyCreate(req.user.id, companyId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Patch('companies/:companyId/parties/:partyId')
+  cPartyUpdate(
+    @Req() req,
+    @Param('companyId', ParseIntPipe) companyId: number,
+    @Param('partyId', ParseIntPipe) partyId: number,
+    @Body() dto,
+  ) {
+    return this.service.companyPartyUpdate(req.user.id, companyId, partyId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Delete('companies/:companyId/parties/:partyId')
+  cPartyDelete(
+    @Req() req,
+    @Param('companyId', ParseIntPipe) companyId: number,
+    @Param('partyId', ParseIntPipe) partyId: number,
+  ) {
+    return this.service.companyPartyDelete(req.user.id, companyId, partyId);
   }
 
   // ----- Empresa (dueño/admin): enlazar/ver/quitar contador -----

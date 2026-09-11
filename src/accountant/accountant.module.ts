@@ -7,6 +7,7 @@ import { AccountingService } from '@/accounting/accounting.service';
 import { ManualEntriesService } from '@/accounting/manual-entries.service';
 import { LedgerAccountsService } from '@/ledger-accounts/ledger-accounts.service';
 import { TaxService } from '@/tax/tax.service';
+import { PartiesService } from '@/parties/parties.service';
 
 @Module({
   imports: [AuthModule], // JwtModule (firmar token) + estrategia jwt
@@ -20,6 +21,7 @@ import { TaxService } from '@/tax/tax.service';
     ManualEntriesService,
     LedgerAccountsService,
     TaxService,
+    PartiesService,
   ],
 })
 export class AccountantModule {}
