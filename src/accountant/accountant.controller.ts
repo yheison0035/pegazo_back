@@ -112,6 +112,13 @@ export class AccountantController {
     return this.service.companyEntryDelete(req.user.id, companyId, entryId);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Post('companies/:companyId/import')
+  cImport(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Body('rows') rows: any[]) {
+    return this.service.companyImport(req.user.id, companyId, rows);
+  }
+
   // ----- Empresa (dueño/admin): enlazar/ver/quitar contador -----
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'ADMIN')

@@ -42,6 +42,11 @@ export class AccountingController {
     return this.manualEntries.remove(req.user.companyId, id);
   }
 
+  @Post('entries/import')
+  importEntries(@Req() req, @Body('rows') rows: any[]) {
+    return this.manualEntries.bulkImport(req.user.companyId, rows);
+  }
+
   @Get('journal')
   journal(@Req() req, @Query() query) {
     return this.service.journal(req.user, query);
