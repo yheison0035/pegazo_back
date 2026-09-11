@@ -15,11 +15,15 @@ import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
 import { Roles } from '@/auth/roles.decorator';
 import { TaxService } from './tax.service';
+import { TaxAlertsService } from './tax-alerts.service';
 
 @Controller('tax')
 @UseGuards(JwtAuthGuard)
 export class TaxController {
-  constructor(private readonly service: TaxService) {}
+  constructor(
+    private readonly service: TaxService,
+    private readonly alerts: TaxAlertsService,
+  ) {}
 
   // ----- Empresa: su calendario (dueño, admin, contador) -----
   @UseGuards(RolesGuard)
@@ -65,6 +69,15 @@ export class TaxController {
   @Get('obligations')
   obligations(@Req() req, @Query() query) {
     return this.service.obligations(req.user, query);
+  }
+
+  // Revisa ahora los vencimientos y crea avisos en la campana (además del cron
+  // diario). Útil como botón "revisar ahora".
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
+  @Post('run-alerts')
+  runAlerts(@Req() req) {
+    return this.alerts.runForCompany(req.user.companyId);
   }
 
   // ----- Plataforma: administrar calendario y parámetros -----

@@ -271,8 +271,15 @@ export class TaxService {
   }
 
   async companyCalendar(user: any, query: any = {}) {
+    const data = await this.buildCalendar(user.companyId, query);
+    return { success: true, data };
+  }
+
+  // Calcula el calendario que aplica a una empresa (reutilizado por el cron de
+  // avisos). Devuelve el objeto de datos (sin envolver en success).
+  async buildCalendar(companyId: number, query: any = {}) {
     const company = await this.prisma.company.findUnique({
-      where: { id: user.companyId },
+      where: { id: companyId },
       select: { nit: true, taxRegime: true },
     });
     const digit = this.lastNitDigit(company?.nit);
@@ -327,14 +334,11 @@ export class TaxService {
     });
 
     return {
-      success: true,
-      data: {
-        year,
-        nitDigit: digit,
-        regime,
-        uvt: uvt?.value || null,
-        deadlines: data,
-      },
+      year,
+      nitDigit: digit,
+      regime,
+      uvt: uvt?.value || null,
+      deadlines: data,
     };
   }
 }
