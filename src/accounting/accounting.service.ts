@@ -297,12 +297,8 @@ export class AccountingService {
     };
   }
 
-  // Libro mayor: movimientos y saldo por cuenta.
-  async ledger(user: any, query: any = {}) {
-    const { entries, map, range } = await this.buildEntries(
-      user.companyId,
-      query,
-    );
+  // Agrega los asientos por cuenta (código → débito/crédito acumulados).
+  private aggregate(entries: any[], map: Record<string, any>) {
     const acc: Record<string, any> = {};
     for (const e of entries) {
       for (const l of e.lines) {
@@ -321,10 +317,19 @@ export class AccountingService {
         acc[l.code].credit += l.credit;
       }
     }
+    return acc;
+  }
+
+  // Libro mayor: movimientos y saldo por cuenta.
+  async ledger(user: any, query: any = {}) {
+    const { entries, map, range } = await this.buildEntries(
+      user.companyId,
+      query,
+    );
+    const acc = this.aggregate(entries, map);
     const rows = Object.values(acc).map((a: any) => ({
       ...a,
-      balance:
-        a.nature === 'CREDIT' ? a.credit - a.debit : a.debit - a.credit,
+      balance: a.nature === 'CREDIT' ? a.credit - a.debit : a.debit - a.credit,
     }));
     rows.sort((a: any, b: any) => (a.code < b.code ? -1 : 1));
     return {
@@ -333,6 +338,135 @@ export class AccountingService {
         startDate: range.startStr,
         endDate: range.endStr,
         accounts: rows,
+      },
+    };
+  }
+
+  // Estados financieros: estado de resultados y flujo de caja del periodo, y
+  // balance general acumulado al corte (endDate). Todo derivado de la operación.
+  async financials(user: any, query: any = {}) {
+    const cid = user.companyId;
+    // Movimientos del periodo (para P&L y flujo de caja).
+    const period = await this.buildEntries(cid, query);
+    const pAgg = this.aggregate(period.entries, period.map);
+    // Acumulado desde el inicio hasta el corte (para el balance general).
+    const cum = await this.buildEntries(cid, {
+      startDate: '2000-01-01',
+      endDate: period.range.endStr,
+    });
+    const cAgg = this.aggregate(cum.entries, cum.map);
+
+    const rows = (agg: Record<string, any>) => Object.values(agg);
+    const byType = (agg: Record<string, any>, type: string) =>
+      rows(agg)
+        .filter((a: any) => a.type === type)
+        .sort((a: any, b: any) => (a.code < b.code ? -1 : 1));
+    // Valor "con signo" según la naturaleza esperada del grupo.
+    const debitValue = (a: any) => a.debit - a.credit; // activo/gasto/costo
+    const creditValue = (a: any) => a.credit - a.debit; // pasivo/patrimonio/ingreso
+    const sum = (arr: any[], fn: (a: any) => number) =>
+      arr.reduce((s, a) => s + fn(a), 0);
+
+    // ---- Estado de resultados (periodo) ----
+    const income = byType(pAgg, 'INCOME').map((a: any) => ({
+      code: a.code,
+      name: a.name,
+      value: creditValue(a),
+    }));
+    const costs = byType(pAgg, 'COST').map((a: any) => ({
+      code: a.code,
+      name: a.name,
+      value: debitValue(a),
+    }));
+    const expenses = byType(pAgg, 'EXPENSE').map((a: any) => ({
+      code: a.code,
+      name: a.name,
+      value: debitValue(a),
+    }));
+    const totalIncome = sum(income, (a) => a.value);
+    const totalCosts = sum(costs, (a) => a.value);
+    const totalExpenses = sum(expenses, (a) => a.value);
+    const grossProfit = totalIncome - totalCosts;
+    const netProfit = grossProfit - totalExpenses;
+
+    // ---- Balance general (acumulado al corte) ----
+    const assets = byType(cAgg, 'ASSET').map((a: any) => ({
+      code: a.code,
+      name: a.name,
+      value: debitValue(a),
+    }));
+    const liabilities = byType(cAgg, 'LIABILITY').map((a: any) => ({
+      code: a.code,
+      name: a.name,
+      value: creditValue(a),
+    }));
+    const equity = byType(cAgg, 'EQUITY').map((a: any) => ({
+      code: a.code,
+      name: a.name,
+      value: creditValue(a),
+    }));
+    const totalAssets = sum(assets, (a) => a.value);
+    const totalLiabilities = sum(liabilities, (a) => a.value);
+    const totalEquityBooked = sum(equity, (a) => a.value);
+    // Resultado acumulado (utilidad/pérdida) que aún no se ha cerrado a
+    // patrimonio: hace que Activo = Pasivo + Patrimonio.
+    const cumIncome = sum(byType(cAgg, 'INCOME'), creditValue);
+    const cumCosts = sum(byType(cAgg, 'COST'), debitValue);
+    const cumExpenses = sum(byType(cAgg, 'EXPENSE'), debitValue);
+    const retainedResult = cumIncome - cumCosts - cumExpenses;
+    const totalEquity = totalEquityBooked + retainedResult;
+
+    // ---- Flujo de caja (periodo): movimiento de caja + bancos ----
+    const cashCodes = [ACC.CAJA, ACC.BANCOS];
+    let cashIn = 0;
+    let cashOut = 0;
+    const cashAccounts = cashCodes.map((code) => {
+      const a = pAgg[code] || { code, name: period.map[code]?.name || code, debit: 0, credit: 0 };
+      cashIn += a.debit;
+      cashOut += a.credit;
+      return { code, name: a.name, in: a.debit, out: a.credit, net: a.debit - a.credit };
+    });
+
+    const round = (n: number) => Math.round(n);
+    const mapVals = (arr: any[]) =>
+      arr.map((a) => ({ ...a, value: round(a.value) })).filter((a) => a.value !== 0);
+
+    return {
+      success: true,
+      data: {
+        startDate: period.range.startStr,
+        endDate: period.range.endStr,
+        incomeStatement: {
+          income: mapVals(income),
+          costs: mapVals(costs),
+          expenses: mapVals(expenses),
+          totalIncome: round(totalIncome),
+          totalCosts: round(totalCosts),
+          totalExpenses: round(totalExpenses),
+          grossProfit: round(grossProfit),
+          netProfit: round(netProfit),
+        },
+        balanceSheet: {
+          assets: mapVals(assets),
+          liabilities: mapVals(liabilities),
+          equity: mapVals(equity),
+          retainedResult: round(retainedResult),
+          totalAssets: round(totalAssets),
+          totalLiabilities: round(totalLiabilities),
+          totalEquity: round(totalEquity),
+          balanced: round(totalAssets) === round(totalLiabilities + totalEquity),
+        },
+        cashFlow: {
+          accounts: cashAccounts.map((a) => ({
+            ...a,
+            in: round(a.in),
+            out: round(a.out),
+            net: round(a.net),
+          })),
+          totalIn: round(cashIn),
+          totalOut: round(cashOut),
+          net: round(cashIn - cashOut),
+        },
       },
     };
   }
