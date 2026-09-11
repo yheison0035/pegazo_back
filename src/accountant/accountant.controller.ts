@@ -112,6 +112,13 @@ export class AccountantController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ACCOUNTANT')
+  @Patch('companies/:companyId/close')
+  cSetClose(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Body('date') date: string) {
+    return this.service.companySetClose(req.user.id, companyId, date);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
   @Get('companies/:companyId/entries')
   cEntriesList(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Query() q) {
     return this.service.companyEntriesList(req.user.id, companyId, q);

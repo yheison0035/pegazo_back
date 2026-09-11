@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
+import { assertPeriodOpen } from '@/common/period-close.util';
 
 @Injectable()
 export class ManualEntriesService {
@@ -44,6 +45,8 @@ export class ManualEntriesService {
 
   async create(companyId: number, dto: any, accountantId?: number) {
     const v = this.validate(dto);
+    // No permitir registrar en un periodo ya cerrado.
+    await assertPeriodOpen(this.prisma, companyId, v.date);
     const entry = await this.prisma.journalEntry.create({
       data: {
         companyId,
@@ -140,6 +143,7 @@ export class ManualEntriesService {
       where: { id, companyId },
     });
     if (!entry) throw new NotFoundException('Asiento no encontrado.');
+    await assertPeriodOpen(this.prisma, companyId, entry.date);
     await this.prisma.journalEntry.delete({ where: { id } });
     return { success: true };
   }

@@ -190,6 +190,7 @@ export class AccountantService {
             nit: true,
             logo: true,
             accountingOnly: true,
+            booksClosedUntil: true,
           },
         },
       },
@@ -204,6 +205,7 @@ export class AccountantService {
         nit: l.company.nit,
         logo: l.company.logo,
         accountingOnly: l.company.accountingOnly,
+        booksClosedUntil: l.company.booksClosedUntil,
       })),
     };
   }
@@ -287,6 +289,17 @@ export class AccountantService {
   async companyTaxSummary(accountantId: number, companyId: number, query: any) {
     await this.assertLink(accountantId, companyId);
     return this.accounting.taxSummary(this.ctx(companyId), query);
+  }
+  // Cierre de periodo: fija (o reabre con null) la fecha "cerrado hasta".
+  async companySetClose(accountantId: number, companyId: number, date: any) {
+    await this.assertLink(accountantId, companyId);
+    const value = date ? new Date(date) : null;
+    const c = await this.prisma.company.update({
+      where: { id: companyId },
+      data: { booksClosedUntil: value },
+      select: { booksClosedUntil: true },
+    });
+    return { success: true, data: c };
   }
 
   // Asientos manuales de una empresa enlazada.
