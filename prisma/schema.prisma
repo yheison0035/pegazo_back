@@ -259,6 +259,10 @@ model Company {
   // el plan (Altura+) decide si queda desbloqueada. Off por defecto.
   accountingEnabled Boolean @default(false)
 
+  // Empresa "solo contabilidad": la creó un contador para un cliente que NO
+  // está en Pegazo (sin POS). Sus libros se llevan con asientos manuales.
+  accountingOnly Boolean @default(false)
+
   // Configuración fiscal (facturación con impuestos / electrónica DIAN).
   responsableIVA     Boolean @default(false)
   preciosIncluyenIVA Boolean @default(false)
