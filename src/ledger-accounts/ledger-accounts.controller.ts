@@ -18,7 +18,7 @@ import { LedgerAccountsService } from './ledger-accounts.service';
 // Plan de cuentas (Contabilidad). Información financiera: solo dueño y admin.
 @Controller('ledger-accounts')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('SUPER_ADMIN', 'ADMIN')
+@Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
 export class LedgerAccountsController {
   constructor(private readonly service: LedgerAccountsService) {}
 

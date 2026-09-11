@@ -7,7 +7,7 @@ import { AccountingService } from './accounting.service';
 // Libros contables derivados (Contabilidad). Solo dueño y admin.
 @Controller('accounting')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('SUPER_ADMIN', 'ADMIN')
+@Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
 export class AccountingController {
   constructor(private readonly service: AccountingService) {}
 

@@ -26,6 +26,7 @@ enum Role {
   MESERO
   COCINERO
   PROFESIONAL
+  CONTADOR
 }
 
 enum AuditAction {
