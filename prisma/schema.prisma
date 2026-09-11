@@ -275,6 +275,17 @@ model Company {
   fiscalAddress      String?
   fiscalCity         String?
 
+  // Responsabilidades del RUT (casilla 53) para el motor de obligaciones DIAN.
+  // De aquí + las magnitudes del año se deriva "debe/no debe declarar renta" y
+  // el listado de obligaciones (IVA, retefuente, ICA, exógena…). Editables por
+  // el dueño/contador; el cálculo lo hace la API fiscal (motor parametrizable).
+  agenteRetencion       Boolean @default(false)
+  autorretenedor        Boolean @default(false)
+  responsableICA        Boolean @default(false)
+  granContribuyente     Boolean @default(false)
+  obligadoContabilidad  Boolean @default(false)
+  facturadorElectronico Boolean @default(false)
+
   // Facturación / suscripción (control de la plataforma)
   plan       String?
   paidUntil  DateTime? // fecha hasta la que la empresa está al día; si vence, se auto-suspende
@@ -363,6 +374,7 @@ model Company {
   accountants         AccountantCompany[]  @relation("CompanyAccountants")
   journalEntries      JournalEntry[]       @relation("CompanyJournalEntries")
   parties             Party[]              @relation("CompanyParties")
+  taxYears            CompanyTaxYear[]     @relation("CompanyTaxYears")
   cashRegisters       CashRegister[]
   purchases           Purchase[]
   quotes              Quote[]
@@ -935,6 +947,26 @@ model TaxParameter {
   updatedAt DateTime @updatedAt
 
   @@unique([key, year])
+}
+
+// Magnitudes anuales de una empresa para evaluar la declaración de renta
+// (topes en UVT). Los ingresos se estiman de las ventas del año, pero el
+// contador puede sobreescribirlos y cargar patrimonio, consumos y consignaciones
+// (que Pegazo no siempre conoce, sobre todo en empresas "solo contabilidad").
+model CompanyTaxYear {
+  id                    Int      @id @default(autoincrement())
+  companyId             Int
+  company               Company  @relation("CompanyTaxYears", fields: [companyId], references: [id], onDelete: Cascade)
+  year                  Int
+  ingresosBrutosOverride Int?    // null = usar las ventas del año calculadas
+  patrimonioBruto       Int      @default(0)
+  consumosTarjeta       Int      @default(0)
+  compras               Int      @default(0)
+  consignaciones        Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([companyId, year])
 }
 
 // Contador: identidad INDEPENDIENTE (no pertenece a ninguna empresa). Se

@@ -7,5 +7,6 @@ import { FiscalService } from './fiscal.service';
 @Module({
   controllers: [FiscalController],
   providers: [FiscalService, MailService, PlanLimitsService],
+  exports: [FiscalService],
 })
 export class FiscalModule {}

@@ -98,6 +98,20 @@ export class FiscalService {
     return res.status === 204 ? null : res.json();
   }
 
+  /**
+   * Llama al motor de reglas tributarias de la API fiscal (UVT, topes,
+   * evaluación de obligaciones). Es dato de REFERENCIA (no emisión DIAN), así
+   * que no aplica el gating de empresa de prueba/plan. Devuelve null si la
+   * integración no está configurada o falla, para no romper el calendario.
+   */
+  async taxRules(path: string, init: RequestInit = {}): Promise<any> {
+    try {
+      return await this.fapi(path, init);
+    } catch {
+      return null;
+    }
+  }
+
   private async company(user: any) {
     const c = await this.prisma.company.findUnique({
       where: { id: user.companyId },

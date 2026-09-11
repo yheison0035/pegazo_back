@@ -29,6 +29,44 @@ export class TaxController {
     return this.service.companyCalendar(req.user, query);
   }
 
+  // ----- Empresa: perfil fiscal (responsabilidades del RUT) -----
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
+  @Get('profile')
+  getProfile(@Req() req) {
+    return this.service.getProfile(req.user);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
+  @Patch('profile')
+  updateProfile(@Req() req, @Body() dto) {
+    return this.service.updateProfile(req.user, dto);
+  }
+
+  // ----- Empresa: magnitudes anuales (topes de renta) -----
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
+  @Get('tax-year')
+  getTaxYear(@Req() req, @Query('year') year?: string) {
+    return this.service.getTaxYear(req.user, year);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
+  @Patch('tax-year')
+  updateTaxYear(@Req() req, @Body() dto) {
+    return this.service.updateTaxYear(req.user, dto);
+  }
+
+  // ----- Empresa: obligaciones DIAN derivadas (¿debe declarar renta?) -----
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
+  @Get('obligations')
+  obligations(@Req() req, @Query() query) {
+    return this.service.obligations(req.user, query);
+  }
+
   // ----- Plataforma: administrar calendario y parámetros -----
   @UseGuards(RolesGuard)
   @Roles('SUPER_PLATFORM_ADMIN')

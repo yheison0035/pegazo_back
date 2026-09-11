@@ -1,11 +1,185 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
+import { FiscalService } from '@/fiscal/fiscal.service';
 
 const OBLIGATIONS = ['IVA', 'RENTA', 'RETEFUENTE', 'ICA', 'OTRO'];
 
+// Campos del perfil fiscal que se editan/leen (responsabilidades del RUT).
+const PROFILE_SELECT = {
+  nit: true,
+  dv: true,
+  ciiu: true,
+  personType: true,
+  taxRegime: true,
+  responsableIVA: true,
+  agenteRetencion: true,
+  autorretenedor: true,
+  responsableICA: true,
+  granContribuyente: true,
+  obligadoContabilidad: true,
+  facturadorElectronico: true,
+} as const;
+
 @Injectable()
 export class TaxService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private fiscal: FiscalService,
+  ) {}
+
+  // ---------- Perfil fiscal (responsabilidades del RUT) ----------
+  private mapPersonType(v?: string | null): 'NATURAL' | 'JURIDICA' {
+    return String(v || '').toUpperCase().includes('JUR') ? 'JURIDICA' : 'NATURAL';
+  }
+  private mapRegime(v?: string | null): 'SIMPLE' | 'ORDINARIO' | 'NO_RESPONSABLE' {
+    const s = String(v || '').toUpperCase();
+    if (s.includes('SIMPLE')) return 'SIMPLE';
+    if (s.includes('NO')) return 'NO_RESPONSABLE';
+    return 'ORDINARIO';
+  }
+
+  async getProfile(user: any) {
+    const c = await this.prisma.company.findUnique({
+      where: { id: user.companyId },
+      select: PROFILE_SELECT,
+    });
+    return { success: true, data: c };
+  }
+
+  async updateProfile(user: any, dto: any) {
+    const bools = [
+      'responsableIVA',
+      'agenteRetencion',
+      'autorretenedor',
+      'responsableICA',
+      'granContribuyente',
+      'obligadoContabilidad',
+      'facturadorElectronico',
+    ];
+    const data: any = {};
+    for (const k of bools) if (dto[k] !== undefined) data[k] = !!dto[k];
+    for (const k of ['nit', 'dv', 'ciiu', 'personType', 'taxRegime'])
+      if (dto[k] !== undefined) data[k] = dto[k] === '' ? null : String(dto[k]);
+    const c = await this.prisma.company.update({
+      where: { id: user.companyId },
+      data,
+      select: PROFILE_SELECT,
+    });
+    return { success: true, data: c };
+  }
+
+  // ---------- Magnitudes anuales (para topes de renta) ----------
+  // Ingresos estimados de las ventas del año (el contador puede sobreescribir).
+  private async salesIngresos(companyId: number, year: number): Promise<number> {
+    const from = new Date(Date.UTC(year, 0, 1));
+    const to = new Date(Date.UTC(year + 1, 0, 1));
+    const agg = await this.prisma.sale.aggregate({
+      _sum: { totalAmount: true },
+      where: { local: { companyId }, createdAt: { gte: from, lt: to } },
+    });
+    return Math.round(Number(agg._sum.totalAmount) || 0);
+  }
+
+  async getTaxYear(user: any, yearInput: any) {
+    const year = Number(yearInput) || new Date().getUTCFullYear();
+    const [row, ingresosVentas] = await Promise.all([
+      this.prisma.companyTaxYear.findUnique({
+        where: { companyId_year: { companyId: user.companyId, year } },
+      }),
+      this.salesIngresos(user.companyId, year),
+    ]);
+    return {
+      success: true,
+      data: {
+        year,
+        ingresosVentas,
+        ingresosBrutosOverride: row?.ingresosBrutosOverride ?? null,
+        patrimonioBruto: row?.patrimonioBruto || 0,
+        consumosTarjeta: row?.consumosTarjeta || 0,
+        compras: row?.compras || 0,
+        consignaciones: row?.consignaciones || 0,
+      },
+    };
+  }
+
+  async updateTaxYear(user: any, dto: any) {
+    const year = Number(dto?.year) || new Date().getUTCFullYear();
+    const n = (v: any) => (v === '' || v == null ? null : Math.round(Number(v)));
+    const patrimonioBruto = n(dto.patrimonioBruto) ?? 0;
+    const consumosTarjeta = n(dto.consumosTarjeta) ?? 0;
+    const compras = n(dto.compras) ?? 0;
+    const consignaciones = n(dto.consignaciones) ?? 0;
+    const ingresosBrutosOverride = n(dto.ingresosBrutosOverride);
+    const data = {
+      patrimonioBruto,
+      consumosTarjeta,
+      compras,
+      consignaciones,
+      ingresosBrutosOverride,
+    };
+    const row = await this.prisma.companyTaxYear.upsert({
+      where: { companyId_year: { companyId: user.companyId, year } },
+      update: data,
+      create: { companyId: user.companyId, year, ...data },
+    });
+    return { success: true, data: row };
+  }
+
+  // ---------- Obligaciones DIAN (motor de la API fiscal) ----------
+  async obligations(user: any, query: any = {}) {
+    const year = Number(query?.year) || new Date().getUTCFullYear();
+    const c = await this.prisma.company.findUnique({
+      where: { id: user.companyId },
+      select: PROFILE_SELECT,
+    });
+    const ty = await this.prisma.companyTaxYear.findUnique({
+      where: { companyId_year: { companyId: user.companyId, year } },
+    });
+    const ingresosVentas = await this.salesIngresos(user.companyId, year);
+    const ingresosBrutos = ty?.ingresosBrutosOverride ?? ingresosVentas;
+    const responsibilities = {
+      responsableIVA: !!c?.responsableIVA,
+      agenteRetencion: !!c?.agenteRetencion,
+      autorretenedor: !!c?.autorretenedor,
+      responsableICA: !!c?.responsableICA,
+      granContribuyente: !!c?.granContribuyente,
+      obligadoContabilidad: !!c?.obligadoContabilidad,
+      facturadorElectronico: !!c?.facturadorElectronico,
+    };
+    const personType = this.mapPersonType(c?.personType);
+    const regime = this.mapRegime(c?.taxRegime);
+    const payload = {
+      year,
+      personType,
+      regime,
+      responsibilities,
+      magnitudes: {
+        ingresosBrutos,
+        patrimonioBruto: ty?.patrimonioBruto || 0,
+        consumosTarjeta: ty?.consumosTarjeta || 0,
+        compras: ty?.compras || 0,
+        consignaciones: ty?.consignaciones || 0,
+      },
+    };
+    const res = await this.fiscal.taxRules('/tax-rules/evaluate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return {
+      success: true,
+      data: {
+        year,
+        engineAvailable: !!res,
+        profile: { personType, regime, ...responsibilities },
+        magnitudes: {
+          ...payload.magnitudes,
+          ingresosVentas,
+          ingresosBrutosOverride: ty?.ingresosBrutosOverride ?? null,
+        },
+        evaluation: res?.data || null,
+      },
+    };
+  }
 
   // ---------- Plataforma: calendario ----------
   async listDeadlines(year?: number) {
