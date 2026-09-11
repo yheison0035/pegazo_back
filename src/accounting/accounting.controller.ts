@@ -61,4 +61,9 @@ export class AccountingController {
   financials(@Req() req, @Query() query) {
     return this.service.financials(req.user, query);
   }
+
+  @Get('auxiliary')
+  auxiliary(@Req() req, @Query() query) {
+    return this.service.auxiliary(req.user, query);
+  }
 }
