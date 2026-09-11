@@ -8,6 +8,9 @@ const ACC = {
   BANCOS: '1110',
   CLIENTES: '1305',
   DEP_ACUM: '1592',
+  IVA: '2408',
+  RETEFUENTE: '2365',
+  ICA: '2412',
   INGRESOS: '4135',
   DEVOLUCIONES: '4175',
   GASTOS: '5105',
@@ -126,6 +129,7 @@ export class AccountingService {
             code: true,
             saleDate: true,
             totalAmount: true,
+            taxTotal: true,
             paymentMethod: true,
             paymentStatus: true,
             customer: { select: { name: true } },
@@ -190,12 +194,17 @@ export class AccountingService {
         s.paymentMethod === 'CREDITO' ||
         (['FIADO', 'PENDIENTE'] as any).includes(s.paymentStatus);
       const debitAcc = fiado ? ACC.CLIENTES : moneyAccountFor(s.paymentMethod);
+      // Desglose de IVA: el ingreso va a la base y el IVA a "IVA por pagar".
+      const iva = Math.round(Number(s.taxTotal) || 0);
+      const base = total - (iva > 0 ? iva : 0);
+      const saleLines = [line(debitAcc, total, 0), line(ACC.INGRESOS, 0, base)];
+      if (iva > 0) saleLines.push(line(ACC.IVA, 0, iva));
       entries.push({
         date: day(s.saleDate),
         type: 'VENTA',
         ref: s.code || 'Venta',
         description: `Venta ${s.code || ''}${s.customer?.name ? ' · ' + s.customer.name : ''}`.trim(),
-        lines: [line(debitAcc, total, 0), line(ACC.INGRESOS, 0, total)],
+        lines: saleLines,
       });
     }
 
@@ -397,6 +406,39 @@ export class AccountingService {
         account: { code, name: acc.name, nature: acc.nature },
         movements,
         totals: { debit, credit, balance: bal },
+      },
+    };
+  }
+
+  // Resumen de impuestos del periodo: IVA, retención en la fuente e ICA. Toma
+  // el movimiento de sus cuentas (lo que se generó/pagó) para preparar la
+  // declaración. Se apoya en los asientos (derivados + manuales).
+  async taxSummary(user: any, query: any = {}) {
+    const { entries, map, range } = await this.buildEntries(user.companyId, query);
+    const agg = this.aggregate(entries, map);
+    const acc = (code: string, label: string) => {
+      const a = agg[code];
+      const name = map[code]?.name || label;
+      const debit = a?.debit || 0;
+      const credit = a?.credit || 0;
+      // Cuentas de impuestos son de naturaleza crédito → saldo por pagar.
+      return { code, name, debit, credit, balance: credit - debit };
+    };
+    // Ingresos del periodo (base para contexto de IVA/ICA).
+    const incomeAgg = Object.values(agg).filter((a: any) => a.type === 'INCOME');
+    const income = incomeAgg.reduce(
+      (s: number, a: any) => s + (a.credit - a.debit),
+      0,
+    );
+    return {
+      success: true,
+      data: {
+        startDate: range.startStr,
+        endDate: range.endStr,
+        income,
+        iva: acc(ACC.IVA, 'IVA por pagar'),
+        retefuente: acc(ACC.RETEFUENTE, 'Retención en la fuente por pagar'),
+        ica: acc(ACC.ICA, 'ICA por pagar'),
       },
     };
   }

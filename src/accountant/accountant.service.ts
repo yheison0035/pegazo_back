@@ -284,6 +284,10 @@ export class AccountantService {
     await this.assertLink(accountantId, companyId);
     return this.accounting.auxiliary(this.ctx(companyId), query);
   }
+  async companyTaxSummary(accountantId: number, companyId: number, query: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.accounting.taxSummary(this.ctx(companyId), query);
+  }
 
   // Asientos manuales de una empresa enlazada.
   async companyEntriesList(accountantId: number, companyId: number, query: any) {

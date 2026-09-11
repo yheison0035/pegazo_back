@@ -66,4 +66,9 @@ export class AccountingController {
   auxiliary(@Req() req, @Query() query) {
     return this.service.auxiliary(req.user, query);
   }
+
+  @Get('tax-summary')
+  taxSummary(@Req() req, @Query() query) {
+    return this.service.taxSummary(req.user, query);
+  }
 }
