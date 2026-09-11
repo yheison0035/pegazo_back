@@ -80,6 +80,14 @@ export class TaxController {
     return this.alerts.runForCompany(req.user.companyId);
   }
 
+  // Envía un correo de MUESTRA del aviso a una dirección (previsualizar/probar).
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Post('test-alert-email')
+  testAlertEmail(@Req() req, @Body('to') to: string) {
+    return this.alerts.sendSampleEmail(to);
+  }
+
   // ----- Plataforma: administrar calendario y parámetros -----
   @UseGuards(RolesGuard)
   @Roles('SUPER_PLATFORM_ADMIN')
