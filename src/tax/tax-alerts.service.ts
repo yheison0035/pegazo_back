@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '@/prisma.service';
 import { NotificationsService } from '@/notifications/notifications.service';
+import { MailService } from '@/mail/mail.service';
 import { TaxService } from './tax.service';
 
 // Avisos de vencimientos tributarios (E2). Vive SOLO en TaxModule (no en
@@ -32,6 +33,7 @@ export class TaxAlertsService {
     private prisma: PrismaService,
     private tax: TaxService,
     private notifications: NotificationsService,
+    private mail: MailService,
   ) {}
 
   // 8:00 a. m. Colombia (13:00 UTC), todos los días.
@@ -84,6 +86,13 @@ export class TaxAlertsService {
       }),
     );
 
+    const newItems: {
+      title: string;
+      period?: string | null;
+      daysLeft: number;
+      phase: string;
+    }[] = [];
+
     for (const d of relevant) {
       const phase = d.status; // PROXIMO | VENCIDO
       const key = `${d.id}:${phase}`;
@@ -107,7 +116,53 @@ export class TaxAlertsService {
         .catch(() => null);
       seen.add(key);
       created += 1;
+      newItems.push({ title: d.title, period: d.period, daysLeft: d.daysLeft, phase });
     }
+
+    // Correo (E2b): un solo mensaje con los avisos NUEVOS, a dueño/admins y
+    // contadores enlazados. Respeta el dedupe (solo si hubo avisos nuevos).
+    if (newItems.length) await this.emailAlerts(companyId, newItems);
+
     return created;
+  }
+
+  private async emailAlerts(
+    companyId: number,
+    items: { title: string; period?: string | null; daysLeft: number; phase: string }[],
+  ) {
+    try {
+      const company = await this.prisma.company.findUnique({
+        where: { id: companyId },
+        select: { name: true, businessName: true },
+      });
+      const companyName = company?.businessName || company?.name || 'Tu empresa';
+
+      const [users, links] = await Promise.all([
+        this.prisma.user.findMany({
+          where: {
+            companyId,
+            role: { in: ['SUPER_ADMIN', 'ADMIN'] as any },
+            status: { not: 'ELIMINADO' as any },
+          },
+          select: { email: true },
+        }),
+        this.prisma.accountantCompany.findMany({
+          where: { companyId, status: 'ACTIVE' },
+          select: { accountant: { select: { email: true } } },
+        }),
+      ]);
+      const emails = new Set<string>();
+      for (const u of users) if (u.email) emails.add(u.email.toLowerCase());
+      for (const l of links)
+        if (l.accountant?.email) emails.add(l.accountant.email.toLowerCase());
+
+      for (const to of emails) {
+        await this.mail
+          .sendTaxDeadlineAlert({ to, companyName, items })
+          .catch(() => null);
+      }
+    } catch {
+      /* silencioso */
+    }
   }
 }

@@ -282,6 +282,89 @@ export class MailService {
     await this.transporter.sendMail({ from, to, subject, html });
   }
 
+  // Aviso de vencimientos tributarios (E2b). Envía por la cuenta central
+  // (Resend → Brevo → SMTP). Nunca lanza: el cron no debe caerse por un correo.
+  async sendTaxDeadlineAlert(opts: {
+    to: string;
+    companyName: string;
+    items: { title: string; period?: string | null; daysLeft: number; phase: string }[];
+  }): Promise<{ ok: boolean }> {
+    const { to, companyName, items } = opts;
+    if (!to || !items?.length) return { ok: false };
+    const base = process.env.FRONTEND_URL || 'https://pegazo.co';
+    const logo = `${base}/images/logo_pegazo.png`;
+    const url = `${base}/dashboard/calendario-tributario`;
+    const label = (n: number) =>
+      n < 0
+        ? `Venció hace ${Math.abs(n)} día${Math.abs(n) !== 1 ? 's' : ''}`
+        : n === 0
+          ? 'Vence hoy'
+          : n === 1
+            ? 'Vence mañana'
+            : `Faltan ${n} días`;
+    const rows = items
+      .map(
+        (it) => `
+          <tr>
+            <td style="padding:10px 0; border-bottom:1px solid #f0ece5;">
+              <span style="font-size:14px; color:#1F1B16; font-weight:bold;">${it.title}</span>
+              ${it.period ? `<span style="font-size:12px; color:#8a8073;"> · ${it.period}</span>` : ''}
+              <br><span style="font-size:12px; color:${it.phase === 'VENCIDO' ? '#c0392b' : '#B4480A'};">${label(it.daysLeft)}</span>
+            </td>
+          </tr>`,
+      )
+      .join('');
+    const subject =
+      items.length === 1
+        ? `Vencimiento tributario · ${companyName}`
+        : `${items.length} vencimientos tributarios · ${companyName}`;
+    const html = `
+      <div style="background:#f4f2ee; padding:28px 0; font-family:Arial,Helvetica,sans-serif;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:18px; overflow:hidden; box-shadow:0 8px 30px rgba(0,0,0,0.06);">
+          <tr><td style="background:linear-gradient(135deg,#EA5B0C,#F59E0B); padding:24px; text-align:center;">
+            <img src="${logo}" alt="Pegazo" width="140" style="display:inline-block; max-width:140px; height:auto;" />
+          </td></tr>
+          <tr><td style="padding:26px 28px 8px;">
+            <h1 style="margin:0 0 6px; font-size:19px; color:#1F1B16;">Tienes obligaciones por vencer</h1>
+            <p style="margin:0 0 12px; font-size:14px; color:#5b5349; line-height:1.6;">
+              ${companyName}, estas son las obligaciones tributarias que requieren tu atención:
+            </p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>
+            <p style="text-align:center; margin:22px 0;">
+              <a href="${url}" style="background:linear-gradient(135deg,#EA5B0C,#F59E0B); color:#ffffff; text-decoration:none; font-weight:bold; padding:12px 24px; border-radius:12px; display:inline-block; font-size:14px;">Ver mi calendario</a>
+            </p>
+            <p style="font-size:11px; color:#8a8073; line-height:1.6;">
+              Las fechas dependen de tu régimen y del último dígito de tu NIT. Valida siempre con tu contador y con la norma vigente de la DIAN.
+            </p>
+          </td></tr>
+          <tr><td style="padding:14px 24px 24px; text-align:center; border-top:1px solid #eee;">
+            <p style="margin:0; font-size:11px; color:#a89f92;">© ${new Date().getFullYear()} Pegazo · El sistema que hace despegar tu negocio</p>
+          </td></tr>
+        </table>
+      </div>`;
+    try {
+      if (this.resendEnabled()) {
+        await this.sendViaResend({ to, subject, html, fromName: 'Pegazo' });
+        return { ok: true };
+      }
+      if (this.brevoEnabled()) {
+        await this.sendViaBrevo({ to, subject, html, fromName: 'Pegazo' });
+        return { ok: true };
+      }
+      if (this.transporter) {
+        const from =
+          process.env.MAIL_FROM || process.env.MAIL_USER || 'no-reply@localhost';
+        await this.transporter.sendMail({ from, to, subject, html });
+        return { ok: true };
+      }
+      this.logger.warn(`[SIN CORREO] Aviso tributario para ${to}`);
+      return { ok: false };
+    } catch (e) {
+      this.logger.warn(`sendTaxDeadlineAlert falló para ${to}: ${e}`);
+      return { ok: false };
+    }
+  }
+
   // Envío genérico de un documento (factura electrónica) al correo del cliente.
   // Usa la misma prioridad: Resend/Brevo (si la empresa no puso su SMTP) o el
   // SMTP propio de la empresa. Lanza si no hay ningún medio configurado.
