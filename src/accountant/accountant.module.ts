@@ -8,9 +8,10 @@ import { ManualEntriesService } from '@/accounting/manual-entries.service';
 import { LedgerAccountsService } from '@/ledger-accounts/ledger-accounts.service';
 import { TaxService } from '@/tax/tax.service';
 import { PartiesService } from '@/parties/parties.service';
+import { FiscalModule } from '@/fiscal/fiscal.module';
 
 @Module({
-  imports: [AuthModule], // JwtModule (firmar token) + estrategia jwt
+  imports: [AuthModule, FiscalModule], // JwtModule + estrategia jwt + motor fiscal
   controllers: [AccountantController],
   // Reutiliza los servicios de contabilidad (solo usan companyId) para servir
   // la contabilidad de una empresa enlazada.

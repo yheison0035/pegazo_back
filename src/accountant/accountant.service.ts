@@ -290,6 +290,33 @@ export class AccountantService {
     await this.assertLink(accountantId, companyId);
     return this.accounting.taxSummary(this.ctx(companyId), query);
   }
+  // Perfil fiscal (responsabilidades del RUT) de una empresa enlazada.
+  async companyFiscalProfile(accountantId: number, companyId: number) {
+    await this.assertLink(accountantId, companyId);
+    return this.tax.getProfile(this.ctx(companyId));
+  }
+  async companyUpdateFiscalProfile(
+    accountantId: number,
+    companyId: number,
+    dto: any,
+  ) {
+    await this.assertLink(accountantId, companyId);
+    return this.tax.updateProfile(this.ctx(companyId), dto);
+  }
+  // Magnitudes anuales (topes de renta) de una empresa enlazada.
+  async companyGetTaxYear(accountantId: number, companyId: number, year: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.tax.getTaxYear(this.ctx(companyId), year);
+  }
+  async companyUpdateTaxYear(accountantId: number, companyId: number, dto: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.tax.updateTaxYear(this.ctx(companyId), dto);
+  }
+  // Veredicto de obligaciones DIAN (¿debe declarar renta?) de una empresa.
+  async companyTaxObligations(accountantId: number, companyId: number, query: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.tax.obligations(this.ctx(companyId), query);
+  }
   // Cierre de periodo: fija (o reabre con null) la fecha "cerrado hasta".
   async companySetClose(accountantId: number, companyId: number, date: any) {
     await this.assertLink(accountantId, companyId);

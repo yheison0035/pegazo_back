@@ -117,6 +117,44 @@ export class AccountantController {
     return this.service.companySetClose(req.user.id, companyId, date);
   }
 
+  // ----- Perfil fiscal (responsabilidades del RUT) -----
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Get('companies/:companyId/fiscal-profile')
+  cFiscalProfile(@Req() req, @Param('companyId', ParseIntPipe) companyId: number) {
+    return this.service.companyFiscalProfile(req.user.id, companyId);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Patch('companies/:companyId/fiscal-profile')
+  cUpdateFiscalProfile(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Body() dto) {
+    return this.service.companyUpdateFiscalProfile(req.user.id, companyId, dto);
+  }
+
+  // ----- Magnitudes anuales (topes de renta) -----
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Get('companies/:companyId/tax-year')
+  cGetTaxYear(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Query('year') year?: string) {
+    return this.service.companyGetTaxYear(req.user.id, companyId, year);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Patch('companies/:companyId/tax-year')
+  cUpdateTaxYear(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Body() dto) {
+    return this.service.companyUpdateTaxYear(req.user.id, companyId, dto);
+  }
+
+  // ----- Obligaciones DIAN derivadas (¿debe declarar renta?) -----
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Get('companies/:companyId/tax-obligations')
+  cTaxObligations(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Query() q) {
+    return this.service.companyTaxObligations(req.user.id, companyId, q);
+  }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ACCOUNTANT')
   @Get('companies/:companyId/entries')
