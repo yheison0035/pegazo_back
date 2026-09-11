@@ -354,6 +354,7 @@ model Company {
   notifications       Notification[]       @relation("CompanyNotifications")
   supportMessages     SupportMessage[]     @relation("CompanySupport")
   assets              Asset[]              @relation("CompanyAssets")
+  ledgerAccounts      LedgerAccount[]      @relation("CompanyLedgerAccounts")
   cashRegisters       CashRegister[]
   purchases           Purchase[]
   quotes              Quote[]
@@ -874,6 +875,26 @@ model Asset {
 
   @@index([companyId])
   @@index([companyId, status])
+}
+
+// Plan de cuentas (PUC simplificado) por empresa. Base de los asientos
+// automáticos (libro diario / mayor) de las fases siguientes.
+model LedgerAccount {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  code      String // código PUC (ej. "4135")
+  name      String
+  type      String // ASSET | LIABILITY | EQUITY | INCOME | EXPENSE | COST
+  nature    String // DEBIT | CREDIT (naturaleza del saldo)
+  isBase    Boolean  @default(false) // vino de la semilla PUC
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation("CompanyLedgerAccounts", fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, code])
+  @@index([companyId])
 }
 
 model InventoryImage {
