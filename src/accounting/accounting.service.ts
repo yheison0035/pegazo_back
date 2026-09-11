@@ -271,6 +271,23 @@ export class AccountingService {
       });
     }
 
+    // Asientos MANUALES (los registra el contador). Se suman a los derivados;
+    // para empresas "solo contabilidad" son la única fuente de los libros.
+    const manual = await this.prisma.journalEntry.findMany({
+      where: { companyId, date: { gte: r.start, lt: r.end } },
+      include: { lines: true },
+      orderBy: { date: 'asc' },
+    });
+    for (const m of manual) {
+      entries.push({
+        date: day(m.date),
+        type: 'MANUAL',
+        ref: m.reference || 'Asiento',
+        description: m.description,
+        lines: m.lines.map((l) => line(l.accountCode, l.debit, l.credit)),
+      });
+    }
+
     // Orden cronológico.
     entries.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     return { entries, map, range: r };

@@ -87,6 +87,31 @@ export class AccountantController {
     return this.service.companyTaxCalendar(req.user.id, companyId, q);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Get('companies/:companyId/entries')
+  cEntriesList(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Query() q) {
+    return this.service.companyEntriesList(req.user.id, companyId, q);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Post('companies/:companyId/entries')
+  cEntryCreate(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Body() dto) {
+    return this.service.companyEntryCreate(req.user.id, companyId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Delete('companies/:companyId/entries/:entryId')
+  cEntryDelete(
+    @Req() req,
+    @Param('companyId', ParseIntPipe) companyId: number,
+    @Param('entryId', ParseIntPipe) entryId: number,
+  ) {
+    return this.service.companyEntryDelete(req.user.id, companyId, entryId);
+  }
+
   // ----- Empresa (dueño/admin): enlazar/ver/quitar contador -----
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'ADMIN')
