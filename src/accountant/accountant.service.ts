@@ -317,6 +317,11 @@ export class AccountantService {
     await this.assertLink(accountantId, companyId);
     return this.tax.obligations(this.ctx(companyId), query);
   }
+  // Borrador de declaración de renta (consolidado + impuesto estimado).
+  async companyRenta(accountantId: number, companyId: number, query: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.tax.rentaDraft(this.ctx(companyId), query);
+  }
   // Cierre de periodo: fija (o reabre con null) la fecha "cerrado hasta".
   async companySetClose(accountantId: number, companyId: number, date: any) {
     await this.assertLink(accountantId, companyId);

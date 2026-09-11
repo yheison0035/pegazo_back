@@ -155,6 +155,14 @@ export class AccountantController {
     return this.service.companyTaxObligations(req.user.id, companyId, q);
   }
 
+  // ----- Borrador de declaración de renta -----
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Get('companies/:companyId/renta')
+  cRenta(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Query() q) {
+    return this.service.companyRenta(req.user.id, companyId, q);
+  }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ACCOUNTANT')
   @Get('companies/:companyId/entries')

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
 import { FiscalService } from '@/fiscal/fiscal.service';
+import { AccountingService } from '@/accounting/accounting.service';
 
 const OBLIGATIONS = ['IVA', 'RENTA', 'RETEFUENTE', 'ICA', 'OTRO'];
 
@@ -25,7 +26,87 @@ export class TaxService {
   constructor(
     private prisma: PrismaService,
     private fiscal: FiscalService,
+    private accounting: AccountingService,
   ) {}
+
+  // ---------- Declaración de renta (F1): consolidado + borrador ----------
+  // Reúne los insumos anuales (ingresos, costos, gastos, renta líquida,
+  // patrimonio) del motor contable y estima el impuesto con el motor de reglas.
+  // Es un BORRADOR de referencia; no reemplaza la declaración ni la depuración
+  // fiscal completa (rentas exentas, deducciones, descuentos, cédulas).
+  async rentaDraft(user: any, query: any = {}) {
+    const companyId = user.companyId;
+    const year = Number(query?.year) || new Date().getUTCFullYear();
+    const [c, fin] = await Promise.all([
+      this.prisma.company.findUnique({
+        where: { id: companyId },
+        select: { personType: true, taxRegime: true, nit: true, businessName: true, name: true },
+      }),
+      this.accounting.financials(
+        { companyId },
+        { startDate: `${year}-01-01`, endDate: `${year}-12-31` },
+      ),
+    ]);
+    const d: any = fin?.data || {};
+    const is: any = d.incomeStatement || {};
+    const bs: any = d.balanceSheet || {};
+
+    const ingresos = Math.round(Number(is.totalIncome) || 0);
+    const costos = Math.round(Number(is.totalCosts) || 0);
+    const gastos = Math.round(Number(is.totalExpenses) || 0);
+    const rentaLiquida = Math.max(0, Math.round(Number(is.netProfit) || 0));
+    const patrimonioBruto = Math.round(Number(bs.totalAssets) || 0);
+    const patrimonioLiquido = Math.round(
+      (Number(bs.totalAssets) || 0) - (Number(bs.totalLiabilities) || 0),
+    );
+
+    const personType = this.mapPersonType(c?.personType);
+    const regime = this.mapRegime(c?.taxRegime);
+
+    let evaluation: any = null;
+    let engineAvailable = false;
+    let nota = '';
+
+    if (regime === 'SIMPLE') {
+      nota =
+        'Régimen Simple: no declara renta ordinaria (declara SIMPLE). El impuesto ordinario no aplica.';
+    } else {
+      const res = await this.fiscal.taxRules('/tax-rules/renta', {
+        method: 'POST',
+        body: JSON.stringify({ year, personType, baseGravable: rentaLiquida }),
+      });
+      engineAvailable = !!res;
+      evaluation = res?.data || null;
+    }
+
+    return {
+      success: true,
+      data: {
+        year,
+        company: { nit: c?.nit || null, name: c?.businessName || c?.name || null },
+        personType,
+        regime,
+        consolidado: {
+          ingresos,
+          costos,
+          gastos,
+          rentaLiquida,
+          patrimonioBruto,
+          patrimonioLiquido,
+          balanced: !!bs.balanced,
+        },
+        baseGravable: rentaLiquida,
+        impuestoEstimado: evaluation?.impuesto ?? null,
+        effectiveRate: evaluation?.effectiveRate ?? null,
+        detail: evaluation?.detail || [],
+        engineAvailable,
+        nota,
+        disclaimer:
+          evaluation?.disclaimer ||
+          'Borrador de referencia con las cifras de tus libros. No incluye la depuración fiscal completa ni reemplaza la declaración; trabájalo con tu contador.',
+      },
+    };
+  }
 
   // ---------- Perfil fiscal (responsabilidades del RUT) ----------
   private mapPersonType(v?: string | null): 'NATURAL' | 'JURIDICA' {
