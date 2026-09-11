@@ -10,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '@/prisma.service';
 import { AccountingService } from '@/accounting/accounting.service';
+import { ManualEntriesService } from '@/accounting/manual-entries.service';
 import { LedgerAccountsService } from '@/ledger-accounts/ledger-accounts.service';
 import { TaxService } from '@/tax/tax.service';
 
@@ -22,6 +23,7 @@ export class AccountantService {
     private prisma: PrismaService,
     private jwt: JwtService,
     private accounting: AccountingService,
+    private manualEntries: ManualEntriesService,
     private ledgerAccounts: LedgerAccountsService,
     private tax: TaxService,
   ) {}
@@ -269,5 +271,19 @@ export class AccountantService {
   async companyTaxCalendar(accountantId: number, companyId: number, query: any) {
     await this.assertLink(accountantId, companyId);
     return this.tax.companyCalendar(this.ctx(companyId), query);
+  }
+
+  // Asientos manuales de una empresa enlazada.
+  async companyEntriesList(accountantId: number, companyId: number, query: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.manualEntries.list(companyId, query);
+  }
+  async companyEntryCreate(accountantId: number, companyId: number, dto: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.manualEntries.create(companyId, dto, accountantId);
+  }
+  async companyEntryDelete(accountantId: number, companyId: number, id: number) {
+    await this.assertLink(accountantId, companyId);
+    return this.manualEntries.remove(companyId, id);
   }
 }

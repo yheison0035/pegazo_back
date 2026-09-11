@@ -4,6 +4,7 @@ import { AccountantController } from './accountant.controller';
 import { PrismaService } from '@/prisma.service';
 import { AuthModule } from '@/auth/auth.module';
 import { AccountingService } from '@/accounting/accounting.service';
+import { ManualEntriesService } from '@/accounting/manual-entries.service';
 import { LedgerAccountsService } from '@/ledger-accounts/ledger-accounts.service';
 import { TaxService } from '@/tax/tax.service';
 
@@ -16,6 +17,7 @@ import { TaxService } from '@/tax/tax.service';
     AccountantService,
     PrismaService,
     AccountingService,
+    ManualEntriesService,
     LedgerAccountsService,
     TaxService,
   ],

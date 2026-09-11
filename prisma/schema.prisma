@@ -361,6 +361,7 @@ model Company {
   assets              Asset[]              @relation("CompanyAssets")
   ledgerAccounts      LedgerAccount[]      @relation("CompanyLedgerAccounts")
   accountants         AccountantCompany[]  @relation("CompanyAccountants")
+  journalEntries      JournalEntry[]       @relation("CompanyJournalEntries")
   cashRegisters       CashRegister[]
   purchases           Purchase[]
   quotes              Quote[]
@@ -965,6 +966,38 @@ model AccountantCompany {
   @@unique([accountantId, companyId])
   @@index([accountantId])
   @@index([companyId])
+}
+
+// Asiento contable MANUAL (partida doble). Lo registra el contador. Alimenta
+// los mismos libros/estados que el motor derivado; para empresas "solo
+// contabilidad" son la única fuente. Debe cuadrar (Σdébitos = Σcréditos).
+model JournalEntry {
+  id                    Int      @id @default(autoincrement())
+  companyId             Int
+  date                  DateTime
+  description           String
+  reference             String?
+  createdByAccountantId Int?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  company Company            @relation("CompanyJournalEntries", fields: [companyId], references: [id], onDelete: Cascade)
+  lines   JournalEntryLine[]
+
+  @@index([companyId, date])
+}
+
+model JournalEntryLine {
+  id          Int     @id @default(autoincrement())
+  entryId     Int
+  accountCode String
+  accountName String?
+  debit       Int     @default(0)
+  credit      Int     @default(0)
+
+  entry JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId])
 }
 
 model InventoryImage {
