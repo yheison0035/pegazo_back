@@ -239,6 +239,12 @@ export class AccountantService {
     };
   }
 
+  // Verifica acceso (público, para el controlador: subida de documentos).
+  async ensureAccess(accountantId: number, companyId: number) {
+    await this.assertLink(accountantId, companyId);
+    return true;
+  }
+
   // Verifica que el contador tenga enlace ACTIVO con la empresa objetivo.
   private async assertLink(accountantId: number, companyId: number) {
     const link = await this.prisma.accountantCompany.findUnique({
