@@ -82,7 +82,7 @@ export class TaxController {
 
   // Envía un correo de MUESTRA del aviso a una dirección (previsualizar/probar).
   @UseGuards(RolesGuard)
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
   @Post('test-alert-email')
   testAlertEmail(@Req() req, @Body('to') to: string) {
     return this.alerts.sendSampleEmail(to);
