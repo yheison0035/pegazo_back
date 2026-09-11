@@ -178,7 +178,16 @@ export class AccountantService {
     const links = await this.prisma.accountantCompany.findMany({
       where: { accountantId, status: 'ACTIVE' },
       include: {
-        company: { select: { id: true, name: true, type: true, nit: true, logo: true } },
+        company: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            nit: true,
+            logo: true,
+            accountingOnly: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -190,7 +199,41 @@ export class AccountantService {
         type: l.company.type,
         nit: l.company.nit,
         logo: l.company.logo,
+        accountingOnly: l.company.accountingOnly,
       })),
+    };
+  }
+
+  // El contador crea una empresa "solo contabilidad" (cliente fuera de Pegazo)
+  // y queda enlazada a él automáticamente.
+  async createCompany(accountantId: number, dto: any) {
+    const name = String(dto.name || '').trim();
+    if (name.length < 2)
+      throw new BadRequestException('El nombre de la empresa es obligatorio.');
+    const accountant = await this.prisma.accountant.findUnique({
+      where: { id: accountantId },
+      select: { name: true },
+    });
+    const company = await this.prisma.company.create({
+      data: {
+        name,
+        type: 'COMERCIO',
+        status: 'ACTIVO',
+        plan: 'ORBITA',
+        accountingEnabled: true,
+        accountingOnly: true,
+        nit: dto.nit ? String(dto.nit).trim() : null,
+        taxRegime: dto.taxRegime ? String(dto.taxRegime).toUpperCase() : null,
+        manager: accountant?.name || null,
+        startDate: new Date(),
+      },
+    });
+    await this.prisma.accountantCompany.create({
+      data: { accountantId, companyId: company.id, status: 'ACTIVE' },
+    });
+    return {
+      success: true,
+      data: { companyId: company.id, name: company.name, accountingOnly: true },
     };
   }
 

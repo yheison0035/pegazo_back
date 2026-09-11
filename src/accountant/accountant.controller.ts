@@ -47,6 +47,13 @@ export class AccountantController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ACCOUNTANT')
+  @Post('companies')
+  createCompany(@Req() req, @Body() dto) {
+    return this.service.createCompany(req.user.id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
   @Get('companies/:companyId/financials')
   cFinancials(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Query() q) {
     return this.service.companyFinancials(req.user.id, companyId, q);
