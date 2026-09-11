@@ -356,6 +356,7 @@ model Company {
   supportMessages     SupportMessage[]     @relation("CompanySupport")
   assets              Asset[]              @relation("CompanyAssets")
   ledgerAccounts      LedgerAccount[]      @relation("CompanyLedgerAccounts")
+  accountants         AccountantCompany[]  @relation("CompanyAccountants")
   cashRegisters       CashRegister[]
   purchases           Purchase[]
   quotes              Quote[]
@@ -928,6 +929,38 @@ model TaxParameter {
   updatedAt DateTime @updatedAt
 
   @@unique([key, year])
+}
+
+// Contador: identidad INDEPENDIENTE (no pertenece a ninguna empresa). Se
+// registra por su cuenta desde el login. Su llave única enlaza empresas a él.
+model Accountant {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  password     String
+  phone        String?
+  accountantKey String  @unique // llave única (copiar/QR) para que el dueño lo enlace
+  status       String   @default("ACTIVO")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  companies AccountantCompany[] @relation("AccountantLinks")
+}
+
+// Enlace empresa ↔ contador (el portafolio del contador). Lo crea el dueño.
+model AccountantCompany {
+  id           Int      @id @default(autoincrement())
+  accountantId Int
+  companyId    Int
+  status       String   @default("ACTIVE") // ACTIVE | REVOKED
+  createdAt    DateTime @default(now())
+
+  accountant Accountant @relation("AccountantLinks", fields: [accountantId], references: [id], onDelete: Cascade)
+  company    Company    @relation("CompanyAccountants", fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([accountantId, companyId])
+  @@index([accountantId])
+  @@index([companyId])
 }
 
 model InventoryImage {
