@@ -561,6 +561,15 @@ export class UsersService {
       }
     }
 
+    // ¿La empresa tiene un contador enlazado? El CRM lo usa para mostrarle al
+    // dueño solo el resumen contable (no saturarlo con los módulos técnicos).
+    if (user.company?.id) {
+      const accCount = await this.prisma.accountantCompany.count({
+        where: { companyId: user.company.id, status: 'ACTIVE' },
+      });
+      (user.company as any).hasAccountant = accCount > 0;
+    }
+
     if (requester?.id === user.id) {
       return {
         success: true,
