@@ -1,12 +1,17 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '@/prisma.service';
+import { AccountingService } from '@/accounting/accounting.service';
+import { LedgerAccountsService } from '@/ledger-accounts/ledger-accounts.service';
+import { TaxService } from '@/tax/tax.service';
 
 // Alfabeto sin caracteres ambiguos (0/O, 1/I) para la llave.
 const KEY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -16,6 +21,9 @@ export class AccountantService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
+    private accounting: AccountingService,
+    private ledgerAccounts: LedgerAccountsService,
+    private tax: TaxService,
   ) {}
 
   private randomKey(): string {
@@ -109,5 +117,114 @@ export class AccountantService {
     });
     if (!a) throw new UnauthorizedException('Cuenta no encontrada.');
     return { success: true, data: this.publicProfile(a) };
+  }
+
+  // ---------- Enlace (lo hace el DUEÑO desde su empresa) ----------
+  async linkByKey(user: any, key: string) {
+    const clean = String(key || '').trim().toUpperCase();
+    if (!clean) throw new BadRequestException('Ingresa la llave del contador.');
+    const accountant = await this.prisma.accountant.findUnique({
+      where: { accountantKey: clean },
+    });
+    if (!accountant)
+      throw new NotFoundException('No existe un contador con esa llave.');
+    await this.prisma.accountantCompany.upsert({
+      where: {
+        accountantId_companyId: {
+          accountantId: accountant.id,
+          companyId: user.companyId,
+        },
+      },
+      update: { status: 'ACTIVE' },
+      create: {
+        accountantId: accountant.id,
+        companyId: user.companyId,
+        status: 'ACTIVE',
+      },
+    });
+    return {
+      success: true,
+      data: { name: accountant.name, email: accountant.email, accountantKey: accountant.accountantKey },
+    };
+  }
+
+  // Contador(es) enlazado(s) a la empresa del usuario.
+  async companyLinks(user: any) {
+    const links = await this.prisma.accountantCompany.findMany({
+      where: { companyId: user.companyId, status: 'ACTIVE' },
+      include: { accountant: true },
+    });
+    return {
+      success: true,
+      data: links.map((l) => ({
+        accountantId: l.accountantId,
+        name: l.accountant.name,
+        email: l.accountant.email,
+        accountantKey: l.accountant.accountantKey,
+        linkedAt: l.createdAt,
+      })),
+    };
+  }
+
+  async unlink(user: any, accountantId: number) {
+    await this.prisma.accountantCompany.deleteMany({
+      where: { companyId: user.companyId, accountantId },
+    });
+    return { success: true };
+  }
+
+  // ---------- Portafolio (lo ve el CONTADOR) ----------
+  async portfolio(accountantId: number) {
+    const links = await this.prisma.accountantCompany.findMany({
+      where: { accountantId, status: 'ACTIVE' },
+      include: {
+        company: { select: { id: true, name: true, type: true, nit: true, logo: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return {
+      success: true,
+      data: links.map((l) => ({
+        companyId: l.company.id,
+        name: l.company.name,
+        type: l.company.type,
+        nit: l.company.nit,
+        logo: l.company.logo,
+      })),
+    };
+  }
+
+  // Verifica que el contador tenga enlace ACTIVO con la empresa objetivo.
+  private async assertLink(accountantId: number, companyId: number) {
+    const link = await this.prisma.accountantCompany.findUnique({
+      where: { accountantId_companyId: { accountantId, companyId } },
+    });
+    if (!link || link.status !== 'ACTIVE')
+      throw new ForbiddenException('No tienes acceso a esta empresa.');
+  }
+
+  // ---------- Proxies a la contabilidad de una empresa enlazada ----------
+  private ctx(companyId: number) {
+    return { companyId };
+  }
+  async companyFinancials(accountantId: number, companyId: number, query: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.accounting.financials(this.ctx(companyId), query);
+  }
+  async companyJournal(accountantId: number, companyId: number, query: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.accounting.journal(this.ctx(companyId), query);
+  }
+  async companyLedger(accountantId: number, companyId: number, query: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.accounting.ledger(this.ctx(companyId), query);
+  }
+  async companyLedgerAccounts(accountantId: number, companyId: number) {
+    await this.assertLink(accountantId, companyId);
+    return this.ledgerAccounts.findAll(this.ctx(companyId));
+  }
+  async companyTaxCalendar(accountantId: number, companyId: number, query: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.tax.companyCalendar(this.ctx(companyId), query);
   }
 }
