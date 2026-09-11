@@ -977,6 +977,8 @@ model JournalEntry {
   date                  DateTime
   description           String
   reference             String?
+  attachmentUrl         String? // documento soporte (factura/recibo) en Cloudinary
+  attachmentName        String?
   createdByAccountantId Int?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt

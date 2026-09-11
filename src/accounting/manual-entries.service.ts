@@ -36,6 +36,8 @@ export class ManualEntriesService {
       date: new Date(dto.date),
       description: description.slice(0, 300),
       reference: dto.reference ? String(dto.reference).trim().slice(0, 100) : null,
+      attachmentUrl: dto.attachmentUrl ? String(dto.attachmentUrl).trim() : null,
+      attachmentName: dto.attachmentName ? String(dto.attachmentName).trim().slice(0, 160) : null,
       lines,
     };
   }
@@ -48,6 +50,8 @@ export class ManualEntriesService {
         date: v.date,
         description: v.description,
         reference: v.reference,
+        attachmentUrl: v.attachmentUrl,
+        attachmentName: v.attachmentName,
         createdByAccountantId: accountantId ?? null,
         lines: { create: v.lines },
       },

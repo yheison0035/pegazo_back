@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,16 +9,23 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
 import { Roles } from '@/auth/roles.decorator';
+import { CloudinaryService } from '@/cloudinary/cloudinary.service';
 import { AccountantService } from './accountant.service';
 
 @Controller('accountant')
 export class AccountantController {
-  constructor(private readonly service: AccountantService) {}
+  constructor(
+    private readonly service: AccountantService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
 
   // Públicos: registro e inicio de sesión del contador.
   @Post('register')
@@ -117,6 +125,31 @@ export class AccountantController {
   @Post('companies/:companyId/import')
   cImport(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Body('rows') rows: any[]) {
     return this.service.companyImport(req.user.id, companyId, rows);
+  }
+
+  // Sube un documento soporte (factura/recibo, PDF o imagen) a Cloudinary.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Post('companies/:companyId/upload')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB
+      fileFilter: (_req, file, cb) => {
+        if (!/^(image\/(png|jpe?g|webp|gif)|application\/pdf)$/.test(file.mimetype))
+          return cb(new BadRequestException('Solo PDF o imagen.'), false);
+        cb(null, true);
+      },
+    }),
+  )
+  async cUpload(
+    @Req() req,
+    @Param('companyId', ParseIntPipe) companyId: number,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    await this.service.ensureAccess(req.user.id, companyId);
+    if (!file) throw new BadRequestException('No se recibió el archivo.');
+    const { url } = await this.cloudinary.uploadFile(file, 'accounting');
+    return { success: true, data: { url, name: file.originalname } };
   }
 
   // ----- Empresa (dueño/admin): enlazar/ver/quitar contador -----
