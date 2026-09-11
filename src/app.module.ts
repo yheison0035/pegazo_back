@@ -18,6 +18,7 @@ import { AssetsModule } from './assets/assets.module';
 import { LedgerAccountsModule } from './ledger-accounts/ledger-accounts.module';
 import { AccountingModule } from './accounting/accounting.module';
 import { TaxModule } from './tax/tax.module';
+import { AccountantModule } from './accountant/accountant.module';
 import { LocalsModule } from './locals/locals.module';
 import { ProvidersModule } from './providers/providers.module';
 import { SalesModule } from './sales/sales.module';
@@ -90,6 +91,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
     LedgerAccountsModule,
     AccountingModule,
     TaxModule,
+    AccountantModule,
     LocalsModule,
     ProvidersModule,
     SalesModule,
