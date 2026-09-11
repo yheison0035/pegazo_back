@@ -19,6 +19,7 @@ export const PUC_SIMPLIFICADO: SeedAccount[] = [
   { code: '1592', name: 'Depreciación acumulada', type: 'ASSET', nature: 'CREDIT' },
   // ---- PASIVO ----
   { code: '2205', name: 'Proveedores', type: 'LIABILITY', nature: 'CREDIT' },
+  { code: '2370', name: 'Aportes y retenciones de nómina por pagar', type: 'LIABILITY', nature: 'CREDIT' },
   { code: '2365', name: 'Retención en la fuente por pagar', type: 'LIABILITY', nature: 'CREDIT' },
   { code: '2408', name: 'IVA por pagar', type: 'LIABILITY', nature: 'CREDIT' },
   { code: '2412', name: 'Impuesto de industria y comercio (ICA) por pagar', type: 'LIABILITY', nature: 'CREDIT' },
@@ -34,6 +35,7 @@ export const PUC_SIMPLIFICADO: SeedAccount[] = [
   // ---- GASTOS ----
   { code: '5105', name: 'Gastos de administración', type: 'EXPENSE', nature: 'DEBIT' },
   { code: '5205', name: 'Gastos de ventas', type: 'EXPENSE', nature: 'DEBIT' },
+  { code: '5110', name: 'Gastos de personal (sueldos)', type: 'EXPENSE', nature: 'DEBIT' },
   { code: '5160', name: 'Gasto por depreciación', type: 'EXPENSE', nature: 'DEBIT' },
 ];
 
