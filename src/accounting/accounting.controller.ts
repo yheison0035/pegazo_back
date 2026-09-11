@@ -20,4 +20,9 @@ export class AccountingController {
   ledger(@Req() req, @Query() query) {
     return this.service.ledger(req.user, query);
   }
+
+  @Get('financials')
+  financials(@Req() req, @Query() query) {
+    return this.service.financials(req.user, query);
+  }
 }
