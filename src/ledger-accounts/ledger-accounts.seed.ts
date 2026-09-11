@@ -21,6 +21,7 @@ export const PUC_SIMPLIFICADO: SeedAccount[] = [
   { code: '2205', name: 'Proveedores', type: 'LIABILITY', nature: 'CREDIT' },
   { code: '2365', name: 'Retención en la fuente por pagar', type: 'LIABILITY', nature: 'CREDIT' },
   { code: '2408', name: 'IVA por pagar', type: 'LIABILITY', nature: 'CREDIT' },
+  { code: '2412', name: 'Impuesto de industria y comercio (ICA) por pagar', type: 'LIABILITY', nature: 'CREDIT' },
   // ---- PATRIMONIO ----
   { code: '3115', name: 'Aportes / Capital', type: 'EQUITY', nature: 'CREDIT' },
   { code: '3605', name: 'Utilidad del ejercicio', type: 'EQUITY', nature: 'CREDIT' },

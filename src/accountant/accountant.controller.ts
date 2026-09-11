@@ -105,6 +105,13 @@ export class AccountantController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ACCOUNTANT')
+  @Get('companies/:companyId/tax-summary')
+  cTaxSummary(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Query() q) {
+    return this.service.companyTaxSummary(req.user.id, companyId, q);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
   @Get('companies/:companyId/entries')
   cEntriesList(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Query() q) {
     return this.service.companyEntriesList(req.user.id, companyId, q);
