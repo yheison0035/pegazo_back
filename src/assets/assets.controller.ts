@@ -20,7 +20,7 @@ import { AssetsService } from './assets.service';
 // (SUPER_ADMIN) y el administrador (ADMIN).
 @Controller('assets')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('SUPER_ADMIN', 'ADMIN')
+@Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
 export class AssetsController {
   constructor(private readonly service: AssetsService) {}
 
