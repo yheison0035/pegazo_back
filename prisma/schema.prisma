@@ -898,6 +898,38 @@ model LedgerAccount {
   @@index([companyId])
 }
 
+// Calendario tributario NACIONAL, administrado por la plataforma (no quemar
+// fechas en código: cambian cada año). Global; cada empresa ve los vencimientos
+// que le aplican por el último dígito de su NIT y su régimen.
+model TaxDeadline {
+  id         Int      @id @default(autoincrement())
+  year       Int
+  obligation String // IVA | RENTA | RETEFUENTE | ICA | OTRO
+  title      String
+  period     String? // "Bimestre 1", "Anual 2025", etc.
+  dueDate    DateTime
+  nitDigits  String? // dígitos del NIT a los que aplica, ej "1,2"; vacío = todos
+  regime     String? // SIMPLE | ORDINARIO | null = todos
+  notes      String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([year])
+}
+
+// Parámetros tributarios por año (UVT, etc.), administrados por la plataforma.
+model TaxParameter {
+  id        Int      @id @default(autoincrement())
+  key       String // UVT, ...
+  year      Int
+  value     Int // valor (COP para UVT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([key, year])
+}
+
 model InventoryImage {
   id          Int    @id @default(autoincrement())
   url         String
