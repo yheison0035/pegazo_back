@@ -53,6 +53,17 @@ export class TaxAlertsService {
     }
   }
 
+  // Envía un correo de MUESTRA (datos de ejemplo) a una dirección, para
+  // previsualizar/probar el aviso sin tocar dedupe ni fechas reales.
+  async sendSampleEmail(to: string, companyName = 'Empresa de prueba') {
+    const items = [
+      { title: 'Declaración de IVA', period: 'Bimestre 5', daysLeft: 5, phase: 'PROXIMO' },
+      { title: 'Retención en la fuente', period: 'Agosto', daysLeft: -3, phase: 'VENCIDO' },
+    ];
+    const res = await this.mail.sendTaxDeadlineAlert({ to, companyName, items });
+    return { success: true, data: res };
+  }
+
   // Disparo manual para una empresa (botón "revisar ahora"). Devuelve cuántos
   // avisos nuevos creó.
   async runForCompany(companyId: number) {
