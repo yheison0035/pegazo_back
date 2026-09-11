@@ -359,6 +359,48 @@ export class AccountingService {
     };
   }
 
+  // Libro auxiliar: detalle cronológico de UNA cuenta con saldo corrido.
+  async auxiliary(user: any, query: any = {}) {
+    const code = String(query.account || '').trim();
+    if (!code)
+      return { success: true, data: { account: null, movements: [], totals: { debit: 0, credit: 0 } } };
+    const { entries, map, range } = await this.buildEntries(user.companyId, query);
+    const acc = map[code] || { code, name: code, nature: 'DEBIT' };
+    let bal = 0;
+    let debit = 0;
+    let credit = 0;
+    const movements: any[] = [];
+    for (const e of entries) {
+      for (const l of e.lines) {
+        if (l.code !== code) continue;
+        const delta =
+          acc.nature === 'CREDIT' ? l.credit - l.debit : l.debit - l.credit;
+        bal += delta;
+        debit += l.debit;
+        credit += l.credit;
+        movements.push({
+          date: e.date,
+          type: e.type,
+          ref: e.ref,
+          description: e.description,
+          debit: l.debit,
+          credit: l.credit,
+          balance: bal,
+        });
+      }
+    }
+    return {
+      success: true,
+      data: {
+        startDate: range.startStr,
+        endDate: range.endStr,
+        account: { code, name: acc.name, nature: acc.nature },
+        movements,
+        totals: { debit, credit, balance: bal },
+      },
+    };
+  }
+
   // Estados financieros: estado de resultados y flujo de caja del periodo, y
   // balance general acumulado al corte (endDate). Todo derivado de la operación.
   async financials(user: any, query: any = {}) {
