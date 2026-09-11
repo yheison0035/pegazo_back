@@ -16,6 +16,7 @@ import { PlatformPaymentModule } from './platform-payment/platform-payment.modul
 import { SupportModule } from './support/support.module';
 import { AssetsModule } from './assets/assets.module';
 import { LedgerAccountsModule } from './ledger-accounts/ledger-accounts.module';
+import { AccountingModule } from './accounting/accounting.module';
 import { LocalsModule } from './locals/locals.module';
 import { ProvidersModule } from './providers/providers.module';
 import { SalesModule } from './sales/sales.module';
@@ -86,6 +87,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
     SupportModule,
     AssetsModule,
     LedgerAccountsModule,
+    AccountingModule,
     LocalsModule,
     ProvidersModule,
     SalesModule,
