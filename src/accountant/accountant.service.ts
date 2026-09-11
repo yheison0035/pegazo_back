@@ -13,6 +13,7 @@ import { AccountingService } from '@/accounting/accounting.service';
 import { ManualEntriesService } from '@/accounting/manual-entries.service';
 import { LedgerAccountsService } from '@/ledger-accounts/ledger-accounts.service';
 import { TaxService } from '@/tax/tax.service';
+import { PartiesService } from '@/parties/parties.service';
 
 // Alfabeto sin caracteres ambiguos (0/O, 1/I) para la llave.
 const KEY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -26,6 +27,7 @@ export class AccountantService {
     private manualEntries: ManualEntriesService,
     private ledgerAccounts: LedgerAccountsService,
     private tax: TaxService,
+    private parties: PartiesService,
   ) {}
 
   private randomKey(): string {
@@ -295,5 +297,23 @@ export class AccountantService {
   async companyImport(accountantId: number, companyId: number, rows: any[]) {
     await this.assertLink(accountantId, companyId);
     return this.manualEntries.bulkImport(companyId, rows, accountantId);
+  }
+
+  // Terceros de una empresa enlazada.
+  async companyPartiesList(accountantId: number, companyId: number, query: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.parties.list(companyId, query);
+  }
+  async companyPartyCreate(accountantId: number, companyId: number, dto: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.parties.create(companyId, dto);
+  }
+  async companyPartyUpdate(accountantId: number, companyId: number, id: number, dto: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.parties.update(companyId, id, dto);
+  }
+  async companyPartyDelete(accountantId: number, companyId: number, id: number) {
+    await this.assertLink(accountantId, companyId);
+    return this.parties.remove(companyId, id);
   }
 }

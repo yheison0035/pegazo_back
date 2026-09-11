@@ -362,6 +362,7 @@ model Company {
   ledgerAccounts      LedgerAccount[]      @relation("CompanyLedgerAccounts")
   accountants         AccountantCompany[]  @relation("CompanyAccountants")
   journalEntries      JournalEntry[]       @relation("CompanyJournalEntries")
+  parties             Party[]              @relation("CompanyParties")
   cashRegisters       CashRegister[]
   purchases           Purchase[]
   quotes              Quote[]
@@ -1000,6 +1001,28 @@ model JournalEntryLine {
   entry JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
 
   @@index([entryId])
+}
+
+// Tercero contable (cliente / proveedor / empleado / otro) por empresa. Base
+// para retenciones e información exógena. Directorio propio de la contabilidad.
+model Party {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  kind      String // CLIENTE | PROVEEDOR | EMPLEADO | OTRO
+  name      String
+  docType   String? // NIT | CC | CE | PASAPORTE
+  docNumber String?
+  email     String?
+  phone     String?
+  address   String?
+  notes     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation("CompanyParties", fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, kind])
 }
 
 model InventoryImage {
