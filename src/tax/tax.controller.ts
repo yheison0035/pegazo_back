@@ -71,6 +71,14 @@ export class TaxController {
     return this.service.obligations(req.user, query);
   }
 
+  // Borrador de declaración de renta (consolidado anual + impuesto estimado).
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
+  @Get('renta')
+  renta(@Req() req, @Query() query) {
+    return this.service.rentaDraft(req.user, query);
+  }
+
   // Revisa ahora los vencimientos y crea avisos en la campana (además del cron
   // diario). Útil como botón "revisar ahora".
   @UseGuards(RolesGuard)
