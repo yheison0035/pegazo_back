@@ -75,6 +75,62 @@ export class ManualEntriesService {
     return { success: true, data };
   }
 
+  // Importación en lote: cada fila = un asiento balanceado (una cuenta al
+  // débito, otra al crédito, por el mismo valor). Valida que las cuentas
+  // existan en el PUC de la empresa; reporta errores por fila sin abortar.
+  async bulkImport(companyId: number, rows: any[], accountantId?: number) {
+    if (!Array.isArray(rows) || rows.length === 0)
+      throw new BadRequestException('El archivo no tiene filas.');
+    if (rows.length > 2000)
+      throw new BadRequestException('Máximo 2000 filas por importación.');
+
+    const accounts = await this.prisma.ledgerAccount.findMany({
+      where: { companyId },
+      select: { code: true, name: true },
+    });
+    const byCode = new Map(accounts.map((a) => [a.code, a.name]));
+
+    let created = 0;
+    const errors: { row: number; message: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i] || {};
+      const rowNo = i + 2; // fila 1 = encabezados
+      try {
+        const debCode = String(r.cuentaDebito ?? '').trim();
+        const creCode = String(r.cuentaCredito ?? '').trim();
+        const valor = Math.round(Number(r.valor) || 0);
+        if (!debCode || !creCode)
+          throw new Error('Faltan las cuentas de débito o crédito.');
+        if (!byCode.has(debCode))
+          throw new Error(`La cuenta débito ${debCode} no existe en el PUC.`);
+        if (!byCode.has(creCode))
+          throw new Error(`La cuenta crédito ${creCode} no existe en el PUC.`);
+        if (valor <= 0) throw new Error('El valor debe ser mayor a 0.');
+        if (!r.fecha) throw new Error('Falta la fecha.');
+
+        await this.create(
+          companyId,
+          {
+            date: r.fecha,
+            description: String(r.descripcion ?? '').trim() || 'Importación',
+            reference: r.referencia ? String(r.referencia).trim() : null,
+            lines: [
+              { accountCode: debCode, accountName: byCode.get(debCode), debit: valor, credit: 0 },
+              { accountCode: creCode, accountName: byCode.get(creCode), debit: 0, credit: valor },
+            ],
+          },
+          accountantId,
+        );
+        created++;
+      } catch (e: any) {
+        errors.push({ row: rowNo, message: e.message || 'Fila inválida.' });
+      }
+    }
+
+    return { success: true, data: { total: rows.length, created, errors } };
+  }
+
   async remove(companyId: number, id: number) {
     const entry = await this.prisma.journalEntry.findFirst({
       where: { id, companyId },

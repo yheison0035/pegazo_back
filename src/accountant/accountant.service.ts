@@ -286,4 +286,8 @@ export class AccountantService {
     await this.assertLink(accountantId, companyId);
     return this.manualEntries.remove(companyId, id);
   }
+  async companyImport(accountantId: number, companyId: number, rows: any[]) {
+    await this.assertLink(accountantId, companyId);
+    return this.manualEntries.bulkImport(companyId, rows, accountantId);
+  }
 }
