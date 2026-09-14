@@ -31,6 +31,7 @@ import {
   loyaltyStatus,
 } from '@/common/loyalty.util';
 import { RecipesService } from '@/recipes/recipes.service';
+import { MailService } from '@/mail/mail.service';
 
 @Injectable()
 export class SalesService {
@@ -40,6 +41,7 @@ export class SalesService {
     private audit: AuditService,
     private planLimits: PlanLimitsService,
     private recipes: RecipesService,
+    private mail: MailService,
   ) {}
 
   // Recalcula los sellos de fidelización de UN cliente desde todas sus ventas
@@ -691,11 +693,12 @@ export class SalesService {
         source: 'ECOMMERCE',
         local: { is: { companyId: user.companyId } },
       },
-      include: { shipment: true },
+      include: { shipment: true, ecommerceCustomer: true },
     });
 
     if (!order) throw new NotFoundException('Pedido no encontrado');
 
+    const prevStatus = order.shippingStatus;
     const status: ShippingStatus | undefined =
       dto.shippingStatus && ShippingStatus[dto.shippingStatus]
         ? dto.shippingStatus
@@ -754,7 +757,91 @@ export class SalesService {
       changes: { fulfillment: dto },
     });
 
+    // Correo AUTOMÁTICO al cliente cuando el estado del envío CAMBIA (tiempo
+    // real). Se envía con el correo de la empresa (SMTP propio o global) y su
+    // marca. No bloquea la respuesta ni la rompe si el correo falla.
+    if (status && status !== prevStatus && order.ecommerceCustomer?.email) {
+      this.notifyOrderStatus(user.companyId, order, status, dto).catch(() => {
+        /* el fallo de correo no debe afectar la actualización */
+      });
+    }
+
     return this.findOrderOne(id, user);
+  }
+
+  // Envía el correo de cambio de estado al cliente de la tienda online.
+  private async notifyOrderStatus(
+    companyId: number,
+    order: any,
+    status: string,
+    dto: any,
+  ) {
+    const STATUS_MSG: Record<string, { label: string; message: string }> = {
+      PENDIENTE: {
+        label: 'En preparación',
+        message:
+          'Estamos empacando tu pedido. Te avisaremos apenas salga hacia ti.',
+      },
+      ASIGNADO_TRANSPORTADORA: {
+        label: 'Despachado',
+        message: 'Tu pedido fue despachado y ya va en camino. 🚚',
+      },
+      EN_CAMINO: {
+        label: 'En camino',
+        message: 'Tu pedido va en camino y llegará muy pronto. 🛵',
+      },
+      ENTREGADO: {
+        label: 'Entregado',
+        message: '¡Tu pedido fue entregado! Gracias por tu compra. 🙏',
+      },
+      FALLIDO: {
+        label: 'No entregado',
+        message:
+          'No pudimos entregar tu pedido. Nos comunicaremos contigo para reprogramar la entrega.',
+      },
+      DEVUELTO: {
+        label: 'Devuelto',
+        message: 'Tu pedido fue registrado como devuelto. Cualquier duda, escríbenos.',
+      },
+    };
+    const info = STATUS_MSG[status];
+    if (!info) return;
+
+    const company: any = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      omit: { mailPassword: false },
+    });
+    if (!company) return;
+
+    const paid = order.paymentStatus === 'PAGADA';
+    const cod = order.paymentMethod === 'EFECTIVO';
+    const amountToPay = cod && !paid ? order.totalAmount : null;
+
+    const smtp = company.mailHost
+      ? {
+          host: company.mailHost,
+          port: company.mailPort,
+          user: company.mailUser,
+          pass: company.mailPassword,
+          fromEmail: company.mailFromEmail,
+          fromName: company.mailFromName || company.name,
+        }
+      : undefined;
+
+    await this.mail.sendOrderStatusUpdate({
+      to: order.ecommerceCustomer.email,
+      companyName: company.mailFromName || company.name || 'Tienda',
+      smtp,
+      orderCode: order.code,
+      statusLabel: info.label,
+      message: info.message,
+      brandColor: company.primaryColor,
+      carrier: dto.carrier ?? order.shipment?.carrier ?? null,
+      trackingNumber:
+        dto.trackingNumber ?? order.shipment?.trackingNumber ?? null,
+      amountToPay,
+      trackUrl: company.domain ? `https://${company.domain}` : null,
+    });
   }
 
   async findOne(id: number, user: any) {

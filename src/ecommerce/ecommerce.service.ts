@@ -721,7 +721,14 @@ export class EcommerceService {
         },
         shipment: true,
         ecommerceCustomer: {
-          select: { firstName: true, lastName: true },
+          select: {
+            firstName: true,
+            lastName: true,
+            address: true,
+            neighborhood: true,
+            city: true,
+            department: true,
+          },
         },
       },
     });
@@ -731,6 +738,35 @@ export class EcommerceService {
         'No encontramos un pedido con esos datos. Verifica el número de pedido/guía y tu cédula.',
       );
     }
+
+    // Desglose de valores para el cliente: subtotal + envío = total.
+    const subtotal =
+      sale.subtotal != null ? Number(sale.subtotal) : null;
+    const total = Number(sale.totalAmount) || 0;
+    const shippingCost = subtotal != null ? Math.max(total - subtotal, 0) : null;
+
+    // Método y estado de pago en texto claro.
+    const paymentMethodLabel =
+      sale.paymentMethod === 'EFECTIVO'
+        ? 'Contra entrega'
+        : sale.paymentMethod === 'TRANSFERENCIA'
+          ? 'Pago en línea'
+          : sale.paymentMethod;
+    const paid = sale.paymentStatus === 'PAGADA';
+    const paymentStatusLabel = paid
+      ? 'Pagado'
+      : sale.paymentMethod === 'EFECTIVO'
+        ? 'Pagas al recibir'
+        : 'Pendiente de pago';
+    // Cuánto debe pagar: contra entrega no pagado → el total al recibir; si ya
+    // pagó en línea → 0.
+    const amountToPay =
+      sale.paymentMethod === 'EFECTIVO' && !paid ? total : 0;
+
+    // Tipo de entrega (se guardó en las notas del pedido como "Entrega: X").
+    let deliveryType: string | null = null;
+    const m = /Entrega:\s*([^·]+)/.exec(sale.notes || '');
+    if (m) deliveryType = m[1].trim();
 
     return {
       success: true,
@@ -743,13 +779,27 @@ export class EcommerceService {
         shippingStatus: sale.shippingStatus,
         paymentStatus: sale.paymentStatus,
         paymentMethod: sale.paymentMethod,
-        total: sale.totalAmount,
+        paymentMethodLabel,
+        paymentStatusLabel,
+        paid,
+        deliveryType,
+        subtotal,
+        shippingCost,
+        total,
+        amountToPay,
         createdAt: sale.saleDate,
+        address: [
+          sale.ecommerceCustomer?.address,
+          sale.ecommerceCustomer?.neighborhood,
+          sale.ecommerceCustomer?.city,
+          sale.ecommerceCustomer?.department,
+        ]
+          .filter(Boolean)
+          .join(', '),
         carrier: sale.shipment?.carrier || null,
         trackingNumber: sale.shipment?.trackingNumber || null,
         shippedAt: sale.shipment?.shippedAt || null,
         deliveredAt: sale.shipment?.deliveredAt || null,
-        notes: sale.shipment?.notes || null,
         items: sale.items.map((i) => ({
           name: i.variant?.inventory?.name || 'Producto',
           quantity: i.quantity,
@@ -880,6 +930,9 @@ export class EcommerceService {
         });
       }
 
+      // Subtotal (solo productos) antes de sumar el envío: se guarda para poder
+      // mostrarle al cliente el desglose (subtotal + envío = total) al consultar.
+      const itemsSubtotal = total;
       // El costo de envío se suma al total (para que coincida con lo cobrado).
       const shippingCost = Number(dto.shippingCost) || 0;
       total += shippingCost;
@@ -951,6 +1004,7 @@ export class EcommerceService {
         data: {
           code: `${this.buildOrderPrefix(website.company?.name)}-${Date.now()}`,
           totalAmount: total,
+          subtotal: itemsSubtotal,
           notes: saleNotes,
 
           paymentMethod: dto.paymentMethod,
