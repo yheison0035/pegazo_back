@@ -54,6 +54,11 @@ export class UpdateInventoryDto {
   @IsNumber()
   salePrice?: number;
 
+  // Precio para la tienda online (si es null, la tienda usa salePrice).
+  @IsOptional()
+  @IsNumber()
+  onlinePrice?: number;
+
   @IsOptional()
   @IsInt()
   minStock?: number;

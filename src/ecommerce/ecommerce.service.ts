@@ -16,6 +16,25 @@ export class EcommerceService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Precio que ve el cliente en la TIENDA ONLINE.
+   * - price   = precio de tienda online (onlinePrice). Si el dueño no lo definió,
+   *             cae al precio de venta (salePrice) para no romper tiendas ya
+   *             activas. El salePrice es el precio de la tienda FÍSICA.
+   * - oldPrice = "precio anteriormente" (tachado), si es mayor al actual.
+   * - discount = % de descuento sobre el precio actual.
+   */
+  private priceInfo(product: any) {
+    const price =
+      product.onlinePrice != null ? product.onlinePrice : product.salePrice;
+    const oldPrice =
+      product.oldPrice && product.oldPrice > price ? product.oldPrice : null;
+    const discount = oldPrice
+      ? Math.round(((oldPrice - price) / oldPrice) * 100)
+      : 0;
+    return { price, oldPrice, discount };
+  }
+
+  /**
    * Convierte un nombre en el slug que usan las URLs de la tienda.
    * Debe dar el mismo resultado que el slug del sitemap y el del front.
    */
@@ -64,22 +83,14 @@ export class EcommerceService {
       products: category.inventories.map((product) => {
         const stock = product.variants.reduce((sum, v) => sum + v.stock, 0);
 
-        const oldPrice =
-          product.oldPrice && product.oldPrice > product.salePrice
-            ? product.oldPrice
-            : null;
-
-        const discount =
-          oldPrice && oldPrice > product.salePrice
-            ? Math.round(((oldPrice - product.salePrice) / oldPrice) * 100)
-            : 0;
+        const { price, oldPrice, discount } = this.priceInfo(product);
 
         return {
           id: product.id,
           name: product.name,
           slug: product.slug,
           description: product.description,
-          price: product.salePrice,
+          price,
           unit: product.unit ?? 'UNIDAD',
           trackStock: product.trackStock,
           oldPrice,
@@ -145,21 +156,14 @@ export class EcommerceService {
           stock: v.stock,
         }));
 
-      const oldPrice =
-        product.oldPrice && product.oldPrice > product.salePrice
-          ? product.oldPrice
-          : null;
-
-      const discount = oldPrice
-        ? Math.round(((oldPrice - product.salePrice) / oldPrice) * 100)
-        : 0;
+      const { price, oldPrice, discount } = this.priceInfo(product);
 
       return {
         id: product.id,
         name: product.name,
         slug: product.slug,
         description: product.description,
-        price: product.salePrice,
+        price,
           unit: product.unit ?? 'UNIDAD',
           trackStock: product.trackStock,
         oldPrice,
@@ -211,20 +215,13 @@ export class EcommerceService {
           .filter((v) => product.trackStock === false || v.stock > 0)
           .map((v) => ({ variantId: v.id, name: v.color, size: v.size, stock: v.stock }));
 
-        const oldPrice =
-          product.oldPrice && product.oldPrice > product.salePrice
-            ? product.oldPrice
-            : null;
-
-        const discount = oldPrice
-          ? Math.round(((oldPrice - product.salePrice) / oldPrice) * 100)
-          : 0;
+        const { price, oldPrice, discount } = this.priceInfo(product);
 
         return {
           id: product.id,
           name: product.name,
           slug: product.slug,
-          price: product.salePrice,
+          price,
           unit: product.unit ?? 'UNIDAD',
           trackStock: product.trackStock,
           oldPrice,
@@ -266,9 +263,7 @@ export class EcommerceService {
     return {
       success: true,
       data: products.map((product) => {
-        const discount = Math.round(
-          ((product.oldPrice! - product.salePrice) / product.oldPrice!) * 100,
-        );
+        const { price, oldPrice, discount } = this.priceInfo(product);
 
         const stock = product.variants.reduce((s, v) => s + v.stock, 0);
         const colors = product.variants
@@ -279,10 +274,10 @@ export class EcommerceService {
           id: product.id,
           name: product.name,
           slug: product.slug,
-          price: product.salePrice,
+          price,
           unit: product.unit ?? 'UNIDAD',
           trackStock: product.trackStock,
-          oldPrice: product.oldPrice,
+          oldPrice,
           discount,
           stock,
           colors,
@@ -448,8 +443,10 @@ export class EcommerceService {
         );
       }
 
-      minPriceFound = Math.min(minPriceFound, product.salePrice);
-      maxPriceFound = Math.max(maxPriceFound, product.salePrice);
+      const { price, oldPrice, discount } = this.priceInfo(product);
+
+      minPriceFound = Math.min(minPriceFound, price);
+      maxPriceFound = Math.max(maxPriceFound, price);
 
       const colors = product.variants
         .filter((v) => product.trackStock === false || v.stock > 0)
@@ -457,20 +454,11 @@ export class EcommerceService {
 
       const stock = colors.reduce((s, c) => s + c.stock, 0);
 
-      const oldPrice =
-        product.oldPrice && product.oldPrice > product.salePrice
-          ? product.oldPrice
-          : null;
-
-      const discount = oldPrice
-        ? Math.round(((oldPrice - product.salePrice) / oldPrice) * 100)
-        : 0;
-
       return {
         id: product.id,
         name: product.name,
         slug: product.slug,
-        price: product.salePrice,
+        price,
           unit: product.unit ?? 'UNIDAD',
           trackStock: product.trackStock,
         oldPrice,
@@ -541,14 +529,7 @@ export class EcommerceService {
       stock: v.stock,
     }));
 
-    const oldPrice =
-      product.oldPrice && product.oldPrice > product.salePrice
-        ? product.oldPrice
-        : null;
-
-    const discount = oldPrice
-      ? Math.round(((oldPrice - product.salePrice) / oldPrice) * 100)
-      : 0;
+    const { price, oldPrice, discount } = this.priceInfo(product);
 
     return {
       success: true,
@@ -557,7 +538,7 @@ export class EcommerceService {
         name: product.name,
         slug: product.slug,
         description: product.description,
-        price: product.salePrice,
+        price,
           unit: product.unit ?? 'UNIDAD',
           trackStock: product.trackStock,
         oldPrice,
@@ -634,20 +615,13 @@ export class EcommerceService {
         .filter((v) => product.trackStock === false || v.stock > 0)
         .map((v) => ({ variantId: v.id, name: v.color, size: v.size, stock: v.stock }));
 
-      const oldPrice =
-        product.oldPrice && product.oldPrice > product.salePrice
-          ? product.oldPrice
-          : null;
-
-      const discount = oldPrice
-        ? Math.round(((oldPrice - product.salePrice) / oldPrice) * 100)
-        : 0;
+      const { price, oldPrice, discount } = this.priceInfo(product);
 
       return {
         id: product.id,
         name: product.name,
         slug: product.slug,
-        price: product.salePrice,
+        price,
           unit: product.unit ?? 'UNIDAD',
           trackStock: product.trackStock,
         oldPrice,
@@ -802,7 +776,12 @@ export class EcommerceService {
           );
         }
 
-        const price = variant.inventory.salePrice;
+        // La tienda online cobra el PRECIO ONLINE (onlinePrice); si no está
+        // definido, cae al salePrice. El salePrice es el de la tienda física.
+        const price =
+          variant.inventory.onlinePrice != null
+            ? variant.inventory.onlinePrice
+            : variant.inventory.salePrice;
         const subtotal = price * item.quantity;
         total += subtotal;
 

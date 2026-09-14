@@ -723,6 +723,9 @@ model Inventory {
   purchasePrice      Float
   oldPrice           Float?
   salePrice          Float
+  // Precio para la TIENDA ONLINE. Si es null, la tienda usa salePrice. El
+  // salePrice queda como precio de la tienda FÍSICA (POS).
+  onlinePrice        Float?
   taxRate            Decimal @default(0) @db.Decimal(5, 2)
   status             Status  @default(ACTIVO)
   barcode            String? @unique

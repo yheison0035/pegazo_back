@@ -44,6 +44,11 @@ export class CreateInventoryDto {
   @IsNumber()
   salePrice: number;
 
+  // Precio para la tienda online (si no se envía, la tienda usa salePrice).
+  @IsOptional()
+  @IsNumber()
+  onlinePrice?: number;
+
   @IsOptional()
   @IsNumber()
   minStock?: number;
