@@ -695,6 +695,33 @@ export class InventoryService {
         variants.push(updated);
       }
 
+      // Características y especificaciones (para la ficha/PDP).
+      if (Array.isArray(dto.features) && dto.features.length) {
+        await tx.inventoryFeature.createMany({
+          data: dto.features
+            .filter((f) => f.title?.trim())
+            .map((f, i) => ({
+              inventoryId: product.id,
+              title: f.title.trim(),
+              order: f.order ?? i,
+              visible: f.visible !== false,
+            })),
+        });
+      }
+      if (Array.isArray(dto.specifications) && dto.specifications.length) {
+        await tx.inventorySpecification.createMany({
+          data: dto.specifications
+            .filter((s) => s.key?.trim() && s.value?.trim())
+            .map((s, i) => ({
+              inventoryId: product.id,
+              key: s.key.trim(),
+              value: s.value.trim(),
+              order: s.order ?? i,
+              visible: s.visible !== false,
+            })),
+        });
+      }
+
       return {
         success: true,
         message: 'Producto creado correctamente',
@@ -784,6 +811,38 @@ export class InventoryService {
       await this.variantsService.syncVariants(id, dto.variants, user, {
         allowDecrease,
       });
+    }
+
+    // Características / especificaciones: se sincroniza reemplazando (maneja
+    // crear, editar y eliminar por ítem en una sola operación). Solo si vienen
+    // en el DTO (undefined = no tocar).
+    if (Array.isArray(dto.features)) {
+      await this.prisma.inventoryFeature.deleteMany({ where: { inventoryId: id } });
+      const rows = dto.features
+        .filter((f) => f.title?.trim())
+        .map((f, i) => ({
+          inventoryId: id,
+          title: f.title.trim(),
+          order: f.order ?? i,
+          visible: f.visible !== false,
+        }));
+      if (rows.length) await this.prisma.inventoryFeature.createMany({ data: rows });
+    }
+    if (Array.isArray(dto.specifications)) {
+      await this.prisma.inventorySpecification.deleteMany({
+        where: { inventoryId: id },
+      });
+      const rows = dto.specifications
+        .filter((s) => s.key?.trim() && s.value?.trim())
+        .map((s, i) => ({
+          inventoryId: id,
+          key: s.key.trim(),
+          value: s.value.trim(),
+          order: s.order ?? i,
+          visible: s.visible !== false,
+        }));
+      if (rows.length)
+        await this.prisma.inventorySpecification.createMany({ data: rows });
     }
 
     const changes = this.audit.diff(before, dto, [
