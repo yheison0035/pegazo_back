@@ -336,6 +336,14 @@ model Company {
   heroTitle      String?
   heroSubtitle   String?
 
+  // Métodos de pago que el dueño acepta en SU tienda online. Códigos:
+  //   COD    = pago contra entrega
+  //   ONLINE = pago en línea (pasarela Wompi conectada por la empresa)
+  //   ADDI   = financiación ADDI (requiere integración; aún no operativa)
+  // Vacío = comportamiento legado (contra entrega + online si hay Wompi), para
+  // no afectar las tiendas ya activas. El dueño lo configura en el CRM.
+  storePaymentMethods String[] @default([])
+
   // Pasarela de pagos PROPIA de la tienda online (Wompi por empresa). Cada
   // negocio conecta su cuenta Wompi y el dinero cae en SU banco; Pegazo no lo
   // toca. La llave pública se expone a la tienda; los secretos se OMITEN
