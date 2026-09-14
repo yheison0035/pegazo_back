@@ -91,6 +91,19 @@ export class CompanySettingsController {
     return this.service.updateStorePayments(req.user, dto);
   }
 
+  // Envíos de la tienda online (métodos y tarifas).
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Get('store-shipping')
+  getStoreShipping(@Req() req) {
+    return this.service.getStoreShipping(req.user);
+  }
+
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Patch('store-shipping')
+  updateStoreShipping(@Body() dto: any, @Req() req) {
+    return this.service.updateStoreShipping(req.user, dto);
+  }
+
   @Roles('SUPER_ADMIN', 'ADMIN')
   @Get('wompi')
   getWompi(@Req() req) {

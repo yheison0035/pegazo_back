@@ -142,6 +142,50 @@ export class CompaniesService {
     return { success: true, data: c };
   }
 
+  // Envíos de la tienda online (métodos on/off + tarifa fija + gratis desde X).
+  async getStoreShipping(user: any) {
+    const c = await this.prisma.company.findUnique({
+      where: { id: user.companyId },
+      select: { storeShipping: true },
+    });
+    return { success: true, data: { storeShipping: c?.storeShipping || null } };
+  }
+
+  async updateStoreShipping(user: any, dto: any) {
+    const src = dto?.storeShipping || {};
+    const num = (v: any) => {
+      const n = Math.round(Number(v));
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    };
+    const numOrNull = (v: any) => {
+      if (v === '' || v == null) return null;
+      const n = Math.round(Number(v));
+      return Number.isFinite(n) && n >= 0 ? n : null;
+    };
+    // Solo métodos conocidos; con-tarifa (shipping/local_delivery) vs solo-toggle.
+    const withFee = ['shipping', 'local_delivery'];
+    const toggleOnly = ['pickup', 'dine_in'];
+    const out: any = {};
+    for (const k of withFee) {
+      const m = src[k] || {};
+      out[k] = {
+        enabled: !!m.enabled,
+        fee: num(m.fee),
+        freeFrom: numOrNull(m.freeFrom),
+      };
+    }
+    for (const k of toggleOnly) {
+      const m = src[k] || {};
+      out[k] = { enabled: !!m.enabled };
+    }
+    const c = await this.prisma.company.update({
+      where: { id: user.companyId },
+      data: { storeShipping: out },
+      select: { storeShipping: true },
+    });
+    return { success: true, data: c };
+  }
+
   async getWompiConfig(user: any) {
     const c: any = await this.prisma.company.findUnique({
       where: { id: user.companyId },
