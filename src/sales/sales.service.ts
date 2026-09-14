@@ -723,11 +723,20 @@ export class SalesService {
           ? now
           : undefined;
 
+    // Al marcar ENTREGADO, el pedido queda PAGADO automáticamente (el cliente
+    // pagó al recibir, en contra entrega; los online ya venían PAGADA). Todo lo
+    // decide el backend; el front solo refleja lo que devuelve.
+    const markPaidOnDelivery =
+      status === 'ENTREGADO' && order.paymentStatus !== 'PAGADA';
+
     await this.prisma.$transaction(async (tx) => {
       if (status) {
         await tx.sale.update({
           where: { id },
-          data: { shippingStatus: status },
+          data: {
+            shippingStatus: status,
+            ...(markPaidOnDelivery && { paymentStatus: 'PAGADA' as any }),
+          },
         });
       }
 
@@ -813,7 +822,8 @@ export class SalesService {
     });
     if (!company) return;
 
-    const paid = order.paymentStatus === 'PAGADA';
+    // Al entregar queda pagado, así que ese correo ya no muestra "por pagar".
+    const paid = order.paymentStatus === 'PAGADA' || status === 'ENTREGADO';
     const cod = order.paymentMethod === 'EFECTIVO';
     const amountToPay = cod && !paid ? order.totalAmount : null;
 
