@@ -349,13 +349,15 @@ export class EcommerceService {
     };
 
     /** CATEGORY */
+    let categoryInfo: { name: string; description: string | null } | null = null;
+
     if (mode === 'category' && categorySlug) {
       // El slug de la URL se compara contra el slug del nombre de la categoría.
       // (Antes se hacía `replace('-', ' ')`, que solo cambia el PRIMER guion y
       // dejaba sin productos a toda categoría de tres o más palabras.)
       const categories = await this.prisma.category.findMany({
         where: { localId, status: 'ACTIVO' },
-        select: { id: true, name: true },
+        select: { id: true, name: true, description: true },
       });
 
       const target = this.slugify(categorySlug);
@@ -363,6 +365,13 @@ export class EcommerceService {
       const category = categories.find(
         (item) => this.slugify(item.name) === target,
       );
+
+      if (category) {
+        categoryInfo = {
+          name: category.name,
+          description: category.description ?? null,
+        };
+      }
 
       if (!category) {
         return {
@@ -499,6 +508,7 @@ export class EcommerceService {
       total: data.length,
       data,
       filters,
+      category: categoryInfo,
     };
   }
 
