@@ -206,6 +206,28 @@ export class TaxService {
     return { success: true, data: row };
   }
 
+  // ---------- Avisos de vencimientos: preferencias ----------
+  async getAlertPrefs(user: any) {
+    const c = await this.prisma.company.findUnique({
+      where: { id: user.companyId },
+      select: { taxAlertsEnabled: true, taxAlertEmail: true },
+    });
+    return { success: true, data: c };
+  }
+
+  async updateAlertPrefs(user: any, dto: any) {
+    const data: any = {};
+    if (dto.taxAlertsEnabled !== undefined)
+      data.taxAlertsEnabled = !!dto.taxAlertsEnabled;
+    if (dto.taxAlertEmail !== undefined) data.taxAlertEmail = !!dto.taxAlertEmail;
+    const c = await this.prisma.company.update({
+      where: { id: user.companyId },
+      data,
+      select: { taxAlertsEnabled: true, taxAlertEmail: true },
+    });
+    return { success: true, data: c };
+  }
+
   // ---------- Obligaciones DIAN (motor de la API fiscal) ----------
   async obligations(user: any, query: any = {}) {
     const year = Number(query?.year) || new Date().getUTCFullYear();

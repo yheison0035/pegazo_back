@@ -79,6 +79,21 @@ export class TaxController {
     return this.service.rentaDraft(req.user, query);
   }
 
+  // Preferencias de avisos (campana / correo), editables por dueño o contador.
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
+  @Get('alert-prefs')
+  getAlertPrefs(@Req() req) {
+    return this.service.getAlertPrefs(req.user);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
+  @Patch('alert-prefs')
+  updateAlertPrefs(@Req() req, @Body() dto) {
+    return this.service.updateAlertPrefs(req.user, dto);
+  }
+
   // Revisa ahora los vencimientos y crea avisos en la campana (además del cron
   // diario). Útil como botón "revisar ahora".
   @UseGuards(RolesGuard)

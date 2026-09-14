@@ -41,7 +41,7 @@ export class TaxAlertsService {
   async notifyTaxDeadlines() {
     try {
       const companies = await this.prisma.company.findMany({
-        where: { accountingEnabled: true },
+        where: { accountingEnabled: true, taxAlertsEnabled: true },
         select: { id: true },
       });
       for (const c of companies) {
@@ -73,6 +73,13 @@ export class TaxAlertsService {
 
   private async notifyOne(companyId: number): Promise<number> {
     let created = 0;
+    // Respeta los interruptores de la empresa (dueño/contador).
+    const prefs = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { taxAlertsEnabled: true, taxAlertEmail: true },
+    });
+    if (prefs && prefs.taxAlertsEnabled === false) return 0;
+    const emailOn = prefs?.taxAlertEmail === true;
     const cal = await this.tax.buildCalendar(companyId, {});
     const relevant = (cal.deadlines || []).filter(
       (d: any) =>
@@ -131,8 +138,9 @@ export class TaxAlertsService {
     }
 
     // Correo (E2b): un solo mensaje con los avisos NUEVOS, a dueño/admins y
-    // contadores enlazados. Respeta el dedupe (solo si hubo avisos nuevos).
-    if (newItems.length) await this.emailAlerts(companyId, newItems);
+    // contadores enlazados. Solo si la empresa activó el correo (opt-in) y hubo
+    // avisos nuevos.
+    if (emailOn && newItems.length) await this.emailAlerts(companyId, newItems);
 
     return created;
   }

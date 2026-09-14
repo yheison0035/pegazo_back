@@ -163,6 +163,21 @@ export class AccountantController {
     return this.service.companyRenta(req.user.id, companyId, q);
   }
 
+  // ----- Preferencias de avisos de vencimientos -----
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Get('companies/:companyId/alert-prefs')
+  cGetAlertPrefs(@Req() req, @Param('companyId', ParseIntPipe) companyId: number) {
+    return this.service.companyGetAlertPrefs(req.user.id, companyId);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Patch('companies/:companyId/alert-prefs')
+  cUpdateAlertPrefs(@Req() req, @Param('companyId', ParseIntPipe) companyId: number, @Body() dto) {
+    return this.service.companyUpdateAlertPrefs(req.user.id, companyId, dto);
+  }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ACCOUNTANT')
   @Get('companies/:companyId/entries')
