@@ -127,6 +127,7 @@ export class EcommerceService {
       },
       include: {
         category: true,
+        brand: true,
         images: { orderBy: { position: 'asc' } },
         variants: true,
         features: { orderBy: { order: 'asc' } },
@@ -164,7 +165,9 @@ export class EcommerceService {
         oldPrice,
         discount,
         colors,
+        brand: product.brand?.name ?? null,
         image: product.images[0]?.url ?? null,
+        images: product.images.map((img) => img.url),
         category: product.category
           ? product.category.name
               .toLowerCase()
@@ -226,6 +229,7 @@ export class EcommerceService {
           brand: product.brand?.name ?? null,
           category: product.category?.name ?? null,
           image: product.images[0]?.url ?? null,
+          images: product.images.map((img) => img.url),
         };
       }),
     };
@@ -461,6 +465,7 @@ export class EcommerceService {
         brand: product.brand?.name ?? null,
         category: product.category?.name ?? null,
         image: product.images[0]?.url ?? null,
+        images: product.images.map((img) => img.url),
       };
     });
 
