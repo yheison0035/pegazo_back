@@ -255,17 +255,10 @@ export class CompaniesService {
         ? data.wompiEventsSecret
         : current?.wompiEventsSecret;
 
-    if (dto.wompiEnabled !== undefined) {
-      if (
-        dto.wompiEnabled &&
-        (!finalPublic || !finalIntegrity || !finalEvents)
-      ) {
-        throw new BadRequestException(
-          'Para activar los pagos necesitas la llave pública, el secreto de integridad y el secreto de eventos de Wompi.',
-        );
-      }
-      data.wompiEnabled = dto.wompiEnabled;
-    }
+    // Ya no hay un "activar" manual: la tienda queda conectada a pagos en línea
+    // automáticamente en cuanto la cuenta Wompi está completa (llave pública +
+    // secreto de integridad + secreto de eventos). Si falta alguno, se apaga.
+    data.wompiEnabled = !!(finalPublic && finalIntegrity && finalEvents);
 
     await this.prisma.company.update({
       where: { id: user.companyId },
