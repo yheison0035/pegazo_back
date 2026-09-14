@@ -207,6 +207,10 @@ export class EcommerceService {
       data: products.map((product) => {
         const stock = product.variants.reduce((s, v) => s + v.stock, 0);
 
+        const colors = product.variants
+          .filter((v) => product.trackStock === false || v.stock > 0)
+          .map((v) => ({ variantId: v.id, name: v.color, size: v.size, stock: v.stock }));
+
         const oldPrice =
           product.oldPrice && product.oldPrice > product.salePrice
             ? product.oldPrice
@@ -226,6 +230,7 @@ export class EcommerceService {
           oldPrice,
           discount,
           stock,
+          colors,
           brand: product.brand?.name ?? null,
           category: product.category?.name ?? null,
           image: product.images[0]?.url ?? null,
@@ -253,6 +258,7 @@ export class EcommerceService {
       include: {
         images: { orderBy: { position: 'asc' } },
         variants: true,
+        brand: true,
         category: true,
       },
     });
@@ -264,6 +270,11 @@ export class EcommerceService {
           ((product.oldPrice! - product.salePrice) / product.oldPrice!) * 100,
         );
 
+        const stock = product.variants.reduce((s, v) => s + v.stock, 0);
+        const colors = product.variants
+          .filter((v) => product.trackStock === false || v.stock > 0)
+          .map((v) => ({ variantId: v.id, name: v.color, size: v.size, stock: v.stock }));
+
         return {
           id: product.id,
           name: product.name,
@@ -273,8 +284,12 @@ export class EcommerceService {
           trackStock: product.trackStock,
           oldPrice: product.oldPrice,
           discount,
+          stock,
+          colors,
+          brand: product.brand?.name ?? null,
           category: product.category?.name ?? null,
           image: product.images[0]?.url ?? null,
+          images: product.images.map((img) => img.url),
         };
       }),
     };
@@ -613,6 +628,10 @@ export class EcommerceService {
     const data = products.map((product) => {
       const stock = product.variants.reduce((sum, v) => sum + v.stock, 0);
 
+      const colors = product.variants
+        .filter((v) => product.trackStock === false || v.stock > 0)
+        .map((v) => ({ variantId: v.id, name: v.color, size: v.size, stock: v.stock }));
+
       const oldPrice =
         product.oldPrice && product.oldPrice > product.salePrice
           ? product.oldPrice
@@ -632,9 +651,11 @@ export class EcommerceService {
         oldPrice,
         discount,
         stock,
+        colors,
         brand: product.brand?.name ?? null,
         category: product.category?.name ?? null,
         image: product.images[0]?.url ?? null,
+        images: product.images.map((img) => img.url),
       };
     });
 
