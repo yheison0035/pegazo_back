@@ -608,6 +608,75 @@ export class SalesService {
 
   // Actualiza el cumplimiento del pedido: estado de envío + datos de la guía
   // (transportadora, número, fechas). Crea el Shipment si no existe.
+  // Cancela un pedido de la tienda y devuelve el stock SOLO si realmente se había
+  // descontado (contra entrega, o pago en línea ya PAGADO). Los pedidos online
+  // sin confirmar (EN_VALIDACION) nunca descontaron, así que no se restaura.
+  // Conserva el registro (queda CANCELADA) a diferencia de eliminar.
+  async cancelOrder(id: number, user: any) {
+    const sale = await this.prisma.sale.findFirst({
+      where: {
+        id,
+        source: 'ECOMMERCE',
+        local: { is: { companyId: user.companyId } },
+      },
+      include: { items: true },
+    });
+    if (!sale) throw new NotFoundException('Pedido no encontrado');
+    if (sale.saleStatus === 'CANCELADA') {
+      return { success: true, message: 'El pedido ya estaba cancelado' };
+    }
+
+    const stockWasTaken =
+      sale.paymentMethod === 'EFECTIVO' || sale.paymentStatus === 'PAGADA';
+
+    return this.prisma.$transaction(async (tx) => {
+      if (stockWasTaken) {
+        for (const item of sale.items) {
+          if (item.inventoryVariantId) {
+            await this.stockService.increment(
+              item.inventoryVariantId,
+              item.quantity,
+              tx,
+            );
+          }
+        }
+      }
+
+      // Caja: quita el ingreso automático para que el arqueo baje al instante.
+      await tx.cashMovement.deleteMany({ where: { saleId: id } });
+
+      await tx.sale.update({
+        where: { id },
+        data: {
+          saleStatus: 'CANCELADA',
+          paymentStatus:
+            sale.paymentStatus === 'PAGADA' ? 'REEMBOLSADO' : 'ANULADO',
+        },
+      });
+
+      await this.recomputeLoyaltyForCustomer(
+        tx,
+        user.companyId,
+        sale.customerId,
+      );
+
+      await this.audit.log({
+        entity: 'sale',
+        entityId: id,
+        action: 'UPDATE',
+        user,
+        changes: { cancel: true, stockRestored: stockWasTaken },
+      });
+
+      return {
+        success: true,
+        message: stockWasTaken
+          ? 'Pedido cancelado y stock devuelto'
+          : 'Pedido cancelado',
+      };
+    });
+  }
+
   async updateOrderFulfillment(id: number, user: any, dto: any) {
     const order = await this.prisma.sale.findFirst({
       where: {
