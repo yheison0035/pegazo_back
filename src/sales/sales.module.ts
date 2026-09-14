@@ -5,11 +5,12 @@ import { PrismaService } from '@/prisma.service';
 import { InventoryModule } from '@/inventory/inventory.module';
 import { PlanLimitsModule } from '@/common/plan-limits.module';
 import { RecipesModule } from '@/recipes/recipes.module';
+import { MailService } from '@/mail/mail.service';
 
 @Module({
   imports: [InventoryModule, PlanLimitsModule, RecipesModule],
   controllers: [SalesController],
-  providers: [SalesService, PrismaService],
+  providers: [SalesService, PrismaService, MailService],
   exports: [SalesService],
 })
 export class SalesModule {}

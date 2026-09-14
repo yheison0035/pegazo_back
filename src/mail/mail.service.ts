@@ -408,6 +408,98 @@ export class MailService {
     return { ok: true, via: usingOwn ? 'smtp-empresa' : 'smtp-global' };
   }
 
+  // Aviso al CLIENTE del cambio de estado de su pedido, con la marca de la
+  // empresa (nombre y color). Email-safe (tablas + estilos en línea).
+  async sendOrderStatusUpdate(opts: {
+    to: string;
+    companyName: string;
+    smtp?: SmtpConfig;
+    orderCode: string;
+    statusLabel: string;
+    message: string;
+    brandColor?: string | null;
+    carrier?: string | null;
+    trackingNumber?: string | null;
+    amountToPay?: number | null;
+    trackUrl?: string | null;
+  }): Promise<{ ok: boolean; via: string }> {
+    const {
+      to,
+      companyName,
+      smtp,
+      orderCode,
+      statusLabel,
+      message,
+      carrier,
+      trackingNumber,
+      amountToPay,
+      trackUrl,
+    } = opts;
+    const color = opts.brandColor || '#111827';
+    const subject = `Tu pedido ${orderCode}: ${statusLabel}`;
+    const money = (n) =>
+      typeof n === 'number' ? `$${n.toLocaleString('es-CO')}` : '';
+
+    const rows: string[][] = [
+      ['Pedido', orderCode],
+      ['Estado', statusLabel],
+      carrier ? ['Transportadora', carrier] : null,
+      trackingNumber ? ['Guía', trackingNumber] : null,
+      amountToPay ? ['Por pagar', money(amountToPay)] : null,
+    ].filter(Boolean) as string[][];
+
+    const html = `
+    <div style="background:#f4f4f5;padding:24px 0;font-family:Arial,Helvetica,sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+        <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #eee;">
+          <tr><td style="background:${color};padding:22px 28px;color:#fff;">
+            <div style="font-size:14px;opacity:.85;">${this.safeName(companyName)}</div>
+            <div style="font-size:20px;font-weight:bold;margin-top:2px;">Actualización de tu pedido</div>
+          </td></tr>
+          <tr><td style="padding:28px;">
+            <p style="margin:0 0 6px;font-size:16px;color:#111;">${statusLabel}</p>
+            <p style="margin:0 0 18px;font-size:14px;color:#555;line-height:1.5;">${message}</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#333;">
+              ${rows
+                .map(
+                  ([k, v]) =>
+                    `<tr><td style="padding:6px 0;color:#888;">${k}</td><td style="padding:6px 0;text-align:right;font-weight:bold;">${v}</td></tr>`,
+                )
+                .join('')}
+            </table>
+            ${
+              trackUrl
+                ? `<div style="margin-top:22px;text-align:center;"><a href="${trackUrl}" style="display:inline-block;background:${color};color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:bold;font-size:14px;">Ver mi pedido</a></div>`
+                : ''
+            }
+          </td></tr>
+          <tr><td style="padding:16px 28px;background:#fafafa;color:#999;font-size:12px;text-align:center;">
+            Este correo fue enviado por ${this.safeName(companyName)}.
+          </td></tr>
+        </table>
+      </td></tr></table>
+    </div>`;
+
+    if (!smtp?.host && this.resendEnabled()) {
+      await this.sendViaResend({ to, subject, html, fromName: companyName });
+      return { ok: true, via: 'resend' };
+    }
+    if (!smtp?.host && this.brevoEnabled()) {
+      await this.sendViaBrevo({ to, subject, html, fromName: companyName });
+      return { ok: true, via: 'brevo' };
+    }
+    const resolved = this.resolveTransporter(smtp);
+    if (!resolved) {
+      throw new Error('No hay correo configurado para avisar al cliente.');
+    }
+    const usingOwn = !!smtp?.host;
+    const from = usingOwn
+      ? resolved.from
+      : `"${this.safeName(companyName)}" <${resolved.from}>`;
+    await resolved.tx.sendMail({ from, to, subject, html });
+    return { ok: true, via: usingOwn ? 'smtp-empresa' : 'smtp-global' };
+  }
+
   // Correo de restablecimiento para el CLIENTE de la tienda online, con la marca
   // de la empresa dueña del dominio (logo, nombre y color). Diseño email-safe
   // (tablas + estilos en línea) para que se vea bien en todos los clientes.
