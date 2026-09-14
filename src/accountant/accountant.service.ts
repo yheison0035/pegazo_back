@@ -322,6 +322,15 @@ export class AccountantService {
     await this.assertLink(accountantId, companyId);
     return this.tax.rentaDraft(this.ctx(companyId), query);
   }
+  // Preferencias de avisos de vencimientos (campana / correo).
+  async companyGetAlertPrefs(accountantId: number, companyId: number) {
+    await this.assertLink(accountantId, companyId);
+    return this.tax.getAlertPrefs(this.ctx(companyId));
+  }
+  async companyUpdateAlertPrefs(accountantId: number, companyId: number, dto: any) {
+    await this.assertLink(accountantId, companyId);
+    return this.tax.updateAlertPrefs(this.ctx(companyId), dto);
+  }
   // Cierre de periodo: fija (o reabre con null) la fecha "cerrado hasta".
   async companySetClose(accountantId: number, companyId: number, date: any) {
     await this.assertLink(accountantId, companyId);

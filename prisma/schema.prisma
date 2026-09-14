@@ -263,6 +263,12 @@ model Company {
   // está en Pegazo (sin POS). Sus libros se llevan con asientos manuales.
   accountingOnly Boolean @default(false)
 
+  // Avisos de vencimientos tributarios (cron diario). taxAlertsEnabled controla
+  // la campana; taxAlertEmail además envía correo (OPT-IN, apagado por defecto
+  // para no sorprender). Los administra el dueño o el contador.
+  taxAlertsEnabled Boolean @default(true)
+  taxAlertEmail    Boolean @default(false)
+
   // Configuración fiscal (facturación con impuestos / electrónica DIAN).
   responsableIVA     Boolean @default(false)
   preciosIncluyenIVA Boolean @default(false)
