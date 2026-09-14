@@ -523,8 +523,10 @@ export class EcommerceService {
       include: {
         images: { orderBy: { position: 'asc' } },
         variants: true,
-        features: { orderBy: { order: 'asc' } },
-        specifications: { orderBy: { order: 'asc' } },
+        // En la tienda solo se muestran las características/especificaciones
+        // marcadas como visibles (se pueden ocultar sin borrarlas).
+        features: { where: { visible: true }, orderBy: { order: 'asc' } },
+        specifications: { where: { visible: true }, orderBy: { order: 'asc' } },
       },
     });
 

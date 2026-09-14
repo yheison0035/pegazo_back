@@ -1091,10 +1091,11 @@ model InventoryImage {
 }
 
 model InventoryFeature {
-  id          Int    @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   title       String
   inventoryId Int
-  order       Int    @default(0)
+  order       Int     @default(0)
+  visible     Boolean @default(true) // se puede ocultar en la tienda sin borrarla
 
   inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
 
@@ -1102,11 +1103,12 @@ model InventoryFeature {
 }
 
 model InventorySpecification {
-  id          Int    @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   key         String
   value       String
   inventoryId Int
-  order       Int    @default(0)
+  order       Int     @default(0)
+  visible     Boolean @default(true) // se puede ocultar en la tienda sin borrarla
 
   inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
 

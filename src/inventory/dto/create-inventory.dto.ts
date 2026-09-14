@@ -110,6 +110,10 @@ class FeatureDto {
   @IsOptional()
   @IsNumber()
   order?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  visible?: boolean;
 }
 
 class SpecificationDto {
@@ -122,4 +126,8 @@ class SpecificationDto {
   @IsOptional()
   @IsNumber()
   order?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  visible?: boolean;
 }
