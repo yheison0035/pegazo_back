@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
 import { CreateEcommerceOrderDto } from './dto/create-ecommerce-order.dto';
 import { PaymentMethod } from '@prisma/client';
@@ -686,6 +690,72 @@ export class EcommerceService {
       .replace(/[^A-Z]/g, '');
 
     return letters.slice(0, 3) || 'WEB';
+  }
+
+  // Consulta pública del estado de un pedido para el CLIENTE. Seguro: exige DOS
+  // datos que coincidan en el MISMO pedido — número de pedido o guía + la cédula
+  // — y está escopado a la empresa del dominio. No expone pedidos con pago en
+  // línea sin confirmar. No revela qué dato falló (mensaje genérico).
+  async trackOrder(website: WebsiteContext, ref?: string, document?: string) {
+    const r = (ref || '').trim();
+    const doc = (document || '').replace(/\D/g, '').trim();
+
+    if (!r || !doc) {
+      throw new BadRequestException(
+        'Ingresa el número de pedido (o guía) y tu número de cédula.',
+      );
+    }
+
+    const sale = await this.prisma.sale.findFirst({
+      where: {
+        source: 'ECOMMERCE',
+        local: { is: { companyId: website.companyId } },
+        // Nunca mostrar pedidos con pago en línea sin confirmar.
+        paymentStatus: { not: 'EN_VALIDACION' as any },
+        ecommerceCustomer: { is: { documentNumber: doc } },
+        OR: [{ code: r }, { shipment: { is: { trackingNumber: r } } }],
+      },
+      include: {
+        items: {
+          include: { variant: { include: { inventory: true } } },
+        },
+        shipment: true,
+        ecommerceCustomer: {
+          select: { firstName: true, lastName: true },
+        },
+      },
+    });
+
+    if (!sale) {
+      throw new NotFoundException(
+        'No encontramos un pedido con esos datos. Verifica el número de pedido/guía y tu cédula.',
+      );
+    }
+
+    return {
+      success: true,
+      data: {
+        code: sale.code,
+        customerName: `${sale.ecommerceCustomer?.firstName || ''} ${
+          sale.ecommerceCustomer?.lastName || ''
+        }`.trim(),
+        saleStatus: sale.saleStatus,
+        shippingStatus: sale.shippingStatus,
+        paymentStatus: sale.paymentStatus,
+        paymentMethod: sale.paymentMethod,
+        total: sale.totalAmount,
+        createdAt: sale.saleDate,
+        carrier: sale.shipment?.carrier || null,
+        trackingNumber: sale.shipment?.trackingNumber || null,
+        shippedAt: sale.shipment?.shippedAt || null,
+        deliveredAt: sale.shipment?.deliveredAt || null,
+        notes: sale.shipment?.notes || null,
+        items: sale.items.map((i) => ({
+          name: i.variant?.inventory?.name || 'Producto',
+          quantity: i.quantity,
+        })),
+      },
+    };
   }
 
   async createOrder(

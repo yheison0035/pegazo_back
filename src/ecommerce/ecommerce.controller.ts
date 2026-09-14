@@ -83,6 +83,17 @@ export class EcommerceController {
 
   @Public()
   @UseGuards(WebsiteGuard)
+  @Get('order/track')
+  trackOrder(@Query() query: any, @Website() website: WebsiteContext) {
+    return this.ecommerceService.trackOrder(
+      website,
+      query.ref,
+      query.document,
+    );
+  }
+
+  @Public()
+  @UseGuards(WebsiteGuard)
   @Get('product/:slug')
   getProduct(@Param('slug') slug: string, @Website() website: WebsiteContext) {
     return this.ecommerceService.getProductBySlug(slug, website);
