@@ -114,6 +114,34 @@ export class CompaniesService {
 
   // Pasarela Wompi PROPIA de la tienda del negocio. Devuelve la llave pública y
   // banderas de si los secretos están puestos (nunca los secretos en sí).
+  // Métodos de pago que el dueño acepta en su tienda online (COD/ONLINE/ADDI).
+  async getStorePayments(user: any) {
+    const c = await this.prisma.company.findUnique({
+      where: { id: user.companyId },
+      select: { storePaymentMethods: true, wompiEnabled: true, wompiPublicKey: true },
+    });
+    return {
+      success: true,
+      data: {
+        storePaymentMethods: c?.storePaymentMethods || [],
+        wompiReady: !!(c?.wompiEnabled && c?.wompiPublicKey),
+      },
+    };
+  }
+
+  async updateStorePayments(user: any, dto: any) {
+    const ALLOWED = ['COD', 'ONLINE', 'ADDI'];
+    const methods = Array.isArray(dto?.storePaymentMethods)
+      ? [...new Set(dto.storePaymentMethods)].filter((m) => ALLOWED.includes(m as string))
+      : [];
+    const c = await this.prisma.company.update({
+      where: { id: user.companyId },
+      data: { storePaymentMethods: methods as string[] },
+      select: { storePaymentMethods: true },
+    });
+    return { success: true, data: c };
+  }
+
   async getWompiConfig(user: any) {
     const c: any = await this.prisma.company.findUnique({
       where: { id: user.companyId },

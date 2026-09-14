@@ -78,6 +78,19 @@ export class CompanySettingsController {
   }
 
   // Pasarela de pagos propia de la tienda (Wompi por empresa).
+  // Métodos de pago aceptados en la tienda online (COD/ONLINE/ADDI).
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Get('store-payments')
+  getStorePayments(@Req() req) {
+    return this.service.getStorePayments(req.user);
+  }
+
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Patch('store-payments')
+  updateStorePayments(@Body() dto: any, @Req() req) {
+    return this.service.updateStorePayments(req.user, dto);
+  }
+
   @Roles('SUPER_ADMIN', 'ADMIN')
   @Get('wompi')
   getWompi(@Req() req) {
