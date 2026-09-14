@@ -74,6 +74,12 @@ export class SalesController {
     return this.salesService.updateOrderFulfillment(id, req.user, dto);
   }
 
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'VENTAS', 'CAJA')
+  @Patch('orders/:id/cancel')
+  cancelOrder(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.salesService.cancelOrder(id, req.user);
+  }
+
   // ---- CARTERA / FIADO (antes de :id) ----
   @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA')
   @Get('receivables/list')
