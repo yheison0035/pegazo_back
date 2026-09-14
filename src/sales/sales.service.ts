@@ -267,6 +267,13 @@ export class SalesService {
 
     if (query.paymentStatus) {
       where.paymentStatus = query.paymentStatus;
+    } else {
+      // Ocultar pedidos de la tienda online con pago NO confirmado
+      // (EN_VALIDACION): no son ventas reales hasta que el pago se confirme.
+      where.NOT = [
+        ...(where.NOT || []),
+        { source: 'ECOMMERCE', paymentStatus: 'EN_VALIDACION' },
+      ];
     }
 
     if (query.totalAmount) {

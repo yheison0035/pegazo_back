@@ -412,7 +412,13 @@ export class StatisticsService {
         this.prisma.service.count({
           where: { companyId, status: 'ACTIVO' as any },
         }),
-        this.prisma.sale.count({ where: { local: { companyId } } }),
+        this.prisma.sale.count({
+          where: {
+            local: { companyId },
+            // No contar pedidos online con pago sin confirmar (EN_VALIDACION).
+            NOT: { source: 'ECOMMERCE', paymentStatus: 'EN_VALIDACION' as any },
+          },
+        }),
       ]);
 
     // Config de la empresa para adaptar los bloques por vertical.
