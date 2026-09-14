@@ -1654,14 +1654,24 @@ export class SalesService {
 
     if (!local) throw new ForbiddenException('No tienes permiso');
 
+    // Restaurar stock SOLO si realmente se había descontado. Un pedido de la
+    // tienda online con pago en línea SIN confirmar (EN_VALIDACION) nunca
+    // descontó stock, así que eliminarlo no debe inflar el inventario.
+    const stockNeverTaken =
+      sale.source === 'ECOMMERCE' &&
+      sale.paymentMethod === 'TRANSFERENCIA' &&
+      sale.paymentStatus !== 'PAGADA';
+
     return this.prisma.$transaction(async (tx) => {
-      for (const item of sale.items) {
-        if (item.inventoryVariantId) {
-          await this.stockService.increment(
-            item.inventoryVariantId,
-            item.quantity,
-            tx,
-          );
+      if (!stockNeverTaken) {
+        for (const item of sale.items) {
+          if (item.inventoryVariantId) {
+            await this.stockService.increment(
+              item.inventoryVariantId,
+              item.quantity,
+              tx,
+            );
+          }
         }
       }
 
