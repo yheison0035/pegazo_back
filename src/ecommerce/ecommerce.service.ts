@@ -778,12 +778,20 @@ export class EcommerceService {
         const subtotal = price * item.quantity;
         total += subtotal;
 
-        // Descontar stock (solo si controla inventario)
+        // Descontar stock de forma ATÓMICA (solo si controla inventario): el
+        // UPDATE solo aplica si aún hay existencias suficientes. Así, si el POS o
+        // otro comprador tomó la última unidad entre la validación y aquí, este
+        // pedido falla en vez de dejar el stock negativo (sin sobreventa).
         if (tracksStock) {
-          await tx.inventoryVariant.update({
-            where: { id: variant.id },
+          const decremented = await tx.inventoryVariant.updateMany({
+            where: { id: variant.id, stock: { gte: item.quantity } },
             data: { stock: { decrement: item.quantity } },
           });
+          if (decremented.count === 0) {
+            throw new BadRequestException(
+              `Stock insuficiente para ${variant.inventory.name} (${variant.color}). Se agotó mientras comprabas.`,
+            );
+          }
         }
 
         itemsData.push({
