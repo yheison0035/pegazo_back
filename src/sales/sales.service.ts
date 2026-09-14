@@ -519,7 +519,14 @@ export class SalesService {
     }
 
     if (query.shippingStatus) where.shippingStatus = query.shippingStatus;
-    if (query.paymentStatus) where.paymentStatus = query.paymentStatus;
+    if (query.paymentStatus) {
+      where.paymentStatus = query.paymentStatus;
+    } else {
+      // Ocultar pedidos con PAGO EN LÍNEA aún no confirmado (Wompi no ha
+      // aprobado). No deben aparecer hasta que el pago se confirme; si se
+      // confirma pasan a PAGADA, si falla quedan CANCELADA/RECHAZADA.
+      where.paymentStatus = { not: 'EN_VALIDACION' };
+    }
 
     if (query.customer) {
       where.OR = [

@@ -83,7 +83,11 @@ export class WompiController {
     // con SU secreto de eventos.
     const sale = await this.prisma.sale.findFirst({
       where: { wompiReference: reference },
-      select: { id: true, local: { select: { companyId: true } } },
+      select: {
+        id: true,
+        paymentStatus: true,
+        local: { select: { companyId: true } },
+      },
     });
     if (!sale) {
       return { received: true, valid: false };
@@ -101,14 +105,70 @@ export class WompiController {
       return { received: true, valid: false };
     }
 
-    await this.prisma.sale.update({
-      where: { id: sale.id },
-      data: {
-        wompiStatus: status,
-        wompiTransactionId: tx?.id ?? undefined,
-        ...(status === 'APPROVED' && { paymentStatus: 'PAGADA' as any }),
-      },
-    });
+    if (status === 'APPROVED') {
+      // Pago confirmado: recién AHORA se descuenta el stock (de forma atómica) y
+      // el pedido se revela en el CRM (NUEVA/PAGADA). Idempotente: si ya estaba
+      // PAGADA, no se vuelve a descontar.
+      await this.prisma.$transaction(async (db) => {
+        const fresh = await db.sale.findUnique({
+          where: { id: sale.id },
+          select: { paymentStatus: true },
+        });
+        if (fresh?.paymentStatus === 'PAGADA') return; // ya procesado
+
+        const items = await db.saleItem.findMany({
+          where: { saleId: sale.id },
+          select: {
+            inventoryVariantId: true,
+            quantity: true,
+            variant: {
+              select: { inventory: { select: { trackStock: true, name: true } } },
+            },
+          },
+        });
+
+        const sinStock: string[] = [];
+        for (const it of items) {
+          if (!it.inventoryVariantId) continue;
+          if (it.variant?.inventory?.trackStock === false) continue;
+          const dec = await db.inventoryVariant.updateMany({
+            where: { id: it.inventoryVariantId, stock: { gte: it.quantity } },
+            data: { stock: { decrement: it.quantity } },
+          });
+          // Si se agotó tras el pago, el dinero ya entró: se marca para gestión
+          // manual (no se aborta, no se pierde el pago).
+          if (dec.count === 0) {
+            sinStock.push(it.variant?.inventory?.name || 'producto');
+          }
+        }
+
+        await db.sale.update({
+          where: { id: sale.id },
+          data: {
+            wompiStatus: status,
+            wompiTransactionId: tx?.id ?? undefined,
+            paymentStatus: 'PAGADA' as any,
+            saleStatus: 'NUEVA' as any,
+            ...(sinStock.length && {
+              notes: `⚠ Pago aprobado pero SIN STOCK de: ${sinStock.join(
+                ', ',
+              )}. Revisar manualmente.`,
+            }),
+          },
+        });
+      });
+    } else {
+      // DECLINED / VOIDED / ERROR: cancelar el pedido pendiente (no se tocó
+      // stock). Solo si aún estaba en validación, para no pisar un pago aprobado.
+      await this.prisma.sale.updateMany({
+        where: { id: sale.id, paymentStatus: 'EN_VALIDACION' as any },
+        data: {
+          wompiStatus: status,
+          saleStatus: 'CANCELADA' as any,
+          paymentStatus: 'RECHAZADA' as any,
+        },
+      });
+    }
 
     return { received: true, valid: true };
   }

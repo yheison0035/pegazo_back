@@ -762,6 +762,11 @@ export class EcommerceService {
       /** =========================
      * VALIDAR ITEMS + STOCK
      ========================== */
+      // Pago en línea (Wompi): NO se descuenta stock aquí; solo se valida
+      // disponibilidad. El stock se descuenta cuando el webhook confirma el pago
+      // (APPROVED). Así, si el cliente no paga, no se pierde inventario ni el
+      // pedido aparece en el CRM. Contra entrega (EFECTIVO) sí descuenta ya.
+      const isOnline = dto.paymentMethod === 'TRANSFERENCIA';
       let total = 0;
       const itemsData: any[] = [];
 
@@ -801,11 +806,12 @@ export class EcommerceService {
         const subtotal = price * item.quantity;
         total += subtotal;
 
-        // Descontar stock de forma ATÓMICA (solo si controla inventario): el
-        // UPDATE solo aplica si aún hay existencias suficientes. Así, si el POS o
-        // otro comprador tomó la última unidad entre la validación y aquí, este
-        // pedido falla en vez de dejar el stock negativo (sin sobreventa).
-        if (tracksStock) {
+        // Descontar stock de forma ATÓMICA (solo si controla inventario y NO es
+        // pago en línea): el UPDATE solo aplica si aún hay existencias. Así, si el
+        // POS u otro comprador tomó la última unidad entre la validación y aquí,
+        // este pedido falla en vez de dejar el stock negativo (sin sobreventa).
+        // En pago en línea el descuento ocurre al confirmar el pago (webhook).
+        if (tracksStock && !isOnline) {
           const decremented = await tx.inventoryVariant.updateMany({
             where: { id: variant.id, stock: { gte: item.quantity } },
             data: { stock: { decrement: item.quantity } },
@@ -899,12 +905,11 @@ export class EcommerceService {
           notes: saleNotes,
 
           paymentMethod: dto.paymentMethod,
-          paymentStatus:
-            dto.paymentMethod === 'TRANSFERENCIA'
-              ? 'EN_VALIDACION'
-              : 'PENDIENTE',
-
-          saleStatus: 'NUEVA',
+          // Online: queda EN_VALIDACION y en estado PENDIENTE (oculto del CRM)
+          // hasta que el webhook confirme el pago. Contra entrega: PENDIENTE de
+          // cobro pero visible como pedido NUEVO para gestionarlo.
+          paymentStatus: isOnline ? 'EN_VALIDACION' : 'PENDIENTE',
+          saleStatus: isOnline ? 'PENDIENTE' : 'NUEVA',
           source: 'ECOMMERCE',
 
           customerId: crmCustomerId,
