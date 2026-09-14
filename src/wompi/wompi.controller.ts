@@ -40,10 +40,14 @@ export class WompiController {
         'Esta tienda no tiene pagos en línea configurados.',
       );
     }
-    return this.wompiService.generateSignature({
+    const { signature } = this.wompiService.generateSignature({
       ...dto,
       integritySecret: company.wompiIntegritySecret,
     });
+    // Devolvemos también la llave pública desde el SERVIDOR: así el checkout de
+    // la tienda no depende de datos cacheados en el navegador (evita redirigir a
+    // Wompi con una llave vieja/vacía si el config cambió sin recargar).
+    return { signature, publicKey: company.wompiPublicKey };
   }
 
   @Public()
