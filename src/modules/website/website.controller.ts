@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Param,
   ParseIntPipe,
   Post,
@@ -38,6 +39,49 @@ export class WebsiteController {
   @Get('config')
   getConfig(@Website() website: WebsiteContext) {
     return website;
+  }
+
+  /* ==========================================================
+     DOCUMENTOS LEGALES (editables por el dueño DESDE la tienda)
+     ========================================================== */
+
+  // Contenido legal público (lo lee la tienda por dominio).
+  @Public()
+  @UseGuards(WebsiteGuard)
+  @Get('legal')
+  getLegal(@Website() website: WebsiteContext) {
+    return this.service.getLegal(website);
+  }
+
+  // Botón "Editar mi tienda" del CRM: genera el token de edición del dueño.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'SUPER_PLATFORM_ADMIN')
+  @Get('edit-token')
+  createEditToken(@Req() req) {
+    return this.service.createEditToken(req.user);
+  }
+
+  // Login del dueño DESDE la tienda (credenciales del CRM) → token de edición.
+  @Public()
+  @UseGuards(WebsiteGuard)
+  @Post('owner/login')
+  ownerLogin(
+    @Website() website: WebsiteContext,
+    @Body() body: { email?: string; password?: string },
+  ) {
+    return this.service.ownerLogin(website, body?.email, body?.password);
+  }
+
+  // Guardar un documento legal (requiere token de edición en Authorization).
+  @Public()
+  @UseGuards(WebsiteGuard)
+  @Put('legal')
+  saveLegal(
+    @Website() website: WebsiteContext,
+    @Headers('authorization') auth: string,
+    @Body() body: { slug: string; title?: string; html?: string },
+  ) {
+    return this.service.saveLegal(website, auth, body);
   }
 
   /* ==========================================================
