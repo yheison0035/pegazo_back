@@ -54,6 +54,27 @@ export class WompiService {
     return response.json();
   }
 
+  // Consulta la transacción SIN depender del ambiente global: cada tienda puede
+  // estar en pruebas (sandbox) o producción. El endpoint GET /transactions/:id
+  // es público; se prueba en ambos ambientes y se devuelve donde exista.
+  async getTransactionAnyEnv(transactionId: string) {
+    const bases = [
+      'https://sandbox.wompi.co/v1',
+      'https://production.wompi.co/v1',
+    ];
+    for (const base of bases) {
+      try {
+        const r = await fetch(`${base}/transactions/${transactionId}`);
+        if (!r.ok) continue;
+        const j = await r.json();
+        if (j?.data?.status) return j;
+      } catch {
+        /* intenta el siguiente ambiente */
+      }
+    }
+    return null;
+  }
+
   // Verifica la firma (checksum) de un evento de webhook de Wompi. `eventsSecret`
   // opcional: el de la empresa (tienda) o el global (suscripción).
   verifyEventChecksum(event: any, eventsSecret?: string): boolean {
