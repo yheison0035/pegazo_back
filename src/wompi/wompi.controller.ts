@@ -128,7 +128,9 @@ export class WompiController {
     let status: string | undefined;
     let reference: string | undefined;
     try {
-      const res: any = await this.wompiService.getTransaction(transactionId);
+      // Consulta en el ambiente correcto (pruebas o producción) según exista.
+      const res: any =
+        await this.wompiService.getTransactionAnyEnv(transactionId);
       status = res?.data?.status;
       reference = res?.data?.reference;
     } catch {
