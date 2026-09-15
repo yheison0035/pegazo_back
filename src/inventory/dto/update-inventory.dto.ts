@@ -59,6 +59,11 @@ export class UpdateInventoryDto {
   @IsNumber()
   onlinePrice?: number;
 
+  // Habilitar el producto en la tienda online.
+  @IsOptional()
+  @IsBoolean()
+  publishInEcommerce?: boolean;
+
   @IsOptional()
   @IsInt()
   minStock?: number;
