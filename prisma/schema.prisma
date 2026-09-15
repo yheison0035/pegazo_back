@@ -351,6 +351,11 @@ model Company {
   // las tiendas ya activas.
   storeShipping Json?
 
+  // Documentos legales de la tienda, editables por el dueño DESDE la tienda
+  // (edición inline). Mapa { [slug]: { title, html } }. null/vacío = sin texto
+  // (arranca vacío para que cada empresa escriba el suyo).
+  legalContent Json?
+
   // Pasarela de pagos PROPIA de la tienda online (Wompi por empresa). Cada
   // negocio conecta su cuenta Wompi y el dinero cae en SU banco; Pegazo no lo
   // toca. La llave pública se expone a la tienda; los secretos se OMITEN
