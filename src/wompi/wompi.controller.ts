@@ -109,6 +109,14 @@ export class WompiController {
     return { received: true, valid: true };
   }
 
+  // Diagnóstico de SOLO LECTURA: ¿hay envío de correo central disponible? No
+  // envía correos ni expone secretos.
+  @Public()
+  @Get('diag/mail')
+  mailDiag() {
+    return this.mail.transportStatus();
+  }
+
   // CONFIRMACIÓN AL VOLVER DEL PAGO (respaldo del webhook). La tienda llama a
   // este endpoint con el id de la transacción de Wompi; se consulta el estado
   // REAL en Wompi y, si está aprobado, se finaliza el pedido (descontar stock,
