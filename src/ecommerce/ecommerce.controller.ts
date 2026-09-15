@@ -23,6 +23,10 @@ import {
   ResetPasswordDto,
   UpdateCustomerProfileDto,
 } from './dto/customer-auth.dto';
+import {
+  CreateCustomerAddressDto,
+  UpdateCustomerAddressDto,
+} from './dto/customer-address.dto';
 import { WebsiteGuard } from '@/common/guards/website.guard';
 import { CustomerJwtGuard } from '@/common/guards/customer-jwt.guard';
 import { Website } from '@/common/decorators/website.decorator';
@@ -258,5 +262,45 @@ export class EcommerceController {
     @CurrentCustomer() customer: { id: number },
   ) {
     return this.ecommerceService.removeFavorite(customer.id, Number(inventoryId));
+  }
+
+  // ---- Direcciones guardadas del cliente ----
+
+  @Public()
+  @UseGuards(WebsiteGuard, CustomerJwtGuard)
+  @Get('addresses')
+  listAddresses(@CurrentCustomer() customer: { id: number }) {
+    return this.ecommerceService.listAddresses(customer.id);
+  }
+
+  @Public()
+  @UseGuards(WebsiteGuard, CustomerJwtGuard)
+  @Post('addresses')
+  createAddress(
+    @CurrentCustomer() customer: { id: number },
+    @Body() dto: CreateCustomerAddressDto,
+  ) {
+    return this.ecommerceService.createAddress(customer.id, dto);
+  }
+
+  @Public()
+  @UseGuards(WebsiteGuard, CustomerJwtGuard)
+  @Patch('addresses/:id')
+  updateAddress(
+    @Param('id') id: string,
+    @CurrentCustomer() customer: { id: number },
+    @Body() dto: UpdateCustomerAddressDto,
+  ) {
+    return this.ecommerceService.updateAddress(customer.id, Number(id), dto);
+  }
+
+  @Public()
+  @UseGuards(WebsiteGuard, CustomerJwtGuard)
+  @Delete('addresses/:id')
+  deleteAddress(
+    @Param('id') id: string,
+    @CurrentCustomer() customer: { id: number },
+  ) {
+    return this.ecommerceService.deleteAddress(customer.id, Number(id));
   }
 }

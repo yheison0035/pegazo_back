@@ -212,6 +212,104 @@ export class EcommerceService {
     return { success: true };
   }
 
+  // ---- Direcciones guardadas del cliente ----
+
+  /** Lista de direcciones del cliente (la predeterminada primero). */
+  async listAddresses(customerId: number) {
+    const data = await this.prisma.customerAddress.findMany({
+      where: { customerId },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+    });
+    return { success: true, data };
+  }
+
+  /** Crea una dirección. Si es la primera o se marca por defecto, se ajusta. */
+  async createAddress(customerId: number, dto: any) {
+    const count = await this.prisma.customerAddress.count({
+      where: { customerId },
+    });
+    // La primera dirección siempre queda como predeterminada.
+    const isDefault = count === 0 ? true : !!dto.isDefault;
+
+    if (isDefault) {
+      await this.prisma.customerAddress.updateMany({
+        where: { customerId },
+        data: { isDefault: false },
+      });
+    }
+
+    const created = await this.prisma.customerAddress.create({
+      data: {
+        customerId,
+        label: dto.label?.trim() || null,
+        department: dto.department.trim(),
+        city: dto.city.trim(),
+        neighborhood: dto.neighborhood.trim(),
+        address: dto.address.trim(),
+        addressDetail: dto.addressDetail?.trim() || null,
+        isDefault,
+      },
+    });
+    return { success: true, data: created };
+  }
+
+  /** Actualiza una dirección del propio cliente. */
+  async updateAddress(customerId: number, id: number, dto: any) {
+    const existing = await this.prisma.customerAddress.findFirst({
+      where: { id, customerId },
+    });
+    if (!existing) throw new NotFoundException('Dirección no encontrada.');
+
+    if (dto.isDefault === true) {
+      await this.prisma.customerAddress.updateMany({
+        where: { customerId },
+        data: { isDefault: false },
+      });
+    }
+
+    const data: any = {};
+    if (dto.label !== undefined) data.label = dto.label?.trim() || null;
+    if (dto.department !== undefined) data.department = dto.department.trim();
+    if (dto.city !== undefined) data.city = dto.city.trim();
+    if (dto.neighborhood !== undefined)
+      data.neighborhood = dto.neighborhood.trim();
+    if (dto.address !== undefined) data.address = dto.address.trim();
+    if (dto.addressDetail !== undefined)
+      data.addressDetail = dto.addressDetail?.trim() || null;
+    if (dto.isDefault !== undefined) data.isDefault = !!dto.isDefault;
+
+    const updated = await this.prisma.customerAddress.update({
+      where: { id },
+      data,
+    });
+    return { success: true, data: updated };
+  }
+
+  /** Elimina una dirección del propio cliente. Si era la predeterminada,
+   *  otra pasa a serlo. */
+  async deleteAddress(customerId: number, id: number) {
+    const existing = await this.prisma.customerAddress.findFirst({
+      where: { id, customerId },
+    });
+    if (!existing) throw new NotFoundException('Dirección no encontrada.');
+
+    await this.prisma.customerAddress.delete({ where: { id } });
+
+    if (existing.isDefault) {
+      const next = await this.prisma.customerAddress.findFirst({
+        where: { customerId },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (next) {
+        await this.prisma.customerAddress.update({
+          where: { id: next.id },
+          data: { isDefault: true },
+        });
+      }
+    }
+    return { success: true };
+  }
+
   // Busqueda de productos
   async searchProducts(term: string, website: WebsiteContext) {
     const { localId } = website;
