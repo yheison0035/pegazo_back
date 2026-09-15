@@ -163,6 +163,21 @@ export class MailService {
 
   // DIAGNÓSTICO TEMPORAL: intenta enviar por la cuenta central y devuelve el
   // error exacto. Prueba Brevo (HTTP) si está configurado; si no, SMTP.
+  // Estado de los transportes de correo (SOLO lectura, sin enviar nada ni exponer
+  // secretos). Sirve para validar que el envío central está activo.
+  transportStatus() {
+    return {
+      resend: this.resendEnabled(),
+      resendFrom: process.env.RESEND_FROM_EMAIL || null,
+      brevo: this.brevoEnabled(),
+      brevoFrom: process.env.BREVO_SENDER_EMAIL || null,
+      globalSmtp: !!this.transporter,
+      // Hay algún transporte central disponible (sin depender del SMTP de la empresa).
+      centralReady:
+        this.resendEnabled() || this.brevoEnabled() || !!this.transporter,
+    };
+  }
+
   async diag(to: string) {
     if (this.resendEnabled()) {
       try {
