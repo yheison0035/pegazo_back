@@ -597,6 +597,9 @@ model Customer {
   // Productos marcados como favoritos por el cliente en la tienda online.
   favorites CustomerFavorite[] @relation("CustomerFavorites")
 
+  // Direcciones guardadas por el cliente para reutilizarlas en el checkout.
+  addresses CustomerAddress[] @relation("CustomerAddresses")
+
   // Segmento/etiqueta administrable del cliente (mayorista, VIP…), opcional.
   segmentId Int?
   segment   CustomerSegment? @relation(fields: [segmentId], references: [id], onDelete: SetNull)
@@ -816,6 +819,32 @@ model CustomerFavorite {
   @@unique([customerId, inventoryId])
   @@index([customerId])
   @@index([inventoryId])
+}
+
+// Direcciones guardadas del cliente de la tienda online. Mismo formato que la
+// tarjeta "Dirección de entrega" del checkout (departamento, ciudad, barrio,
+// dirección armada y referencias). El cliente puede tener varias y marcar una
+// como predeterminada para cargarla al comprar.
+model CustomerAddress {
+  id            Int      @id @default(autoincrement())
+  customerId    Int
+  customer      Customer @relation("CustomerAddresses", fields: [customerId], references: [id], onDelete: Cascade)
+
+  // Alias para distinguirlas (ej. "Casa", "Trabajo"). Opcional.
+  label         String?
+  department    String
+  city          String
+  neighborhood  String
+  // Dirección armada con el asistente (formato colombiano), en MAYÚSCULA.
+  address       String
+  // Referencias para llegar (opcional).
+  addressDetail String?
+  isDefault     Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
 }
 
 model InventoryVariant {
