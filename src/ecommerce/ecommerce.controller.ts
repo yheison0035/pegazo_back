@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
@@ -216,5 +217,46 @@ export class EcommerceController {
     @Body() dto: UpdateCustomerProfileDto,
   ) {
     return this.customerAuth.updateProfile(customer.id, dto);
+  }
+
+  // ---- Favoritos del cliente ----
+
+  @Public()
+  @UseGuards(WebsiteGuard, CustomerJwtGuard)
+  @Get('favorites')
+  getFavorites(@CurrentCustomer() customer: { id: number }) {
+    return this.ecommerceService.getFavorites(customer.id);
+  }
+
+  @Public()
+  @UseGuards(WebsiteGuard, CustomerJwtGuard)
+  @Get('favorites/ids')
+  getFavoriteIds(@CurrentCustomer() customer: { id: number }) {
+    return this.ecommerceService.getFavoriteIds(customer.id);
+  }
+
+  @Public()
+  @UseGuards(WebsiteGuard, CustomerJwtGuard)
+  @Post('favorites/:inventoryId')
+  addFavorite(
+    @Param('inventoryId') inventoryId: string,
+    @CurrentCustomer() customer: { id: number },
+    @Website() website: WebsiteContext,
+  ) {
+    return this.ecommerceService.addFavorite(
+      website,
+      customer.id,
+      Number(inventoryId),
+    );
+  }
+
+  @Public()
+  @UseGuards(WebsiteGuard, CustomerJwtGuard)
+  @Delete('favorites/:inventoryId')
+  removeFavorite(
+    @Param('inventoryId') inventoryId: string,
+    @CurrentCustomer() customer: { id: number },
+  ) {
+    return this.ecommerceService.removeFavorite(customer.id, Number(inventoryId));
   }
 }

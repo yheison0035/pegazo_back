@@ -115,6 +115,103 @@ export class EcommerceService {
     };
   }
 
+  // ---- Favoritos del cliente de la tienda online ----
+
+  /**
+   * Lista de productos favoritos del cliente, en la MISMA forma que la card de
+   * la tienda (para reusar el ProductCard del front). Solo devuelve productos
+   * activos; si un favorito quedó inactivo/eliminado, no se muestra.
+   */
+  async getFavorites(customerId: number) {
+    const favorites = await this.prisma.customerFavorite.findMany({
+      where: { customerId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        inventory: {
+          include: {
+            category: true,
+            brand: true,
+            images: { orderBy: { position: 'asc' } },
+            variants: true,
+          },
+        },
+      },
+    });
+
+    const data = favorites
+      .filter((f) => f.inventory && f.inventory.status === 'ACTIVO')
+      .map((f) => {
+        const product = f.inventory;
+        const stock = product.variants.reduce((s, v) => s + v.stock, 0);
+        const colors = product.variants
+          .filter((v) => product.trackStock === false || v.stock > 0)
+          .map((v) => ({
+            variantId: v.id,
+            name: v.color,
+            size: v.size,
+            stock: v.stock,
+          }));
+        const { price, oldPrice, discount } = this.priceInfo(product);
+
+        return {
+          id: product.id,
+          name: product.name,
+          slug: product.slug,
+          description: product.description,
+          price,
+          unit: product.unit ?? 'UNIDAD',
+          trackStock: product.trackStock,
+          oldPrice,
+          discount,
+          stock,
+          colors,
+          brand: product.brand?.name ?? null,
+          category: product.category ? this.slugify(product.category.name) : null,
+          image: product.images[0]?.url ?? null,
+          images: product.images.map((img) => img.url),
+        };
+      });
+
+    return { success: true, data };
+  }
+
+  /** IDs de los productos favoritos del cliente (para pintar el corazón). */
+  async getFavoriteIds(customerId: number) {
+    const rows = await this.prisma.customerFavorite.findMany({
+      where: { customerId },
+      select: { inventoryId: true },
+    });
+    return { success: true, data: rows.map((r) => r.inventoryId) };
+  }
+
+  /** Marca un producto como favorito (idempotente). */
+  async addFavorite(
+    website: WebsiteContext,
+    customerId: number,
+    inventoryId: number,
+  ) {
+    const product = await this.prisma.inventory.findFirst({
+      where: { id: inventoryId, localId: website.localId },
+      select: { id: true },
+    });
+    if (!product) throw new NotFoundException('Producto no encontrado.');
+
+    await this.prisma.customerFavorite.upsert({
+      where: { customerId_inventoryId: { customerId, inventoryId } },
+      create: { customerId, inventoryId },
+      update: {},
+    });
+    return { success: true };
+  }
+
+  /** Quita un producto de favoritos (idempotente). */
+  async removeFavorite(customerId: number, inventoryId: number) {
+    await this.prisma.customerFavorite.deleteMany({
+      where: { customerId, inventoryId },
+    });
+    return { success: true };
+  }
+
   // Busqueda de productos
   async searchProducts(term: string, website: WebsiteContext) {
     const { localId } = website;
