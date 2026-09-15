@@ -81,28 +81,36 @@ export class WebsiteService {
     return { success: true, token, storeUrl };
   }
 
-  // Login del DUEÑO desde la tienda (con sus credenciales del CRM). Valida que
-  // sea dueño/admin de la empresa de ESTE dominio y devuelve el token de edición.
+  // Login del DUEÑO desde la tienda (con sus credenciales del CRM). Autoriza al
+  // admin de la plataforma (cualquier tienda) o al admin de ESTA empresa.
   async ownerLogin(website: WebsiteContext, email?: string, password?: string) {
     if (!email || !password) {
       throw new BadRequestException('Correo y contraseña son obligatorios.');
     }
     const user = await this.prisma.user.findFirst({
       where: {
-        email: email.trim().toLowerCase(),
-        companyId: website.companyId,
+        email: { equals: email.trim(), mode: 'insensitive' },
         status: 'ACTIVO' as Status,
-        role: { in: EDIT_ROLES },
       },
     });
     const ok = user && (await bcrypt.compare(password, user.password));
     if (!ok) {
+      throw new UnauthorizedException('Correo o contraseña incorrectos.');
+    }
+
+    // El admin de la plataforma puede editar cualquier tienda; el admin/dueño de
+    // la empresa solo la de SU empresa (la del dominio actual).
+    const isPlatform = user.role === ('SUPER_PLATFORM_ADMIN' as Role);
+    const isCompanyAdmin =
+      EDIT_ROLES.includes(user.role) && user.companyId === website.companyId;
+    if (!isPlatform && !isCompanyAdmin) {
       throw new UnauthorizedException(
-        'Credenciales inválidas o no eres administrador de esta tienda.',
+        'No tienes permisos para editar esta tienda.',
       );
     }
+
     const token = await this.jwt.signAsync(
-      { companyId: user.companyId, purpose: 'store-edit', role: user.role },
+      { companyId: website.companyId, purpose: 'store-edit', role: user.role },
       { expiresIn: '8h' },
     );
     return { success: true, token };
