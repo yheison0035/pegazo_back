@@ -81,16 +81,9 @@ export class WompiController {
       return { received: true, valid: true };
     }
 
-    // Pago de una VENTA de la tienda: ubicar la empresa por la venta y verificar
-    // con SU secreto de eventos.
-    const sale = await this.prisma.sale.findFirst({
-      where: { wompiReference: reference },
-      select: {
-        id: true,
-        paymentStatus: true,
-        local: { select: { companyId: true } },
-      },
-    });
+    // Pago de una VENTA de la tienda. La REFERENCIA de Wompi es el código del
+    // pedido, así que se busca por `code` (o `wompiReference` por compatibilidad).
+    const sale = await this.findSaleByReference(reference);
     if (!sale) {
       return { received: true, valid: false };
     }
@@ -108,81 +101,135 @@ export class WompiController {
     }
 
     if (status === 'APPROVED') {
-      // Pago confirmado: recién AHORA se descuenta el stock (de forma atómica) y
-      // el pedido se revela en el CRM (NUEVA/PAGADA). Idempotente: si ya estaba
-      // PAGADA, no se vuelve a descontar. Devuelve true SOLO la primera vez, para
-      // enviar el correo de confirmación una única vez.
-      const processed = await this.prisma.$transaction(async (db) => {
-        const fresh = await db.sale.findUnique({
-          where: { id: sale.id },
-          select: { paymentStatus: true },
-        });
-        if (fresh?.paymentStatus === 'PAGADA') return false; // ya procesado
-
-        const items = await db.saleItem.findMany({
-          where: { saleId: sale.id },
-          select: {
-            inventoryVariantId: true,
-            quantity: true,
-            variant: {
-              select: { inventory: { select: { trackStock: true, name: true } } },
-            },
-          },
-        });
-
-        const sinStock: string[] = [];
-        for (const it of items) {
-          if (!it.inventoryVariantId) continue;
-          if (it.variant?.inventory?.trackStock === false) continue;
-          const dec = await db.inventoryVariant.updateMany({
-            where: { id: it.inventoryVariantId, stock: { gte: it.quantity } },
-            data: { stock: { decrement: it.quantity } },
-          });
-          // Si se agotó tras el pago, el dinero ya entró: se marca para gestión
-          // manual (no se aborta, no se pierde el pago).
-          if (dec.count === 0) {
-            sinStock.push(it.variant?.inventory?.name || 'producto');
-          }
-        }
-
-        await db.sale.update({
-          where: { id: sale.id },
-          data: {
-            wompiStatus: status,
-            wompiTransactionId: tx?.id ?? undefined,
-            paymentStatus: 'PAGADA' as any,
-            saleStatus: 'NUEVA' as any,
-            ...(sinStock.length && {
-              notes: `⚠ Pago aprobado pero SIN STOCK de: ${sinStock.join(
-                ', ',
-              )}. Revisar manualmente.`,
-            }),
-          },
-        });
-        return true;
-      });
-
-      // Correo de CONFIRMACIÓN de pago al cliente (una sola vez). No bloquea ni
-      // rompe el webhook si el correo falla.
-      if (processed) {
-        this.sendPaymentConfirmation(sale.id, sale.local.companyId).catch(
-          () => undefined,
-        );
-      }
+      await this.finalizeApprovedSale(sale.id, sale.local.companyId, tx?.id);
     } else {
-      // DECLINED / VOIDED / ERROR: cancelar el pedido pendiente (no se tocó
-      // stock). Solo si aún estaba en validación, para no pisar un pago aprobado.
-      await this.prisma.sale.updateMany({
-        where: { id: sale.id, paymentStatus: 'EN_VALIDACION' as any },
-        data: {
-          wompiStatus: status,
-          saleStatus: 'CANCELADA' as any,
-          paymentStatus: 'RECHAZADA' as any,
-        },
-      });
+      await this.cancelPendingSale(sale.id, status);
     }
 
     return { received: true, valid: true };
+  }
+
+  // CONFIRMACIÓN AL VOLVER DEL PAGO (respaldo del webhook). La tienda llama a
+  // este endpoint con el id de la transacción de Wompi; se consulta el estado
+  // REAL en Wompi y, si está aprobado, se finaliza el pedido (descontar stock,
+  // marcar PAGADA, correo) de forma idempotente. Así el pedido aparece aunque el
+  // webhook no llegue o el secreto de eventos esté mal.
+  @Public()
+  @Get('confirm/:transactionId')
+  async confirm(@Param('transactionId') transactionId: string) {
+    let status: string | undefined;
+    let reference: string | undefined;
+    try {
+      const res: any = await this.wompiService.getTransaction(transactionId);
+      status = res?.data?.status;
+      reference = res?.data?.reference;
+    } catch {
+      return { status: 'PENDING' };
+    }
+    if (!reference || !status) return { status: 'PENDING' };
+
+    const sale = await this.findSaleByReference(reference);
+    if (!sale) return { status };
+
+    if (status === 'APPROVED') {
+      await this.finalizeApprovedSale(
+        sale.id,
+        sale.local.companyId,
+        transactionId,
+      );
+    } else if (['DECLINED', 'VOIDED', 'ERROR'].includes(status)) {
+      await this.cancelPendingSale(sale.id, status);
+    }
+    return { status };
+  }
+
+  // Busca la venta de la tienda por la referencia de Wompi (= código del pedido).
+  private async findSaleByReference(reference: string) {
+    return this.prisma.sale.findFirst({
+      where: {
+        source: 'ECOMMERCE' as any,
+        OR: [{ code: reference }, { wompiReference: reference }],
+      },
+      select: {
+        id: true,
+        paymentStatus: true,
+        local: { select: { companyId: true } },
+      },
+    });
+  }
+
+  // Finaliza un pedido pagado: descuenta stock (atómico), lo marca PAGADA/NUEVA y
+  // envía el correo de confirmación. Idempotente (no hace nada si ya está PAGADA).
+  private async finalizeApprovedSale(
+    saleId: number,
+    companyId: number,
+    txId?: string,
+  ) {
+    const processed = await this.prisma.$transaction(async (db) => {
+      const fresh = await db.sale.findUnique({
+        where: { id: saleId },
+        select: { paymentStatus: true },
+      });
+      if (fresh?.paymentStatus === 'PAGADA') return false;
+
+      const items = await db.saleItem.findMany({
+        where: { saleId },
+        select: {
+          inventoryVariantId: true,
+          quantity: true,
+          variant: {
+            select: { inventory: { select: { trackStock: true, name: true } } },
+          },
+        },
+      });
+
+      const sinStock: string[] = [];
+      for (const it of items) {
+        if (!it.inventoryVariantId) continue;
+        if (it.variant?.inventory?.trackStock === false) continue;
+        const dec = await db.inventoryVariant.updateMany({
+          where: { id: it.inventoryVariantId, stock: { gte: it.quantity } },
+          data: { stock: { decrement: it.quantity } },
+        });
+        if (dec.count === 0) {
+          sinStock.push(it.variant?.inventory?.name || 'producto');
+        }
+      }
+
+      await db.sale.update({
+        where: { id: saleId },
+        data: {
+          wompiStatus: 'APPROVED',
+          wompiTransactionId: txId ?? undefined,
+          paymentStatus: 'PAGADA' as any,
+          saleStatus: 'NUEVA' as any,
+          ...(sinStock.length && {
+            notes: `⚠ Pago aprobado pero SIN STOCK de: ${sinStock.join(
+              ', ',
+            )}. Revisar manualmente.`,
+          }),
+        },
+      });
+      return true;
+    });
+
+    if (processed) {
+      this.sendPaymentConfirmation(saleId, companyId).catch(() => undefined);
+    }
+    return processed;
+  }
+
+  // Cancela un pedido con pago fallido (solo si seguía EN_VALIDACION; no toca uno
+  // ya pagado). No se había descontado stock.
+  private async cancelPendingSale(saleId: number, status: string) {
+    await this.prisma.sale.updateMany({
+      where: { id: saleId, paymentStatus: 'EN_VALIDACION' as any },
+      data: {
+        wompiStatus: status,
+        saleStatus: 'CANCELADA' as any,
+        paymentStatus: 'RECHAZADA' as any,
+      },
+    });
   }
 
   // Envía al cliente el correo de CONFIRMACIÓN de pago (marca de la empresa).
