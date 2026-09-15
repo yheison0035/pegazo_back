@@ -640,6 +640,7 @@ export class InventoryService {
           oldPrice: dto.oldPrice ?? null,
           salePrice: dto.salePrice,
           onlinePrice: dto.onlinePrice ?? null,
+          publishInEcommerce: dto.publishInEcommerce ?? false,
           status: dto.status,
           minStock: dto.minStock ?? 0,
           unit: unitCode,
@@ -776,6 +777,9 @@ export class InventoryService {
         ...(dto.oldPrice !== undefined && { oldPrice: dto.oldPrice }),
         ...(dto.salePrice !== undefined && { salePrice: dto.salePrice }),
         ...(dto.onlinePrice !== undefined && { onlinePrice: dto.onlinePrice }),
+        ...(dto.publishInEcommerce !== undefined && {
+          publishInEcommerce: dto.publishInEcommerce,
+        }),
         ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.minStock !== undefined && { minStock: dto.minStock }),
         ...(dto.unit !== undefined && { unit: dto.unit }),

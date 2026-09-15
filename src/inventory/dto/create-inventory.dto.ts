@@ -49,6 +49,11 @@ export class CreateInventoryDto {
   @IsNumber()
   onlinePrice?: number;
 
+  // Habilitar el producto en la tienda online.
+  @IsOptional()
+  @IsBoolean()
+  publishInEcommerce?: boolean;
+
   @IsOptional()
   @IsNumber()
   minStock?: number;
