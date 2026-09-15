@@ -500,6 +500,120 @@ export class MailService {
     return { ok: true, via: usingOwn ? 'smtp-empresa' : 'smtp-global' };
   }
 
+  // Correo de CONFIRMACIÓN de compra con TODOS los datos (items, totales,
+  // entrega, dirección). Marca de la empresa. Email-safe.
+  async sendOrderConfirmation(opts: {
+    to: string;
+    companyName: string;
+    smtp?: SmtpConfig;
+    brandColor?: string | null;
+    trackUrl?: string | null;
+    order: {
+      code: string;
+      items: { name: string; quantity: number; price: number }[];
+      subtotal?: number | null;
+      shippingCost?: number | null;
+      total: number;
+      address?: string | null;
+      customerName?: string | null;
+      paymentLabel?: string | null;
+      deliveryLabel?: string | null;
+      amountToPay?: number | null;
+    };
+  }): Promise<{ ok: boolean; via: string }> {
+    const { to, companyName, smtp, trackUrl, order } = opts;
+    const color = opts.brandColor || '#111827';
+    const money = (n) =>
+      typeof n === 'number' ? `$${n.toLocaleString('es-CO')}` : '';
+    const subject = `Confirmación de tu pedido ${order.code}`;
+
+    const itemsHtml = (order.items || [])
+      .map(
+        (it) =>
+          `<tr><td style="padding:6px 0;color:#333;">${it.name} <span style="color:#888;">x${it.quantity}</span></td><td style="padding:6px 0;text-align:right;color:#333;white-space:nowrap;">${money(
+            it.price * it.quantity,
+          )}</td></tr>`,
+      )
+      .join('');
+
+    const totalsRows = [
+      order.subtotal != null ? ['Subtotal', money(order.subtotal)] : null,
+      order.shippingCost != null
+        ? ['Envío', order.shippingCost === 0 ? 'Gratis' : money(order.shippingCost)]
+        : null,
+    ].filter(Boolean) as string[][];
+
+    const infoRows = [
+      order.customerName ? ['Cliente', order.customerName] : null,
+      order.deliveryLabel ? ['Entrega', order.deliveryLabel] : null,
+      order.paymentLabel ? ['Pago', order.paymentLabel] : null,
+      order.address ? ['Dirección', order.address] : null,
+      order.amountToPay ? ['Pagas al recibir', money(order.amountToPay)] : null,
+    ].filter(Boolean) as string[][];
+
+    const html = `
+    <div style="background:#f4f4f5;padding:24px 0;font-family:Arial,Helvetica,sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #eee;">
+          <tr><td style="background:${color};padding:22px 28px;color:#fff;">
+            <div style="font-size:14px;opacity:.85;">${this.safeName(companyName)}</div>
+            <div style="font-size:20px;font-weight:bold;margin-top:2px;">¡Gracias por tu compra!</div>
+            <div style="font-size:13px;opacity:.9;margin-top:2px;">Pedido ${order.code}</div>
+          </td></tr>
+          <tr><td style="padding:24px 28px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;border-bottom:1px solid #eee;">${itemsHtml}</table>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;margin-top:8px;">
+              ${totalsRows
+                .map(
+                  ([k, v]) =>
+                    `<tr><td style="padding:4px 0;color:#888;">${k}</td><td style="padding:4px 0;text-align:right;color:#333;">${v}</td></tr>`,
+                )
+                .join('')}
+              <tr><td style="padding:8px 0;font-weight:bold;color:#111;border-top:1px solid #eee;">Total</td><td style="padding:8px 0;text-align:right;font-weight:bold;color:#111;border-top:1px solid #eee;">${money(
+                order.total,
+              )}</td></tr>
+            </table>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;margin-top:14px;">
+              ${infoRows
+                .map(
+                  ([k, v]) =>
+                    `<tr><td style="padding:4px 0;color:#888;width:40%;">${k}</td><td style="padding:4px 0;color:#333;">${v}</td></tr>`,
+                )
+                .join('')}
+            </table>
+            ${
+              trackUrl
+                ? `<div style="margin-top:22px;text-align:center;"><a href="${trackUrl}" style="display:inline-block;background:${color};color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:bold;font-size:14px;">Ver mi pedido</a></div>`
+                : ''
+            }
+          </td></tr>
+          <tr><td style="padding:16px 28px;background:#fafafa;color:#999;font-size:12px;text-align:center;">
+            Este correo fue enviado por ${this.safeName(companyName)}.
+          </td></tr>
+        </table>
+      </td></tr></table>
+    </div>`;
+
+    if (!smtp?.host && this.resendEnabled()) {
+      await this.sendViaResend({ to, subject, html, fromName: companyName });
+      return { ok: true, via: 'resend' };
+    }
+    if (!smtp?.host && this.brevoEnabled()) {
+      await this.sendViaBrevo({ to, subject, html, fromName: companyName });
+      return { ok: true, via: 'brevo' };
+    }
+    const resolved = this.resolveTransporter(smtp);
+    if (!resolved) {
+      throw new Error('No hay correo configurado para la confirmación.');
+    }
+    const usingOwn = !!smtp?.host;
+    const from = usingOwn
+      ? resolved.from
+      : `"${this.safeName(companyName)}" <${resolved.from}>`;
+    await resolved.tx.sendMail({ from, to, subject, html });
+    return { ok: true, via: usingOwn ? 'smtp-empresa' : 'smtp-global' };
+  }
+
   // Correo de restablecimiento para el CLIENTE de la tienda online, con la marca
   // de la empresa dueña del dominio (logo, nombre y color). Diseño email-safe
   // (tablas + estilos en línea) para que se vea bien en todos los clientes.
