@@ -104,7 +104,10 @@ export class EcommerceService {
           images: product.images.map((img) => img.url),
         };
       }),
-    }));
+    }))
+      // Solo categorías CON productos: si una categoría no tiene productos
+      // activos, no se muestra en el menú de la tienda.
+      .filter((category) => category.products.length > 0);
 
     return {
       success: true,
