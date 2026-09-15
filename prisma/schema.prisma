@@ -594,6 +594,9 @@ model Customer {
   // este cliente del CRM.
   ecommerceProfiles EcommerceCustomer[] @relation("CustomerEcommerceProfiles")
 
+  // Productos marcados como favoritos por el cliente en la tienda online.
+  favorites CustomerFavorite[] @relation("CustomerFavorites")
+
   // Segmento/etiqueta administrable del cliente (mayorista, VIP…), opcional.
   segmentId Int?
   segment   CustomerSegment? @relation(fields: [segmentId], references: [id], onDelete: SetNull)
@@ -784,6 +787,9 @@ model Inventory {
 
   stockChangeRequests StockChangeRequest[] @relation("InventoryStockRequests")
 
+  // Clientes de la tienda online que marcaron este producto como favorito.
+  favoritedBy CustomerFavorite[] @relation("InventoryFavorites")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -793,6 +799,23 @@ model Inventory {
   @@index([brandId])
   @@index([providerId])
   @@index([status])
+}
+
+// Favoritos del cliente de la tienda online: relación N-a-N entre el cliente
+// (Customer con source=ECOMMERCE) y el producto (Inventory). Un cliente no puede
+// tener el mismo producto dos veces (@@unique). Se borra en cascada si se elimina
+// el cliente o el producto.
+model CustomerFavorite {
+  id          Int       @id @default(autoincrement())
+  customerId  Int
+  customer    Customer  @relation("CustomerFavorites", fields: [customerId], references: [id], onDelete: Cascade)
+  inventoryId Int
+  inventory   Inventory @relation("InventoryFavorites", fields: [inventoryId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([customerId, inventoryId])
+  @@index([customerId])
+  @@index([inventoryId])
 }
 
 model InventoryVariant {
