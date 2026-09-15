@@ -232,14 +232,33 @@ export class WompiController {
     });
   }
 
-  // Envía al cliente el correo de CONFIRMACIÓN de pago (marca de la empresa).
+  // Envía al cliente el correo de CONFIRMACIÓN de compra con TODOS los datos.
   private async sendPaymentConfirmation(saleId: number, companyId: number) {
     const sale: any = await this.prisma.sale.findUnique({
       where: { id: saleId },
       select: {
         code: true,
+        subtotal: true,
         totalAmount: true,
-        ecommerceCustomer: { select: { email: true } },
+        notes: true,
+        ecommerceCustomer: {
+          select: {
+            email: true,
+            firstName: true,
+            lastName: true,
+            address: true,
+            neighborhood: true,
+            city: true,
+            department: true,
+          },
+        },
+        items: {
+          select: {
+            quantity: true,
+            price: true,
+            variant: { select: { inventory: { select: { name: true } } } },
+          },
+        },
       },
     });
     const to = sale?.ecommerceCustomer?.email;
@@ -262,16 +281,36 @@ export class WompiController {
         }
       : undefined;
 
-    await this.mail.sendOrderStatusUpdate({
+    const subtotal = sale.subtotal != null ? Number(sale.subtotal) : null;
+    const total = Number(sale.totalAmount) || 0;
+    const shippingCost = subtotal != null ? Math.max(total - subtotal, 0) : null;
+    const ec = sale.ecommerceCustomer;
+    const address = [ec?.address, ec?.neighborhood, ec?.city, ec?.department]
+      .filter(Boolean)
+      .join(', ');
+    const deliveryMatch = /Entrega:\s*([^·]+)/.exec(sale.notes || '');
+
+    await this.mail.sendOrderConfirmation({
       to,
       companyName: company.mailFromName || company.name || 'Tienda',
       smtp,
-      orderCode: sale.code,
-      statusLabel: '¡Pago confirmado!',
-      message:
-        'Recibimos tu pago correctamente y ya estamos preparando tu pedido. Te avisaremos cuando sea despachado.',
       brandColor: company.primaryColor,
       trackUrl: company.domain ? `https://${company.domain}` : null,
+      order: {
+        code: sale.code,
+        items: (sale.items || []).map((it: any) => ({
+          name: it.variant?.inventory?.name || 'Producto',
+          quantity: it.quantity,
+          price: Number(it.price) || 0,
+        })),
+        subtotal,
+        shippingCost,
+        total,
+        address: address || null,
+        customerName: `${ec?.firstName || ''} ${ec?.lastName || ''}`.trim(),
+        paymentLabel: 'Pago en línea',
+        deliveryLabel: deliveryMatch ? deliveryMatch[1].trim() : null,
+      },
     });
   }
 
