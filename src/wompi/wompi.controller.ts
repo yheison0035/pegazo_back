@@ -11,6 +11,7 @@ import { Public } from '@/auth/decorators/public.decorator';
 import { WompiService } from './wompi.service';
 import { CreateSignatureDto } from './dto/create-signature.dto';
 import { PrismaService } from '@/prisma.service';
+import { MailService } from '@/mail/mail.service';
 import { WebsiteGuard } from '@/common/guards/website.guard';
 import { Website } from '@/common/decorators/website.decorator';
 import { WebsiteContext } from '@/modules/website/interfaces/website-context.interface';
@@ -20,6 +21,7 @@ export class WompiController {
   constructor(
     private readonly wompiService: WompiService,
     private readonly prisma: PrismaService,
+    private readonly mail: MailService,
   ) {}
 
   // Firma de integridad para el checkout de la TIENDA. Usa el secreto de la
@@ -108,13 +110,14 @@ export class WompiController {
     if (status === 'APPROVED') {
       // Pago confirmado: recién AHORA se descuenta el stock (de forma atómica) y
       // el pedido se revela en el CRM (NUEVA/PAGADA). Idempotente: si ya estaba
-      // PAGADA, no se vuelve a descontar.
-      await this.prisma.$transaction(async (db) => {
+      // PAGADA, no se vuelve a descontar. Devuelve true SOLO la primera vez, para
+      // enviar el correo de confirmación una única vez.
+      const processed = await this.prisma.$transaction(async (db) => {
         const fresh = await db.sale.findUnique({
           where: { id: sale.id },
           select: { paymentStatus: true },
         });
-        if (fresh?.paymentStatus === 'PAGADA') return; // ya procesado
+        if (fresh?.paymentStatus === 'PAGADA') return false; // ya procesado
 
         const items = await db.saleItem.findMany({
           where: { saleId: sale.id },
@@ -156,7 +159,16 @@ export class WompiController {
             }),
           },
         });
+        return true;
       });
+
+      // Correo de CONFIRMACIÓN de pago al cliente (una sola vez). No bloquea ni
+      // rompe el webhook si el correo falla.
+      if (processed) {
+        this.sendPaymentConfirmation(sale.id, sale.local.companyId).catch(
+          () => undefined,
+        );
+      }
     } else {
       // DECLINED / VOIDED / ERROR: cancelar el pedido pendiente (no se tocó
       // stock). Solo si aún estaba en validación, para no pisar un pago aprobado.
@@ -171,6 +183,49 @@ export class WompiController {
     }
 
     return { received: true, valid: true };
+  }
+
+  // Envía al cliente el correo de CONFIRMACIÓN de pago (marca de la empresa).
+  private async sendPaymentConfirmation(saleId: number, companyId: number) {
+    const sale: any = await this.prisma.sale.findUnique({
+      where: { id: saleId },
+      select: {
+        code: true,
+        totalAmount: true,
+        ecommerceCustomer: { select: { email: true } },
+      },
+    });
+    const to = sale?.ecommerceCustomer?.email;
+    if (!to) return;
+
+    const company: any = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      omit: { mailPassword: false },
+    });
+    if (!company) return;
+
+    const smtp = company.mailHost
+      ? {
+          host: company.mailHost,
+          port: company.mailPort,
+          user: company.mailUser,
+          pass: company.mailPassword,
+          fromEmail: company.mailFromEmail,
+          fromName: company.mailFromName || company.name,
+        }
+      : undefined;
+
+    await this.mail.sendOrderStatusUpdate({
+      to,
+      companyName: company.mailFromName || company.name || 'Tienda',
+      smtp,
+      orderCode: sale.code,
+      statusLabel: '¡Pago confirmado!',
+      message:
+        'Recibimos tu pago correctamente y ya estamos preparando tu pedido. Te avisaremos cuando sea despachado.',
+      brandColor: company.primaryColor,
+      trackUrl: company.domain ? `https://${company.domain}` : null,
+    });
   }
 
   // Confirma un pago de suscripción y activa el plan de la empresa. Idempotente:
