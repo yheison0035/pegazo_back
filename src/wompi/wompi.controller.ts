@@ -296,6 +296,8 @@ export class WompiController {
       smtp,
       brandColor: company.primaryColor,
       trackUrl: company.domain ? `https://${company.domain}` : null,
+      // Reply-to = correo del negocio (las respuestas del cliente le llegan a él).
+      replyTo: company.email || company.mailFromEmail || null,
       order: {
         code: sale.code,
         items: (sale.items || []).map((it: any) => ({

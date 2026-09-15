@@ -851,6 +851,8 @@ export class SalesService {
         dto.trackingNumber ?? order.shipment?.trackingNumber ?? null,
       amountToPay,
       trackUrl: company.domain ? `https://${company.domain}` : null,
+      // Reply-to = correo del negocio.
+      replyTo: company.email || company.mailFromEmail || null,
     });
   }
 

@@ -422,6 +422,7 @@ export class MailService {
     trackingNumber?: string | null;
     amountToPay?: number | null;
     trackUrl?: string | null;
+    replyTo?: string | null;
   }): Promise<{ ok: boolean; via: string }> {
     const {
       to,
@@ -435,6 +436,7 @@ export class MailService {
       amountToPay,
       trackUrl,
     } = opts;
+    const replyTo = opts.replyTo || undefined;
     const color = opts.brandColor || '#111827';
     const subject = `Tu pedido ${orderCode}: ${statusLabel}`;
     const money = (n) =>
@@ -481,11 +483,11 @@ export class MailService {
     </div>`;
 
     if (!smtp?.host && this.resendEnabled()) {
-      await this.sendViaResend({ to, subject, html, fromName: companyName });
+      await this.sendViaResend({ to, subject, html, fromName: companyName, replyTo });
       return { ok: true, via: 'resend' };
     }
     if (!smtp?.host && this.brevoEnabled()) {
-      await this.sendViaBrevo({ to, subject, html, fromName: companyName });
+      await this.sendViaBrevo({ to, subject, html, fromName: companyName, replyTo });
       return { ok: true, via: 'brevo' };
     }
     const resolved = this.resolveTransporter(smtp);
@@ -496,7 +498,13 @@ export class MailService {
     const from = usingOwn
       ? resolved.from
       : `"${this.safeName(companyName)}" <${resolved.from}>`;
-    await resolved.tx.sendMail({ from, to, subject, html });
+    await resolved.tx.sendMail({
+      from,
+      to,
+      subject,
+      html,
+      replyTo: !usingOwn ? replyTo : undefined,
+    });
     return { ok: true, via: usingOwn ? 'smtp-empresa' : 'smtp-global' };
   }
 
@@ -508,6 +516,7 @@ export class MailService {
     smtp?: SmtpConfig;
     brandColor?: string | null;
     trackUrl?: string | null;
+    replyTo?: string | null;
     order: {
       code: string;
       items: { name: string; quantity: number; price: number }[];
@@ -594,12 +603,16 @@ export class MailService {
       </td></tr></table>
     </div>`;
 
+    // Igual que los demás correos de Pegazo: se envía por la cuenta central
+    // (Resend/Brevo, no-reply@pegazo.co) con la MARCA de la empresa cliente, y
+    // el reply-to al correo del negocio para que las respuestas le lleguen a él.
+    const replyTo = opts.replyTo || undefined;
     if (!smtp?.host && this.resendEnabled()) {
-      await this.sendViaResend({ to, subject, html, fromName: companyName });
+      await this.sendViaResend({ to, subject, html, fromName: companyName, replyTo });
       return { ok: true, via: 'resend' };
     }
     if (!smtp?.host && this.brevoEnabled()) {
-      await this.sendViaBrevo({ to, subject, html, fromName: companyName });
+      await this.sendViaBrevo({ to, subject, html, fromName: companyName, replyTo });
       return { ok: true, via: 'brevo' };
     }
     const resolved = this.resolveTransporter(smtp);
@@ -610,7 +623,13 @@ export class MailService {
     const from = usingOwn
       ? resolved.from
       : `"${this.safeName(companyName)}" <${resolved.from}>`;
-    await resolved.tx.sendMail({ from, to, subject, html });
+    await resolved.tx.sendMail({
+      from,
+      to,
+      subject,
+      html,
+      replyTo: !usingOwn ? replyTo : undefined,
+    });
     return { ok: true, via: usingOwn ? 'smtp-empresa' : 'smtp-global' };
   }
 
