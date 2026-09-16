@@ -311,7 +311,9 @@ export class WompiController {
       smtp,
       brandColor: company.primaryColor,
       logo: company.logo || null,
-      trackUrl: company.domain ? `https://${company.domain}` : null,
+      trackUrl: company.domain
+        ? `https://${company.domain}/?pedido=${encodeURIComponent(sale.code)}`
+        : null,
       // Reply-to = correo del negocio (las respuestas del cliente le llegan a él).
       replyTo: company.email || company.mailFromEmail || null,
       supportEmail: company.email || company.mailFromEmail || null,
