@@ -183,6 +183,12 @@ export class CustomerAuthService {
 
     const email = customer.email?.trim();
 
+    // Asegura el enlace por correo (perfiles + libreta de direcciones) también
+    // para cuentas ya logueadas. Es idempotente (no re-siembra por la marca).
+    await this.linkByEmail(customer.id, customer.companyId, email).catch(
+      () => undefined,
+    );
+
     // Pedidos de la cuenta: todo queda ligado por CORREO (es único). Incluye los
     // pedidos hechos como invitado con el mismo correo (customerId = Consumidor
     // Final). Se ocultan los pagos en línea sin confirmar (EN_VALIDACION).
@@ -257,39 +263,72 @@ export class CustomerAuthService {
 
     // 1) Enlaza perfiles de tienda (envío/facturación) con ese correo.
     await this.prisma.ecommerceCustomer.updateMany({
-      where: { email: { equals: mail, mode: 'insensitive' as any }, customerId: null },
+      where: {
+        email: { equals: mail, mode: 'insensitive' as any },
+        customerId: null,
+      },
       data: { customerId },
     });
 
-    // 2) Si no tiene direcciones guardadas, crea una desde el último pedido con
-    //    dirección (así su dirección también queda ligada a la cuenta).
-    const count = await this.prisma.customerAddress.count({
-      where: { customerId },
+    // 2) Importa (UNA sola vez) a su libreta de direcciones TODAS las direcciones
+    //    distintas de sus pedidos anteriores con ese correo. La marca
+    //    addressesSeededAt evita re-sembrar si luego el cliente las borra.
+    const me = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { addressesSeededAt: true },
     });
-    if (count === 0) {
-      const ec = await this.prisma.ecommerceCustomer.findFirst({
-        where: {
-          email: { equals: mail, mode: 'insensitive' as any },
-          address: { not: '' },
-          city: { not: '' },
-          department: { not: '' },
-        },
-        orderBy: { createdAt: 'desc' },
+    if (me?.addressesSeededAt) return;
+
+    const profiles = await this.prisma.ecommerceCustomer.findMany({
+      where: {
+        email: { equals: mail, mode: 'insensitive' as any },
+        address: { not: '' },
+        city: { not: '' },
+        department: { not: '' },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        address: true,
+        neighborhood: true,
+        city: true,
+        department: true,
+        addressDetail: true,
+      },
+    });
+
+    const existing = await this.prisma.customerAddress.findMany({
+      where: { customerId },
+      select: { address: true },
+    });
+    const norm = (s?: string | null) =>
+      String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const seen = new Set(existing.map((a) => norm(a.address)));
+    let makeDefault = existing.length === 0;
+
+    const toCreate: any[] = [];
+    for (const p of profiles) {
+      const key = norm(p.address);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      toCreate.push({
+        customerId,
+        department: p.department,
+        city: p.city,
+        neighborhood: p.neighborhood || '',
+        address: p.address,
+        addressDetail: p.addressDetail || null,
+        isDefault: makeDefault,
       });
-      if (ec?.address && ec.city && ec.department) {
-        await this.prisma.customerAddress.create({
-          data: {
-            customerId,
-            department: ec.department,
-            city: ec.city,
-            neighborhood: ec.neighborhood || '',
-            address: ec.address,
-            addressDetail: ec.addressDetail || null,
-            isDefault: true,
-          },
-        });
-      }
+      makeDefault = false;
     }
+
+    if (toCreate.length) {
+      await this.prisma.customerAddress.createMany({ data: toCreate });
+    }
+    await this.prisma.customer.update({
+      where: { id: customerId },
+      data: { addressesSeededAt: new Date() },
+    });
   }
 
   async updateProfile(customerId: number, dto: UpdateCustomerProfileDto) {
