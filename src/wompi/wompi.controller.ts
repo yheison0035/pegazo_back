@@ -12,6 +12,7 @@ import { WompiService } from './wompi.service';
 import { CreateSignatureDto } from './dto/create-signature.dto';
 import { PrismaService } from '@/prisma.service';
 import { MailService } from '@/mail/mail.service';
+import { RealtimeService } from '@/realtime/realtime.service';
 import { WebsiteGuard } from '@/common/guards/website.guard';
 import { Website } from '@/common/decorators/website.decorator';
 import { WebsiteContext } from '@/modules/website/interfaces/website-context.interface';
@@ -22,6 +23,7 @@ export class WompiController {
     private readonly wompiService: WompiService,
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   // Firma de integridad para el checkout de la TIENDA. Usa el secreto de la
@@ -224,6 +226,9 @@ export class WompiController {
     });
 
     if (processed) {
+      // Pago aprobado → el pedido pasa a NUEVA/PAGADA y debe aparecer en el CRM
+      // en tiempo real (sin recargar). Avisamos a los clientes de la empresa.
+      this.realtime.emit(companyId, 'orders', 'paid');
       this.sendPaymentConfirmation(saleId, companyId).catch(() => undefined);
     }
     return processed;

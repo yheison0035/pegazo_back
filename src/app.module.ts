@@ -65,6 +65,7 @@ import { AnnouncementsModule } from './announcements/announcements.module';
 import { BusinessTypesModule } from './business-types/business-types.module';
 import { ClinicalModule } from './clinical/clinical.module';
 import { SubscriptionModule } from './subscription/subscription.module';
+import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
@@ -133,6 +134,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
     BusinessTypesModule,
     ClinicalModule,
     SubscriptionModule,
+    RealtimeModule,
   ],
   providers: [
     // Aplica el rate-limiting a todas las rutas
