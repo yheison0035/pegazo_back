@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -247,6 +248,88 @@ export class CustomerAuthService {
     return {
       success: true,
       data: { customer: this.safe(customer), orders: data },
+    };
+  }
+
+  // Detalle COMPLETO de un pedido del cliente (para "Mis compras"). Valida que el
+  // pedido sea suyo (por customerId O por su correo), dentro de su empresa.
+  async getMyOrder(customerId: number, code: string) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+    if (!customer) throw new UnauthorizedException('Cliente no encontrado.');
+    const email = customer.email?.trim();
+
+    const order: any = await this.prisma.sale.findFirst({
+      where: {
+        code,
+        source: 'ECOMMERCE',
+        paymentStatus: { not: 'EN_VALIDACION' as any },
+        local: { is: { companyId: customer.companyId } },
+        OR: [
+          { customerId },
+          ...(email
+            ? [
+                {
+                  ecommerceCustomer: {
+                    is: { email: { equals: email, mode: 'insensitive' as any } },
+                  },
+                },
+              ]
+            : []),
+        ],
+      },
+      include: {
+        items: {
+          include: { variant: { include: { inventory: { select: { name: true } } } } },
+        },
+        ecommerceCustomer: true,
+        shipment: true,
+      },
+    });
+    if (!order) throw new NotFoundException('Pedido no encontrado.');
+
+    const ec = order.ecommerceCustomer;
+    const address = ec
+      ? [ec.address, ec.neighborhood, ec.city, ec.department]
+          .filter((p) => p && String(p).trim())
+          .join(', ')
+      : null;
+    const subtotal = order.subtotal != null ? Number(order.subtotal) : null;
+    const total = Number(order.totalAmount) || 0;
+    const shippingCost =
+      subtotal != null ? Math.max(total - subtotal, 0) : null;
+    const deliveryMatch = /Entrega:\s*([^·]+)/.exec(order.notes || '');
+
+    return {
+      success: true,
+      data: {
+        code: order.code,
+        saleDate: order.saleDate,
+        saleStatus: order.saleStatus,
+        paymentStatus: order.paymentStatus,
+        shippingStatus: order.shippingStatus,
+        paymentMethod: order.paymentMethod,
+        subtotal,
+        shippingCost,
+        total,
+        items: (order.items || []).map((it: any) => ({
+          name: it.variant?.inventory?.name || 'Producto',
+          color: it.variant?.color || null,
+          quantity: it.quantity,
+          price: Number(it.price) || 0,
+          subtotal: Number(it.subtotal) || 0,
+        })),
+        address: address || null,
+        customerName: ec
+          ? `${ec.firstName || ''} ${ec.lastName || ''}`.trim()
+          : customer.name,
+        phone: ec?.phone || customer.phone || null,
+        email: ec?.email || email || null,
+        deliveryLabel: deliveryMatch ? deliveryMatch[1].trim() : null,
+        carrier: order.shipment?.carrier || null,
+        trackingNumber: order.shipment?.trackingNumber || null,
+      },
     };
   }
 
