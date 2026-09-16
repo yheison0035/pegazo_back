@@ -223,6 +223,17 @@ export class EcommerceController {
     return this.customerAuth.updateProfile(customer.id, dto);
   }
 
+  // Detalle completo de un pedido del cliente logueado.
+  @Public()
+  @UseGuards(WebsiteGuard, CustomerJwtGuard)
+  @Get('orders/:code')
+  myOrder(
+    @Param('code') code: string,
+    @CurrentCustomer() customer: { id: number },
+  ) {
+    return this.customerAuth.getMyOrder(customer.id, code);
+  }
+
   // ---- Favoritos del cliente ----
 
   @Public()
