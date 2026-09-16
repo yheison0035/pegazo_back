@@ -97,6 +97,9 @@ export class CustomerAuthService {
           email: existing.email || email,
         },
       });
+      await this.linkByEmail(updated.id, companyId, updated.email).catch(
+        () => undefined,
+      );
       return {
         success: true,
         data: {
@@ -131,6 +134,10 @@ export class CustomerAuthService {
       },
     });
 
+    await this.linkByEmail(created.id, companyId, created.email).catch(
+      () => undefined,
+    );
+
     return {
       success: true,
       data: {
@@ -153,6 +160,10 @@ export class CustomerAuthService {
       throw new UnauthorizedException('Correo o contraseña incorrectos.');
     }
 
+    await this.linkByEmail(customer.id, website.companyId, customer.email).catch(
+      () => undefined,
+    );
+
     return {
       success: true,
       data: {
@@ -170,10 +181,31 @@ export class CustomerAuthService {
       throw new UnauthorizedException('Cliente no encontrado.');
     }
 
+    const email = customer.email?.trim();
+
+    // Pedidos de la cuenta: todo queda ligado por CORREO (es único). Incluye los
+    // pedidos hechos como invitado con el mismo correo (customerId = Consumidor
+    // Final). Se ocultan los pagos en línea sin confirmar (EN_VALIDACION).
     const orders = await this.prisma.sale.findMany({
-      where: { customerId },
+      where: {
+        source: 'ECOMMERCE',
+        paymentStatus: { not: 'EN_VALIDACION' as any },
+        local: { is: { companyId: customer.companyId } },
+        OR: [
+          { customerId },
+          ...(email
+            ? [
+                {
+                  ecommerceCustomer: {
+                    is: { email: { equals: email, mode: 'insensitive' as any } },
+                  },
+                },
+              ]
+            : []),
+        ],
+      },
       orderBy: { saleDate: 'desc' },
-      take: 20,
+      take: 30,
       select: {
         id: true,
         code: true,
@@ -183,13 +215,81 @@ export class CustomerAuthService {
         paymentStatus: true,
         shippingStatus: true,
         source: true,
+        ecommerceCustomer: {
+          select: {
+            address: true,
+            neighborhood: true,
+            city: true,
+            department: true,
+          },
+        },
       },
+    });
+
+    // Aplana la dirección de envío de cada pedido para el front.
+    const data = orders.map((o: any) => {
+      const ec = o.ecommerceCustomer;
+      const address = ec
+        ? [ec.address, ec.neighborhood, ec.city, ec.department]
+            .filter((p) => p && String(p).trim())
+            .join(', ')
+        : '';
+      const { ecommerceCustomer, ...rest } = o;
+      return { ...rest, address: address || null };
     });
 
     return {
       success: true,
-      data: { customer: this.safe(customer), orders },
+      data: { customer: this.safe(customer), orders: data },
     };
+  }
+
+  // Liga a la cuenta (por CORREO, que es único) los perfiles de envío hechos como
+  // invitado y, si aún no tiene direcciones guardadas, siembra una desde su último
+  // pedido con dirección real. Nunca rompe el login: cualquier error se ignora.
+  private async linkByEmail(
+    customerId: number,
+    companyId: number,
+    email?: string | null,
+  ) {
+    const mail = email?.trim();
+    if (!mail) return;
+
+    // 1) Enlaza perfiles de tienda (envío/facturación) con ese correo.
+    await this.prisma.ecommerceCustomer.updateMany({
+      where: { email: { equals: mail, mode: 'insensitive' as any }, customerId: null },
+      data: { customerId },
+    });
+
+    // 2) Si no tiene direcciones guardadas, crea una desde el último pedido con
+    //    dirección (así su dirección también queda ligada a la cuenta).
+    const count = await this.prisma.customerAddress.count({
+      where: { customerId },
+    });
+    if (count === 0) {
+      const ec = await this.prisma.ecommerceCustomer.findFirst({
+        where: {
+          email: { equals: mail, mode: 'insensitive' as any },
+          address: { not: '' },
+          city: { not: '' },
+          department: { not: '' },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (ec?.address && ec.city && ec.department) {
+        await this.prisma.customerAddress.create({
+          data: {
+            customerId,
+            department: ec.department,
+            city: ec.city,
+            neighborhood: ec.neighborhood || '',
+            address: ec.address,
+            addressDetail: ec.addressDetail || null,
+            isDefault: true,
+          },
+        });
+      }
+    }
   }
 
   async updateProfile(customerId: number, dto: UpdateCustomerProfileDto) {
