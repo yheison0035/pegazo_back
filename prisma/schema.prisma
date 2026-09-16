@@ -1468,6 +1468,11 @@ model Sale {
 
   shippingStatus ShippingStatus @default(PENDIENTE)
 
+  // Confirmación INTERNA del pedido (CRM): el asesor confirma con el cliente por
+  // WhatsApp el pedido y la dirección antes de empacar/despachar. El cliente NO
+  // ve este estado. Hasta que no esté confirmado, no se puede avanzar el envío.
+  confirmedAt DateTime?
+
   wompiTransactionId String?
   wompiReference     String?
   wompiStatus        String?
