@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
@@ -35,6 +36,8 @@ import { MailService } from '@/mail/mail.service';
 
 @Injectable()
 export class SalesService {
+  private readonly logger = new Logger(SalesService.name);
+
   constructor(
     private prisma: PrismaService,
     private stockService: StockService,
@@ -796,8 +799,12 @@ export class SalesService {
     // real). Se envía con el correo de la empresa (SMTP propio o global) y su
     // marca. No bloquea la respuesta ni la rompe si el correo falla.
     if (status && status !== prevStatus && order.ecommerceCustomer?.email) {
-      this.notifyOrderStatus(user.companyId, order, status, dto).catch(() => {
-        /* el fallo de correo no debe afectar la actualización */
+      this.notifyOrderStatus(user.companyId, order, status, dto).catch((e) => {
+        // El fallo de correo no debe afectar la actualización, pero SÍ lo dejamos
+        // en el log para poder diagnosticar (ej. un estado que no llega).
+        this.logger?.warn?.(
+          `notifyOrderStatus falló (pedido ${order.code}, estado ${status}): ${e?.message || e}`,
+        );
       });
     }
 
