@@ -885,7 +885,9 @@ export class SalesService {
       trackingNumber:
         dto.trackingNumber ?? order.shipment?.trackingNumber ?? null,
       amountToPay,
-      trackUrl: company.domain ? `https://${company.domain}` : null,
+      trackUrl: company.domain
+        ? `https://${company.domain}/?pedido=${encodeURIComponent(order.code)}`
+        : null,
       // Reply-to = correo del negocio.
       replyTo: company.email || company.mailFromEmail || null,
       supportEmail: company.email || company.mailFromEmail || null,
