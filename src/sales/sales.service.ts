@@ -698,11 +698,37 @@ export class SalesService {
 
     if (!order) throw new NotFoundException('Pedido no encontrado');
 
+    // Paso 1 (interno): confirmar el pedido y los datos con el cliente. No envía
+    // correo al cliente (no ve este estado); solo habilita el resto del flujo.
+    if (dto.confirm === true) {
+      if (!order.confirmedAt) {
+        await this.prisma.sale.update({
+          where: { id },
+          data: { confirmedAt: new Date() },
+        });
+        await this.audit.log({
+          entity: 'sale',
+          entityId: id,
+          action: 'UPDATE',
+          user,
+          changes: { confirmed: true },
+        });
+      }
+      return this.findOrderOne(id, user);
+    }
+
     const prevStatus = order.shippingStatus;
     const status: ShippingStatus | undefined =
       dto.shippingStatus && ShippingStatus[dto.shippingStatus]
         ? dto.shippingStatus
         : undefined;
+
+    // No se puede avanzar el estado del envío sin confirmar antes el pedido.
+    if (status && status !== prevStatus && !order.confirmedAt) {
+      throw new BadRequestException(
+        'Primero confirma el pedido y los datos con el cliente antes de cambiar el estado del envío.',
+      );
+    }
 
     // Fechas automáticas según el estado, respetando lo que llegue explícito.
     const now = new Date();
