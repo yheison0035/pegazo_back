@@ -844,8 +844,10 @@ export class SalesService {
       smtp,
       orderCode: order.code,
       statusLabel: info.label,
+      statusKey: status,
       message: info.message,
       brandColor: company.primaryColor,
+      logo: company.logo || null,
       carrier: dto.carrier ?? order.shipment?.carrier ?? null,
       trackingNumber:
         dto.trackingNumber ?? order.shipment?.trackingNumber ?? null,
@@ -853,6 +855,8 @@ export class SalesService {
       trackUrl: company.domain ? `https://${company.domain}` : null,
       // Reply-to = correo del negocio.
       replyTo: company.email || company.mailFromEmail || null,
+      supportEmail: company.email || company.mailFromEmail || null,
+      supportPhone: company.phone || null,
     });
   }
 

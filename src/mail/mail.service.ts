@@ -423,21 +423,164 @@ export class MailService {
     return { ok: true, via: usingOwn ? 'smtp-empresa' : 'smtp-global' };
   }
 
+  // Escapa texto para insertarlo con seguridad en el HTML del correo.
+  private escapeHtml(s?: string | null): string {
+    return String(s ?? '').replace(
+      /[&<>"']/g,
+      (c) =>
+        (({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        }) as Record<string, string>)[c],
+    );
+  }
+
+  // Plantilla base (email-safe) compartida por los correos al cliente: cabecera
+  // con marca (logo o nombre + color), cuerpo y pie con soporte. Tablas + estilos
+  // en línea para que se vea bien en Gmail, Outlook y Apple Mail.
+  private emailShell(opts: {
+    accent: string;
+    companyName: string;
+    logo?: string | null;
+    preheader?: string;
+    title: string;
+    subtitle?: string | null;
+    badge?: string | null;
+    body: string;
+    supportEmail?: string | null;
+    supportPhone?: string | null;
+  }): string {
+    const {
+      accent,
+      companyName,
+      logo,
+      preheader,
+      title,
+      subtitle,
+      badge,
+      body,
+      supportEmail,
+      supportPhone,
+    } = opts;
+    const year = new Date().getFullYear();
+    const name = this.safeName(companyName);
+    const header = logo
+      ? `<img src="${logo}" alt="${name}" width="130" style="max-width:140px;max-height:54px;object-fit:contain;display:inline-block;margin-bottom:12px;">`
+      : `<div style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;margin-bottom:8px;">${name}</div>`;
+    const support = [
+      supportEmail
+        ? `<a href="mailto:${supportEmail}" style="color:#6b7280;text-decoration:none;">${this.escapeHtml(
+            supportEmail,
+          )}</a>`
+        : null,
+      supportPhone
+        ? `<span style="color:#6b7280;">${this.escapeHtml(supportPhone)}</span>`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' &nbsp;·&nbsp; ');
+
+    return `<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"></head>
+<body style="margin:0;padding:0;background:#eef0f3;">
+  ${
+    preheader
+      ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#eef0f3;font-size:1px;line-height:1px;">${this.escapeHtml(
+          preheader,
+        )}</div>`
+      : ''
+  }
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef0f3;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 10px 34px rgba(17,24,39,0.09);">
+        <tr><td style="background:${accent};padding:30px 32px;text-align:center;">
+          ${header}
+          <div style="font-size:22px;font-weight:800;color:#ffffff;line-height:1.25;">${this.escapeHtml(
+            title,
+          )}</div>
+          ${
+            subtitle
+              ? `<div style="font-size:14px;color:#ffffff;opacity:.9;margin-top:4px;">${this.escapeHtml(
+                  subtitle,
+                )}</div>`
+              : ''
+          }
+          ${
+            badge
+              ? `<div style="margin-top:14px;"><span style="display:inline-block;background:rgba(255,255,255,0.18);color:#ffffff;font-size:13px;font-weight:700;padding:7px 16px;border-radius:999px;letter-spacing:.4px;">${this.escapeHtml(
+                  badge,
+                )}</span></div>`
+              : ''
+          }
+        </td></tr>
+        <tr><td style="padding:28px 32px;color:#111827;">
+          ${body}
+        </td></tr>
+        <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #eef0f3;text-align:center;">
+          ${
+            support
+              ? `<p style="margin:0 0 6px;font-size:12px;color:#6b7280;">¿Necesitas ayuda? ${support}</p>`
+              : ''
+          }
+          <p style="margin:0;font-size:11px;color:#9ca3af;">© ${year} ${name}. Todos los derechos reservados.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  }
+
+  // Botón (CTA) email-safe con el color de la marca.
+  private emailButton(url: string, label: string, accent: string): string {
+    return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px auto 4px;"><tr>
+      <td align="center" style="border-radius:12px;background:${accent};">
+        <a href="${url}" style="display:inline-block;padding:13px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:12px;">${this.escapeHtml(
+          label,
+        )}</a>
+      </td></tr></table>`;
+  }
+
+  // Línea de tiempo visual del envío (4 pasos) para el correo de estado.
+  private shipTimeline(currentIndex: number, accent: string): string {
+    const steps = ['Preparando', 'Despachado', 'En camino', 'Entregado'];
+    const cells = steps
+      .map((label, i) => {
+        const done = i <= currentIndex;
+        const bg = done ? accent : '#e5e7eb';
+        const txt = done ? '#111827' : '#9ca3af';
+        return `<td align="center" valign="top" style="width:25%;padding:0 2px;">
+          <div style="width:28px;height:28px;line-height:28px;border-radius:50%;background:${bg};color:#ffffff;font-size:14px;font-weight:700;margin:0 auto;">${
+            done ? '&#10003;' : i + 1
+          }</div>
+          <div style="font-size:11px;color:${txt};margin-top:7px;line-height:1.2;">${label}</div>
+        </td>`;
+      })
+      .join('');
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 24px;"><tr>${cells}</tr></table>`;
+  }
+
   // Aviso al CLIENTE del cambio de estado de su pedido, con la marca de la
-  // empresa (nombre y color). Email-safe (tablas + estilos en línea).
+  // empresa (logo, nombre y color) y una línea de tiempo del envío. Email-safe.
   async sendOrderStatusUpdate(opts: {
     to: string;
     companyName: string;
     smtp?: SmtpConfig;
     orderCode: string;
     statusLabel: string;
+    statusKey?: string | null;
     message: string;
     brandColor?: string | null;
+    logo?: string | null;
     carrier?: string | null;
     trackingNumber?: string | null;
     amountToPay?: number | null;
     trackUrl?: string | null;
     replyTo?: string | null;
+    supportEmail?: string | null;
+    supportPhone?: string | null;
   }): Promise<{ ok: boolean; via: string }> {
     const {
       to,
@@ -445,6 +588,7 @@ export class MailService {
       smtp,
       orderCode,
       statusLabel,
+      statusKey,
       message,
       carrier,
       trackingNumber,
@@ -452,50 +596,80 @@ export class MailService {
       trackUrl,
     } = opts;
     const replyTo = opts.replyTo || undefined;
-    const color = opts.brandColor || '#111827';
+    const accent = this.safeColor(opts.brandColor) || '#111827';
     const subject = `Tu pedido ${orderCode}: ${statusLabel}`;
     const money = (n) =>
       typeof n === 'number' ? `$${n.toLocaleString('es-CO')}` : '';
 
-    const rows: string[][] = [
+    const stepIndex: Record<string, number> = {
+      PENDIENTE: 0,
+      ASIGNADO_TRANSPORTADORA: 1,
+      EN_CAMINO: 2,
+      ENTREGADO: 3,
+    };
+    const isException = statusKey === 'FALLIDO' || statusKey === 'DEVUELTO';
+    const idx = statusKey != null ? stepIndex[statusKey] : undefined;
+
+    const detailRows: string[][] = [
       ['Pedido', orderCode],
-      ['Estado', statusLabel],
       carrier ? ['Transportadora', carrier] : null,
       trackingNumber ? ['Guía', trackingNumber] : null,
       amountToPay ? ['Por pagar', money(amountToPay)] : null,
     ].filter(Boolean) as string[][];
 
-    const html = `
-    <div style="background:#f4f4f5;padding:24px 0;font-family:Arial,Helvetica,sans-serif;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
-        <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #eee;">
-          <tr><td style="background:${color};padding:22px 28px;color:#fff;">
-            <div style="font-size:14px;opacity:.85;">${this.safeName(companyName)}</div>
-            <div style="font-size:20px;font-weight:bold;margin-top:2px;">Actualización de tu pedido</div>
-          </td></tr>
-          <tr><td style="padding:28px;">
-            <p style="margin:0 0 6px;font-size:16px;color:#111;">${statusLabel}</p>
-            <p style="margin:0 0 18px;font-size:14px;color:#555;line-height:1.5;">${message}</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#333;">
-              ${rows
-                .map(
-                  ([k, v]) =>
-                    `<tr><td style="padding:6px 0;color:#888;">${k}</td><td style="padding:6px 0;text-align:right;font-weight:bold;">${v}</td></tr>`,
-                )
-                .join('')}
-            </table>
-            ${
-              trackUrl
-                ? `<div style="margin-top:22px;text-align:center;"><a href="${trackUrl}" style="display:inline-block;background:${color};color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:bold;font-size:14px;">Ver mi pedido</a></div>`
-                : ''
-            }
-          </td></tr>
-          <tr><td style="padding:16px 28px;background:#fafafa;color:#999;font-size:12px;text-align:center;">
-            Este correo fue enviado por ${this.safeName(companyName)}.
-          </td></tr>
-        </table>
-      </td></tr></table>
-    </div>`;
+    const detailsTable = `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;background:#f9fafb;border:1px solid #eef0f3;border-radius:12px;padding:4px 14px;">
+        ${detailRows
+          .map(
+            ([k, v], i) =>
+              `<tr>
+                <td style="padding:9px 0;color:#6b7280;${i ? 'border-top:1px solid #eef0f3;' : ''}">${k}</td>
+                <td style="padding:9px 0;text-align:right;font-weight:700;color:#111827;${i ? 'border-top:1px solid #eef0f3;' : ''}">${this.escapeHtml(
+                  v,
+                )}</td>
+              </tr>`,
+          )
+          .join('')}
+      </table>`;
+
+    const statusHero = `
+      <div style="text-align:center;margin:2px 0 14px;">
+        <span style="display:inline-block;background:#f3f4f6;color:${accent};font-size:17px;font-weight:800;padding:10px 22px;border-radius:12px;">${this.escapeHtml(
+          statusLabel,
+        )}</span>
+      </div>
+      <p style="margin:0 0 18px;font-size:14px;color:#374151;line-height:1.6;text-align:center;">${this.escapeHtml(
+        message,
+      )}</p>`;
+
+    const exceptionBanner = isException
+      ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:14px 16px;margin-bottom:6px;">
+           <p style="margin:0;font-size:13px;color:#b91c1c;line-height:1.6;">Nos pondremos en contacto contigo para coordinar los siguientes pasos.</p>
+         </div>`
+      : '';
+
+    const timeline =
+      !isException && idx != null ? this.shipTimeline(idx, accent) : '';
+
+    const body = `
+      ${statusHero}
+      ${timeline}
+      ${exceptionBanner}
+      ${detailsTable}
+      ${trackUrl ? this.emailButton(trackUrl, 'Ver mi pedido', accent) : ''}
+    `;
+
+    const html = this.emailShell({
+      accent,
+      companyName,
+      logo: opts.logo,
+      preheader: `${statusLabel} · Pedido ${orderCode}`,
+      title: 'Actualización de tu pedido',
+      subtitle: `Pedido ${orderCode}`,
+      body,
+      supportEmail: opts.supportEmail,
+      supportPhone: opts.supportPhone,
+    });
 
     if (!smtp?.host && this.resendEnabled()) {
       await this.sendViaResend({ to, subject, html, fromName: companyName, replyTo });
@@ -530,8 +704,11 @@ export class MailService {
     companyName: string;
     smtp?: SmtpConfig;
     brandColor?: string | null;
+    logo?: string | null;
     trackUrl?: string | null;
     replyTo?: string | null;
+    supportEmail?: string | null;
+    supportPhone?: string | null;
     order: {
       code: string;
       items: { name: string; quantity: number; price: number }[];
@@ -546,17 +723,24 @@ export class MailService {
     };
   }): Promise<{ ok: boolean; via: string }> {
     const { to, companyName, smtp, trackUrl, order } = opts;
-    const color = opts.brandColor || '#111827';
+    const accent = this.safeColor(opts.brandColor) || '#111827';
     const money = (n) =>
       typeof n === 'number' ? `$${n.toLocaleString('es-CO')}` : '';
     const subject = `Confirmación de tu pedido ${order.code}`;
+    const firstName = (order.customerName || '').trim().split(/\s+/)[0] || '';
 
     const itemsHtml = (order.items || [])
       .map(
-        (it) =>
-          `<tr><td style="padding:6px 0;color:#333;">${it.name} <span style="color:#888;">x${it.quantity}</span></td><td style="padding:6px 0;text-align:right;color:#333;white-space:nowrap;">${money(
-            it.price * it.quantity,
-          )}</td></tr>`,
+        (it, i) =>
+          `<tr>
+            <td style="padding:11px 0;color:#111827;font-size:14px;${i ? 'border-top:1px solid #f1f2f4;' : ''}">
+              ${this.escapeHtml(it.name)}
+              <span style="display:inline-block;margin-left:4px;color:#6b7280;font-size:12px;">× ${it.quantity}</span>
+            </td>
+            <td style="padding:11px 0;text-align:right;color:#111827;font-size:14px;font-weight:700;white-space:nowrap;${i ? 'border-top:1px solid #f1f2f4;' : ''}">${money(
+              it.price * it.quantity,
+            )}</td>
+          </tr>`,
       )
       .join('');
 
@@ -575,48 +759,67 @@ export class MailService {
       order.amountToPay ? ['Pagas al recibir', money(order.amountToPay)] : null,
     ].filter(Boolean) as string[][];
 
-    const html = `
-    <div style="background:#f4f4f5;padding:24px 0;font-family:Arial,Helvetica,sans-serif;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
-        <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #eee;">
-          <tr><td style="background:${color};padding:22px 28px;color:#fff;">
-            <div style="font-size:14px;opacity:.85;">${this.safeName(companyName)}</div>
-            <div style="font-size:20px;font-weight:bold;margin-top:2px;">¡Gracias por tu compra!</div>
-            <div style="font-size:13px;opacity:.9;margin-top:2px;">Pedido ${order.code}</div>
-          </td></tr>
-          <tr><td style="padding:24px 28px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;border-bottom:1px solid #eee;">${itemsHtml}</table>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;margin-top:8px;">
-              ${totalsRows
-                .map(
-                  ([k, v]) =>
-                    `<tr><td style="padding:4px 0;color:#888;">${k}</td><td style="padding:4px 0;text-align:right;color:#333;">${v}</td></tr>`,
-                )
-                .join('')}
-              <tr><td style="padding:8px 0;font-weight:bold;color:#111;border-top:1px solid #eee;">Total</td><td style="padding:8px 0;text-align:right;font-weight:bold;color:#111;border-top:1px solid #eee;">${money(
-                order.total,
-              )}</td></tr>
-            </table>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;margin-top:14px;">
-              ${infoRows
-                .map(
-                  ([k, v]) =>
-                    `<tr><td style="padding:4px 0;color:#888;width:40%;">${k}</td><td style="padding:4px 0;color:#333;">${v}</td></tr>`,
-                )
-                .join('')}
-            </table>
-            ${
-              trackUrl
-                ? `<div style="margin-top:22px;text-align:center;"><a href="${trackUrl}" style="display:inline-block;background:${color};color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:bold;font-size:14px;">Ver mi pedido</a></div>`
-                : ''
-            }
-          </td></tr>
-          <tr><td style="padding:16px 28px;background:#fafafa;color:#999;font-size:12px;text-align:center;">
-            Este correo fue enviado por ${this.safeName(companyName)}.
-          </td></tr>
-        </table>
-      </td></tr></table>
-    </div>`;
+    const body = `
+      <p style="margin:0 0 4px;font-size:15px;color:#111827;">Hola${
+        firstName ? ' ' + this.escapeHtml(firstName) : ''
+      }, ¡recibimos tu pedido! 🎉</p>
+      <p style="margin:0 0 20px;font-size:14px;color:#6b7280;line-height:1.6;">
+        Ya lo estamos preparando. Te iremos avisando por correo cada vez que cambie de estado.
+      </p>
+
+      <!-- Productos -->
+      <div style="border:1px solid #eef0f3;border-radius:14px;padding:6px 16px;margin-bottom:16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${itemsHtml}</table>
+      </div>
+
+      <!-- Totales -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;margin-bottom:6px;">
+        ${totalsRows
+          .map(
+            ([k, v]) =>
+              `<tr><td style="padding:4px 0;color:#6b7280;">${k}</td><td style="padding:4px 0;text-align:right;color:#374151;">${v}</td></tr>`,
+          )
+          .join('')}
+      </table>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+        <tr>
+          <td style="padding:12px 16px;background:#f9fafb;border-radius:12px;font-size:16px;font-weight:800;color:#111827;">Total</td>
+          <td style="padding:12px 16px;background:#f9fafb;border-radius:12px;text-align:right;font-size:18px;font-weight:800;color:${accent};">${money(
+            order.total,
+          )}</td>
+        </tr>
+      </table>
+
+      <!-- Datos del pedido -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;">
+        ${infoRows
+          .map(
+            ([k, v]) =>
+              `<tr>
+                <td style="padding:5px 0;color:#9ca3af;width:38%;vertical-align:top;">${k}</td>
+                <td style="padding:5px 0;color:#374151;line-height:1.5;">${this.escapeHtml(
+                  v,
+                )}</td>
+              </tr>`,
+          )
+          .join('')}
+      </table>
+
+      ${trackUrl ? this.emailButton(trackUrl, 'Ver mi pedido', accent) : ''}
+    `;
+
+    const html = this.emailShell({
+      accent,
+      companyName,
+      logo: opts.logo,
+      preheader: `Recibimos tu pedido ${order.code} · Total ${money(order.total)}`,
+      title: '¡Gracias por tu compra!',
+      subtitle: 'Tu pedido fue confirmado',
+      badge: `Pedido ${order.code}`,
+      body,
+      supportEmail: opts.supportEmail,
+      supportPhone: opts.supportPhone,
+    });
 
     // Igual que los demás correos de Pegazo: se envía por la cuenta central
     // (Resend/Brevo, no-reply@pegazo.co) con la MARCA de la empresa cliente, y
