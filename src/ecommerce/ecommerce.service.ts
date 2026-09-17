@@ -1208,9 +1208,22 @@ export class EcommerceService {
       total += shippingCost;
 
       /** ACTORES DEL CHECKOUT (se crean/resuelven si la empresa no los tenía) */
-      // Si el cliente inició sesión, el pedido queda a SU nombre; si no, cae en
-      // "Consumidor Final".
-      let crmCustomerId = loggedCustomerId || website.customerId;
+      // Si el cliente inició sesión, el pedido queda a SU nombre. Si NO inició
+      // sesión pero el correo coincide con un cliente registrado de la empresa,
+      // también queda a su nombre (no como "Consumidor Final"). En último caso,
+      // cae en "Consumidor Final".
+      let crmCustomerId = loggedCustomerId;
+      if (!crmCustomerId && dto.customer?.email) {
+        const match = await tx.customer.findFirst({
+          where: {
+            companyId: website.companyId,
+            email: { equals: dto.customer.email.trim(), mode: 'insensitive' },
+          },
+          select: { id: true },
+        });
+        if (match) crmCustomerId = match.id;
+      }
+      crmCustomerId = crmCustomerId || website.customerId;
       if (!crmCustomerId) {
         const cf = await tx.customer.upsert({
           where: {
