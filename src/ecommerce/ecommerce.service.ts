@@ -706,11 +706,14 @@ export class EcommerceService {
       where.categoryId = category.id;
     }
 
-    /** NOVEDADES */
+    /** NOVEDADES: los más recientes. Antes se filtraba por "creados en los
+     * últimos 30 días", pero si la tienda no cargó productos hace poco la página
+     * quedaba vacía. Ahora se muestran los más nuevos (orden por fecha) con un
+     * tope, así siempre hay contenido y es consistente con la sección del home. */
+    let take: number | undefined;
     if (mode === 'new') {
-      where.createdAt = {
-        gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-      };
+      take = 30;
+      if (!sort) orderBy = { createdAt: 'desc' };
     }
 
     /** OFERTAS */
@@ -750,6 +753,7 @@ export class EcommerceService {
         category: true,
       },
       orderBy,
+      ...(take ? { take } : {}),
     });
 
     /** ====== FILTROS DINÁMICOS ====== */
