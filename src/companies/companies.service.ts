@@ -178,6 +178,39 @@ export class CompaniesService {
       const m = src[k] || {};
       out[k] = { enabled: !!m.enabled };
     }
+
+    // Umbral GLOBAL de envío gratis (aplica a las transportadoras).
+    out.freeFrom = numOrNull(src.freeFrom);
+
+    // Transportadoras (contra entrega / envío nacional): tarifa nacional +
+    // overrides por departamento, cada una con costo y tiempo de entrega. Se
+    // sanea todo aquí (el body llega como `any`).
+    const str = (v: any, max: number) =>
+      v == null ? null : String(v).slice(0, max).trim() || null;
+    if (Array.isArray(src.carriers)) {
+      out.carriers = src.carriers.slice(0, 20).map((c: any, i: number) => ({
+        id: (str(c?.id, 40) || `carrier-${i + 1}`).toLowerCase(),
+        name: str(c?.name, 60) || 'Transportadora',
+        logo: str(c?.logo, 500),
+        enabled: c?.enabled !== false,
+        cod: c?.cod !== false,
+        national: {
+          cost: num(c?.national?.cost),
+          days: str(c?.national?.days, 60),
+        },
+        overrides: Array.isArray(c?.overrides)
+          ? c.overrides
+              .filter((o: any) => o && str(o.department, 60))
+              .slice(0, 40)
+              .map((o: any) => ({
+                department: str(o.department, 60),
+                cost: num(o.cost),
+                days: str(o.days, 60),
+              }))
+          : [],
+      }));
+    }
+
     const c = await this.prisma.company.update({
       where: { id: user.companyId },
       data: { storeShipping: out },
