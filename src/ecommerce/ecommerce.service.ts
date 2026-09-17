@@ -614,7 +614,7 @@ export class EcommerceService {
   async getProductsCatalog(
     options: {
       categorySlug?: string;
-      mode?: 'category' | 'new' | 'offers';
+      mode?: 'category' | 'new' | 'offers' | 'bestsellers';
       colors?: string;
       brands?: string;
       minPrice?: string;
@@ -744,7 +744,7 @@ export class EcommerceService {
       };
     }
 
-    const products = await this.prisma.inventory.findMany({
+    let products = await this.prisma.inventory.findMany({
       where,
       include: {
         images: { orderBy: { position: 'asc' } },
@@ -755,6 +755,39 @@ export class EcommerceService {
       orderBy,
       ...(take ? { take } : {}),
     });
+
+    /** MÁS VENDIDOS: se reordena por unidades vendidas (no se puede en el
+     * orderBy de Prisma) y se limita a los 30 primeros. */
+    if (mode === 'bestsellers') {
+      const variantIds = products.flatMap((p) => p.variants.map((v) => v.id));
+      const grouped = variantIds.length
+        ? await this.prisma.saleItem.groupBy({
+            by: ['inventoryVariantId'],
+            _sum: { quantity: true },
+            where: { inventoryVariantId: { in: variantIds } },
+          })
+        : [];
+
+      const soldByVariant = new Map<number, number>();
+      for (const g of grouped) {
+        if (g.inventoryVariantId != null) {
+          soldByVariant.set(g.inventoryVariantId, g._sum.quantity ?? 0);
+        }
+      }
+      const soldOf = (p: (typeof products)[number]) =>
+        p.variants.reduce((s, v) => s + (soldByVariant.get(v.id) ?? 0), 0);
+
+      products = products
+        .map((p) => ({ p, sold: soldOf(p) }))
+        .sort(
+          (a, b) =>
+            b.sold - a.sold ||
+            new Date(b.p.createdAt).getTime() -
+              new Date(a.p.createdAt).getTime(),
+        )
+        .slice(0, 30)
+        .map((x) => x.p);
+    }
 
     /** ====== FILTROS DINÁMICOS ====== */
     const colorMap = new Map<string, number>();
