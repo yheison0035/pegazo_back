@@ -256,6 +256,7 @@ export class WompiController {
         subtotal: true,
         totalAmount: true,
         notes: true,
+        shipment: { select: { carrier: true } },
         ecommerceCustomer: {
           select: {
             email: true,
@@ -304,6 +305,7 @@ export class WompiController {
       .filter(Boolean)
       .join(', ');
     const deliveryMatch = /Entrega:\s*([^·]+)/.exec(sale.notes || '');
+    const timeMatch = /Tiempo estimado:\s*([^·]+)/.exec(sale.notes || '');
 
     await this.mail.sendOrderConfirmation({
       to,
@@ -332,6 +334,8 @@ export class WompiController {
         customerName: `${ec?.firstName || ''} ${ec?.lastName || ''}`.trim(),
         paymentLabel: 'Pago en línea',
         deliveryLabel: deliveryMatch ? deliveryMatch[1].trim() : null,
+        carrier: sale.shipment?.carrier || null,
+        estimatedTime: timeMatch ? timeMatch[1].trim() : null,
       },
     });
   }
