@@ -7,6 +7,11 @@ import { PrismaService } from '@/prisma.service';
 import { CreateEcommerceOrderDto } from './dto/create-ecommerce-order.dto';
 import { PaymentMethod } from '@prisma/client';
 import { WebsiteContext } from '@/modules/website/interfaces/website-context.interface';
+import {
+  quoteShipping,
+  pickOption,
+  isNoChargeMode,
+} from './shipping.util';
 
 const SORT_OPTIONS = [
   { label: 'Precio: menor a mayor', value: 'price_asc' },
@@ -113,6 +118,27 @@ export class EcommerceService {
       success: true,
       data,
     };
+  }
+
+  // ---- Envíos: cotización por destino (transportadoras) ----
+
+  /**
+   * Opciones de envío para un destino y subtotal. Lo consume el checkout para
+   * mostrar costo + tiempo de entrega al elegir la ciudad/departamento.
+   */
+  quoteShippingOptions(
+    website: WebsiteContext,
+    opts: { department?: string; subtotal?: number; carrierId?: string },
+  ) {
+    const storeShipping = (website.company as any)?.storeShipping || null;
+    const subtotal = Math.max(0, Number(opts.subtotal) || 0);
+    const options = quoteShipping(
+      storeShipping,
+      opts.department,
+      subtotal,
+      opts.carrierId,
+    );
+    return { success: true, data: options };
   }
 
   // ---- Favoritos del cliente de la tienda online ----
@@ -1141,8 +1167,36 @@ export class EcommerceService {
       // Subtotal (solo productos) antes de sumar el envío: se guarda para poder
       // mostrarle al cliente el desglose (subtotal + envío = total) al consultar.
       const itemsSubtotal = total;
-      // El costo de envío se suma al total (para que coincida con lo cobrado).
-      const shippingCost = Number(dto.shippingCost) || 0;
+
+      // Envío. Si la tienda tiene TRANSPORTADORAS configuradas, el BACKEND
+      // recalcula el costo según destino + transportadora (fuente de verdad, no
+      // se confía en el front). Si NO tiene transportadoras (tiendas ya activas),
+      // se conserva el comportamiento actual (el costo lo calcula el front).
+      const storeShipping = (website.company as any)?.storeShipping || null;
+      const hasCarriers =
+        Array.isArray(storeShipping?.carriers) &&
+        storeShipping.carriers.some((c: any) => c && c.enabled !== false);
+      let shippingCost = 0;
+      let chosenCarrierName: string | null = null;
+      let chosenDays: string | null = null;
+      if (!isNoChargeMode(dto.deliveryMethod)) {
+        if (hasCarriers) {
+          const options = quoteShipping(
+            storeShipping,
+            dto.customer.department,
+            itemsSubtotal,
+            dto.carrierId,
+          );
+          const chosen = pickOption(options, dto.carrierId);
+          if (chosen) {
+            shippingCost = chosen.cost;
+            chosenCarrierName = chosen.name;
+            chosenDays = chosen.days;
+          }
+        } else {
+          shippingCost = Math.max(0, Number(dto.shippingCost) || 0);
+        }
+      }
       total += shippingCost;
 
       /** ACTORES DEL CHECKOUT (se crean/resuelven si la empresa no los tenía) */
@@ -1204,6 +1258,8 @@ export class EcommerceService {
         ? METHOD_LABEL[dto.deliveryMethod]
         : null;
       if (methodLabel) noteParts.push(`Entrega: ${methodLabel}`);
+      if (chosenCarrierName) noteParts.push(`Transportadora: ${chosenCarrierName}`);
+      if (chosenDays) noteParts.push(`Tiempo estimado: ${chosenDays}`);
       if (dto.notes?.trim()) noteParts.push(dto.notes.trim());
       const saleNotes = noteParts.length ? noteParts.join(' · ') : null;
 
@@ -1239,11 +1295,12 @@ export class EcommerceService {
         },
       });
 
-      /** CREAR ENVÍO */
+      /** CREAR ENVÍO (con la transportadora elegida por el cliente, si aplica) */
       await tx.shipment.create({
         data: {
           saleId: sale.id,
           status: 'PENDIENTE',
+          ...(chosenCarrierName && { carrier: chosenCarrierName }),
         },
       });
 

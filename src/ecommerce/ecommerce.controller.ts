@@ -88,6 +88,17 @@ export class EcommerceController {
 
   @Public()
   @UseGuards(WebsiteGuard)
+  @Post('shipping/quote')
+  quoteShipping(@Body() body: any, @Website() website: WebsiteContext) {
+    return this.ecommerceService.quoteShippingOptions(website, {
+      department: body?.department,
+      subtotal: Number(body?.subtotal) || 0,
+      carrierId: body?.carrierId,
+    });
+  }
+
+  @Public()
+  @UseGuards(WebsiteGuard)
   @Get('order/track')
   trackOrder(@Query() query: any, @Website() website: WebsiteContext) {
     return this.ecommerceService.trackOrder(

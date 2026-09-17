@@ -36,6 +36,11 @@ export class CreateEcommerceOrderDto {
   @IsString()
   deliveryMethod?: string;
 
+  // Transportadora elegida por el cliente (id). El backend recalcula el costo.
+  @IsOptional()
+  @IsString()
+  carrierId?: string;
+
   // Notas del cliente (ej. referencias, nº de mesa, instrucciones).
   @IsOptional()
   @IsString()
