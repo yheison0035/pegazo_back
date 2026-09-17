@@ -70,6 +70,13 @@ export class EcommerceController {
 
   @Public()
   @UseGuards(WebsiteGuard)
+  @Get('mas-vendidos')
+  getBestSellers(@Website() website: WebsiteContext) {
+    return this.ecommerceService.getBestSellers(10, website);
+  }
+
+  @Public()
+  @UseGuards(WebsiteGuard)
   @Get('catalog')
   getCatalog(@Query() query: any, @Website() website: WebsiteContext) {
     return this.ecommerceService.getProductsCatalog(
