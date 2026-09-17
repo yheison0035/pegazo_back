@@ -1180,7 +1180,10 @@ export class EcommerceService {
       let chosenCarrierName: string | null = null;
       let chosenDays: string | null = null;
       if (!isNoChargeMode(dto.deliveryMethod)) {
-        if (hasCarriers) {
+        // Las transportadoras aplican SOLO al envío nacional. El domicilio local
+        // usa la tarifa plana del dueño (se confía en el front, es un valor bajo
+        // que el dueño define).
+        if (dto.deliveryMethod === 'shipping' && hasCarriers) {
           const options = quoteShipping(
             storeShipping,
             dto.customer.department,
