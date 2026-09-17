@@ -522,6 +522,94 @@ export class EcommerceService {
     };
   }
 
+  // Imprime los MÁS VENDIDOS (por unidades vendidas). Si no hay ventas
+  // suficientes, completa con los demás productos activos para que la sección
+  // siempre tenga contenido.
+  async getBestSellers(limit = 10, website: WebsiteContext) {
+    const { localId } = website;
+
+    const products = await this.prisma.inventory.findMany({
+      where: { localId, status: 'ACTIVO' },
+      include: {
+        images: { orderBy: { position: 'asc' } },
+        variants: true,
+        brand: true,
+        category: true,
+      },
+    });
+
+    if (products.length === 0) return { success: true, data: [] };
+
+    // Unidades vendidas por variante (solo de este catálogo).
+    const variantIds = products.flatMap((p) => p.variants.map((v) => v.id));
+    const grouped = variantIds.length
+      ? await this.prisma.saleItem.groupBy({
+          by: ['inventoryVariantId'],
+          _sum: { quantity: true },
+          where: { inventoryVariantId: { in: variantIds } },
+        })
+      : [];
+
+    const soldByVariant = new Map<number, number>();
+    for (const g of grouped) {
+      if (g.inventoryVariantId != null) {
+        soldByVariant.set(g.inventoryVariantId, g._sum.quantity ?? 0);
+      }
+    }
+
+    const withSold = products.map((product) => {
+      const sold = product.variants.reduce(
+        (s, v) => s + (soldByVariant.get(v.id) ?? 0),
+        0,
+      );
+      return { product, sold };
+    });
+
+    // Más vendidos primero; a igualdad, lo más nuevo.
+    withSold.sort((a, b) => {
+      if (b.sold !== a.sold) return b.sold - a.sold;
+      return (
+        new Date(b.product.createdAt).getTime() -
+        new Date(a.product.createdAt).getTime()
+      );
+    });
+
+    return {
+      success: true,
+      data: withSold.slice(0, limit).map(({ product, sold }) => {
+        const { price, oldPrice, discount } = this.priceInfo(product);
+
+        const stock = product.variants.reduce((s, v) => s + v.stock, 0);
+        const colors = product.variants
+          .filter((v) => product.trackStock === false || v.stock > 0)
+          .map((v) => ({
+            variantId: v.id,
+            name: v.color,
+            size: v.size,
+            stock: v.stock,
+          }));
+
+        return {
+          id: product.id,
+          name: product.name,
+          slug: product.slug,
+          price,
+          unit: product.unit ?? 'UNIDAD',
+          trackStock: product.trackStock,
+          oldPrice,
+          discount,
+          stock,
+          sold: Math.round(sold),
+          colors,
+          brand: product.brand?.name ?? null,
+          category: product.category?.name ?? null,
+          image: product.images[0]?.url ?? null,
+          images: product.images.map((img) => img.url),
+        };
+      }),
+    };
+  }
+
   // Imprime productos por (categorias-novedades-filtros) y filtros
   async getProductsCatalog(
     options: {
