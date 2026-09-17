@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
+import { MailService } from '@/mail/mail.service';
 import { CreateEcommerceOrderDto } from './dto/create-ecommerce-order.dto';
 import { PaymentMethod } from '@prisma/client';
 import { WebsiteContext } from '@/modules/website/interfaces/website-context.interface';
@@ -22,7 +23,10 @@ const SORT_OPTIONS = [
 
 @Injectable()
 export class EcommerceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+  ) {}
 
   /**
    * Precio que ve el cliente en la TIENDA ONLINE.
@@ -1048,8 +1052,9 @@ export class EcommerceService {
     loggedCustomerId: number | null = null,
   ) {
     const { localId } = website;
+    const isOnlinePayment = dto.paymentMethod === 'TRANSFERENCIA';
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       /**  CLIENTE ECOMMERCE (perfil de envío/facturación) */
       let ecommerceCustomer = await tx.ecommerceCustomer.findUnique({
         where: { email: dto.customer.email },
@@ -1314,5 +1319,112 @@ export class EcommerceService {
         paymentMethod: dto.paymentMethod,
       };
     });
+
+    // Contra entrega (EFECTIVO): el pedido ya está confirmado y visible, así que
+    // le enviamos al cliente el correo de confirmación de una vez. (En pago en
+    // línea el correo lo manda el webhook cuando el pago queda APROBADO.)
+    if (!isOnlinePayment && result?.saleId) {
+      this.sendCodConfirmation(result.saleId, website.companyId).catch(() => {
+        /* el fallo de correo no debe afectar la creación del pedido */
+      });
+    }
+
+    return result;
+  }
+
+  // Correo de confirmación para pedidos CONTRA ENTREGA (pago al recibir).
+  private async sendCodConfirmation(saleId: number, companyId: number) {
+    const sale: any = await this.prisma.sale.findUnique({
+      where: { id: saleId },
+      select: {
+        code: true,
+        subtotal: true,
+        totalAmount: true,
+        notes: true,
+        shipment: { select: { carrier: true } },
+        ecommerceCustomer: {
+          select: {
+            email: true,
+            firstName: true,
+            lastName: true,
+            address: true,
+            neighborhood: true,
+            city: true,
+            department: true,
+          },
+        },
+        items: {
+          select: {
+            quantity: true,
+            price: true,
+            variant: { select: { inventory: { select: { name: true } } } },
+          },
+        },
+      },
+    });
+    const to = sale?.ecommerceCustomer?.email;
+    if (!to) return;
+
+    const company: any = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      omit: { mailPassword: false },
+    });
+    if (!company) return;
+
+    const smtp = company.mailHost
+      ? {
+          host: company.mailHost,
+          port: company.mailPort,
+          user: company.mailUser,
+          pass: company.mailPassword,
+          fromEmail: company.mailFromEmail,
+          fromName: company.mailFromName || company.name,
+        }
+      : undefined;
+
+    const subtotal = sale.subtotal != null ? Number(sale.subtotal) : null;
+    const total = Number(sale.totalAmount) || 0;
+    const shippingCost = subtotal != null ? Math.max(total - subtotal, 0) : null;
+    const ec = sale.ecommerceCustomer;
+    const address = [ec?.address, ec?.neighborhood, ec?.city, ec?.department]
+      .filter(Boolean)
+      .join(', ');
+    const deliveryMatch = /Entrega:\s*([^·]+)/.exec(sale.notes || '');
+    const timeMatch = /Tiempo estimado:\s*([^·]+)/.exec(sale.notes || '');
+
+    await this.mail
+      .sendOrderConfirmation({
+        to,
+        companyName: company.mailFromName || company.name || 'Tienda',
+        smtp,
+        brandColor: company.primaryColor,
+        logo: company.logo || null,
+        trackUrl: company.domain
+          ? `https://${company.domain}/?pedido=${encodeURIComponent(sale.code)}`
+          : null,
+        replyTo: company.email || company.mailFromEmail || null,
+        supportEmail: company.email || company.mailFromEmail || null,
+        supportPhone: company.phone || null,
+        order: {
+          code: sale.code,
+          items: (sale.items || []).map((it: any) => ({
+            name: it.variant?.inventory?.name || 'Producto',
+            quantity: it.quantity,
+            price: Number(it.price) || 0,
+          })),
+          subtotal,
+          shippingCost,
+          total,
+          address: address || null,
+          customerName: `${ec?.firstName || ''} ${ec?.lastName || ''}`.trim(),
+          paymentLabel: 'Contra entrega',
+          deliveryLabel: deliveryMatch ? deliveryMatch[1].trim() : null,
+          carrier: sale.shipment?.carrier || null,
+          estimatedTime: timeMatch ? timeMatch[1].trim() : null,
+          // En contra entrega el cliente paga el total al recibir.
+          amountToPay: total,
+        },
+      })
+      .catch(() => undefined);
   }
 }

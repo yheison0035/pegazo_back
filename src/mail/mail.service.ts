@@ -719,6 +719,8 @@ export class MailService {
       customerName?: string | null;
       paymentLabel?: string | null;
       deliveryLabel?: string | null;
+      carrier?: string | null;
+      estimatedTime?: string | null;
       amountToPay?: number | null;
     };
   }): Promise<{ ok: boolean; via: string }> {
@@ -754,6 +756,8 @@ export class MailService {
     const infoRows = [
       order.customerName ? ['Cliente', order.customerName] : null,
       order.deliveryLabel ? ['Entrega', order.deliveryLabel] : null,
+      order.carrier ? ['Transportadora', order.carrier] : null,
+      order.estimatedTime ? ['Tiempo de entrega', order.estimatedTime] : null,
       order.paymentLabel ? ['Pago', order.paymentLabel] : null,
       order.address ? ['Dirección', order.address] : null,
       order.amountToPay ? ['Pagas al recibir', money(order.amountToPay)] : null,
