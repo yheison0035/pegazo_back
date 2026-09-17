@@ -300,6 +300,7 @@ export class CustomerAuthService {
     const shippingCost =
       subtotal != null ? Math.max(total - subtotal, 0) : null;
     const deliveryMatch = /Entrega:\s*([^·]+)/.exec(order.notes || '');
+    const timeMatch = /Tiempo estimado:\s*([^·]+)/.exec(order.notes || '');
 
     return {
       success: true,
@@ -327,6 +328,7 @@ export class CustomerAuthService {
         phone: ec?.phone || customer.phone || null,
         email: ec?.email || email || null,
         deliveryLabel: deliveryMatch ? deliveryMatch[1].trim() : null,
+        estimatedTime: timeMatch ? timeMatch[1].trim() : null,
         carrier: order.shipment?.carrier || null,
         trackingNumber: order.shipment?.trackingNumber || null,
       },
