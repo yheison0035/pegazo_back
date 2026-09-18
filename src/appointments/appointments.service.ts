@@ -988,6 +988,15 @@ export class AppointmentsService {
 
     const duration = service.duration;
 
+    // Si la cita es para HOY (calendario Colombia), no ofrecer horas que ya
+    // pasaron: solo de la hora actual en adelante.
+    const colNow = new Date(Date.now() - COLOMBIA_OFFSET_MIN * 60000);
+    const todayStr = `${colNow.getUTCFullYear()}-${String(
+      colNow.getUTCMonth() + 1,
+    ).padStart(2, '0')}-${String(colNow.getUTCDate()).padStart(2, '0')}`;
+    const isToday = date === todayStr;
+    const nowMinutes = colNow.getUTCHours() * 60 + colNow.getUTCMinutes();
+
     // Horario de atención configurable de la empresa (por defecto 9–20).
     const company = await this.prisma.company.findUnique({
       where: { id: service.companyId },
@@ -1043,6 +1052,11 @@ export class AppointmentsService {
       const slotEnd = slotStart + duration;
 
       if (slotEnd > endHour * 60) {
+        return false;
+      }
+
+      // Hoy: descartar las horas ya pasadas.
+      if (isToday && slotStart < nowMinutes) {
         return false;
       }
 
