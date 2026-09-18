@@ -119,6 +119,14 @@ export class AppointmentsService {
         tagline: override.tagline || null,
         subtitle: override.subtitle || null,
         heroImage: override.heroImage || null,
+        // Reglas de categorías para agrupar los servicios como un menú (orden
+        // definido por la empresa). Cada grupo: { title, icon?, any?, all?, not? }
+        // con palabras clave que se buscan en el nombre del servicio.
+        serviceGroups: Array.isArray(override.serviceGroups)
+          ? override.serviceGroups
+          : null,
+        // Texto de la "experiencia" (intro tipo portada) para el skin oscuro.
+        intro: override.intro || null,
         type: company.type || null,
       },
     };
