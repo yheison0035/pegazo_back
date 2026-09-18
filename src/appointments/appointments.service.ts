@@ -53,6 +53,77 @@ export class AppointmentsService {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Config pública de la página de citas (/booking/:slug). Resuelve la empresa
+  // por su slug y devuelve la marca + el "skin" del diseño. El skin sale de:
+  //   override por empresa (bookingConfig.skin)  ->  default del tipo de negocio
+  //   (businessTypeConfig.storefront.bookingSkin)  ->  heurística por tipo.
+  // NO expone datos privados; solo lo necesario para pintar la página.
+  // ---------------------------------------------------------------------------
+  private defaultSkinForType(type?: string | null): 'dark' | 'light' | 'classic' {
+    const t = (type || '').toUpperCase();
+    if (/BARBER|PELUQ|TATTOO|TATUA|GYM|GIMNAS|MOTO|MECAN/.test(t)) return 'dark';
+    if (/SPA|ESTETIC|ESTÉTIC|BELLEZ|SALUD|CLINIC|CLÍNIC|MEDIC|DENTAL|UÑAS|NAIL|MASAJE|FACIAL/.test(t))
+      return 'light';
+    return 'classic';
+  }
+
+  async getBookingConfig(slug: string) {
+    const clean = (slug || '').trim().toLowerCase();
+    if (!clean) throw new NotFoundException('Negocio no encontrado.');
+
+    const company = await this.prisma.company.findUnique({
+      where: { slug: clean },
+      select: {
+        id: true,
+        name: true,
+        websiteName: true,
+        logo: true,
+        phone: true,
+        primaryColor: true,
+        type: true,
+        bookingConfig: true,
+      },
+    });
+    if (!company) throw new NotFoundException('Negocio no encontrado.');
+
+    const override: any = company.bookingConfig || {};
+
+    // Default del skin por tipo de negocio (configurable desde la plataforma).
+    let typeSkin: string | null = null;
+    if (company.type) {
+      const tc = await this.prisma.businessTypeConfig.findUnique({
+        where: { type: company.type },
+        select: { storefront: true, active: true },
+      });
+      if (tc?.active) typeSkin = (tc.storefront as any)?.bookingSkin || null;
+    }
+
+    const skin =
+      override.skin || typeSkin || this.defaultSkinForType(company.type);
+    const accent = override.accent || company.primaryColor || null;
+    const whatsapp = String(override.whatsapp || company.phone || '').replace(
+      /\D/g,
+      '',
+    );
+
+    return {
+      success: true,
+      data: {
+        companyId: company.id,
+        name: company.websiteName || company.name,
+        logo: company.logo || null,
+        whatsapp,
+        accent,
+        skin,
+        tagline: override.tagline || null,
+        subtitle: override.subtitle || null,
+        heroImage: override.heroImage || null,
+        type: company.type || null,
+      },
+    };
+  }
+
   async findAllPaginated(user: any, query: any) {
     // Antes de listar, actualiza estados vencidos de esta empresa para que la
     // tabla siempre refleje EN_PROCESO / COMPLETADA sin esperar al cron.

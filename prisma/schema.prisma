@@ -333,6 +333,10 @@ model Company {
   secondaryColor String?
   accentColor    String?
   ctaColor       String? // color de los botones de compra
+  // Override por empresa del look de la página pública de citas (/booking/:slug).
+  // { skin?: 'dark'|'light'|'classic', accent?: hex, tagline?, subtitle?,
+  //   heroImage?, whatsapp? }. El default sale del tipo de negocio.
+  bookingConfig  Json?
   heroTitle      String?
   heroSubtitle   String?
 
