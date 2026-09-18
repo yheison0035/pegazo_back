@@ -33,4 +33,13 @@ export class GenerateProductContentDto {
   @IsOptional()
   @IsString()
   brand?: string;
+
+  // Qué generar: 'all' (todo), 'description', 'feature' (1), 'specification' (1).
+  @IsOptional()
+  @IsString()
+  field?: string;
+
+  // Para 'feature'/'specification': lo que ya existe, para no repetir.
+  @IsOptional()
+  existing?: string[];
 }
