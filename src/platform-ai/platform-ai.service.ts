@@ -86,7 +86,17 @@ export class PlatformAiService {
       );
     }
 
-    const prompt = this.buildPrompt(name, dto.category, dto.brand);
+    const field = dto.field || 'all';
+    const existing = Array.isArray(dto.existing)
+      ? dto.existing.filter(Boolean)
+      : [];
+    const prompt = this.buildPrompt(
+      name,
+      field,
+      existing,
+      dto.category,
+      dto.brand,
+    );
 
     let raw: string;
     try {
@@ -94,35 +104,78 @@ export class PlatformAiService {
         cfg.provider === 'openai'
           ? await this.callOpenAiCompatible(cfg, prompt)
           : await this.callGemini(cfg, prompt);
-    } catch (e) {
+    } catch (e: any) {
       throw new ServiceUnavailableException(
-        'No se pudo generar el contenido con IA. Revisa la API key/el modelo.',
+        'No se pudo generar con IA. ' + String(e?.message || '').slice(0, 300),
       );
     }
 
     const json = this.extractJson(raw);
-    const payload = {
-      description: typeof json.description === 'string' ? json.description : '',
-      features: Array.isArray(json.features)
-        ? json.features
-            .filter((x: unknown) => typeof x === 'string' && x.trim())
-            .slice(0, 8)
-            .map((t: string) => ({ title: t.trim() }))
-        : [],
-      specifications: Array.isArray(json.specifications)
-        ? json.specifications
-            .filter((s: any) => s && s.key && s.value)
-            .slice(0, 12)
-            .map((s: any) => ({
-              key: String(s.key).trim(),
-              value: String(s.value).trim(),
-            }))
-        : [],
+
+    if (field === 'description') {
+      return {
+        success: true,
+        data: {
+          description:
+            typeof json.description === 'string' ? json.description : '',
+        },
+      };
+    }
+    if (field === 'feature') {
+      const feature =
+        (typeof json.feature === 'string' && json.feature.trim()) ||
+        (Array.isArray(json.features) && json.features[0]) ||
+        '';
+      return { success: true, data: { feature: String(feature).trim() } };
+    }
+    if (field === 'specification') {
+      const spec =
+        json.specification ||
+        (Array.isArray(json.specifications) && json.specifications[0]) ||
+        {};
+      return {
+        success: true,
+        data: {
+          specification: {
+            key: String(spec.key || '').trim(),
+            value: String(spec.value || '').trim(),
+          },
+        },
+      };
+    }
+
+    // field === 'all'
+    return {
+      success: true,
+      data: {
+        description:
+          typeof json.description === 'string' ? json.description : '',
+        features: Array.isArray(json.features)
+          ? json.features
+              .filter((x: unknown) => typeof x === 'string' && x.trim())
+              .slice(0, 8)
+              .map((t: string) => ({ title: t.trim() }))
+          : [],
+        specifications: Array.isArray(json.specifications)
+          ? json.specifications
+              .filter((s: any) => s && s.key && s.value)
+              .slice(0, 12)
+              .map((s: any) => ({
+                key: String(s.key).trim(),
+                value: String(s.value).trim(),
+              }))
+          : [],
+      },
     };
-    return { success: true, data: payload };
   }
 
-  private buildPrompt(name: string, category?: string, brand?: string) {
+  private buildPrompt(
+    name: string,
+    field: string,
+    existing: string[],
+    category?: string,
+    brand?: string,
+  ) {
     const ctx = [
       category ? `Categoría: ${category}` : '',
       brand ? `Marca: ${brand}` : '',
@@ -130,14 +183,43 @@ export class PlatformAiService {
       .filter(Boolean)
       .join('. ');
 
-    return `Eres redactor de e-commerce en Colombia (estilo Mercado Libre). Con base en el NOMBRE del producto, redacta contenido de venta claro, honesto y persuasivo en español.
-Producto: "${name}".${ctx ? ' ' + ctx + '.' : ''}
-Reglas:
-- Si el nombre trae marca/modelo, respétalo; NO afirmes que es una marca famosa si no está claro.
-- Descripción: 2 a 4 frases, tono cercano, en HTML simple con <p> y <strong> (sin encabezados ni listas).
-- Características: 4 a 5 beneficios cortos (frases completas, sin viñetas manuales).
-- Especificaciones: 3 a 6 pares clave/valor técnicos típicos del producto. Usa valores generales; no inventes cifras muy específicas.
-Responde ÚNICAMENTE un JSON válido con esta forma exacta, sin texto extra ni markdown:
+    const base = `Eres redactor de e-commerce en Colombia (estilo Mercado Libre). Escribe en español, claro y honesto. Producto: "${name}".${
+      ctx ? ' ' + ctx + '.' : ''
+    } Si el nombre trae marca/modelo, respétalo; NO afirmes que es una marca famosa si no está claro.`;
+
+    if (field === 'description') {
+      return `${base}
+Redacta SOLO la descripción: 2 a 4 frases persuasivas, en HTML simple con <p> y <strong> (sin encabezados ni listas).
+Responde ÚNICAMENTE JSON válido: {"description":"<p>...</p>"}`;
+    }
+
+    if (field === 'feature') {
+      const ex = existing.length
+        ? ` Ya existen estas (NO las repitas): ${existing
+            .map((e) => `"${e}"`)
+            .join(', ')}.`
+        : '';
+      return `${base}
+Da UNA sola característica (beneficio corto, frase completa, sin viñetas ni HTML).${ex}
+Responde ÚNICAMENTE JSON válido: {"feature":"..."}`;
+    }
+
+    if (field === 'specification') {
+      const ex = existing.length
+        ? ` Ya existen estas claves (NO las repitas): ${existing
+            .map((e) => `"${e}"`)
+            .join(', ')}.`
+        : '';
+      return `${base}
+Da UNA sola especificación técnica típica en formato clave/valor (valor general; no inventes cifras muy específicas).${ex}
+Responde ÚNICAMENTE JSON válido: {"specification":{"key":"...","value":"..."}}`;
+    }
+
+    return `${base}
+- Descripción: 2 a 4 frases en HTML <p>/<strong> (sin listas).
+- Características: 4 a 5 beneficios cortos.
+- Especificaciones: 3 a 6 pares clave/valor típicos.
+Responde ÚNICAMENTE JSON válido, sin markdown:
 {"description":"<p>...</p>","features":["...","..."],"specifications":[{"key":"...","value":"..."}]}`;
   }
 
@@ -159,7 +241,10 @@ Responde ÚNICAMENTE un JSON válido con esta forma exacta, sin texto extra ni m
       }),
     });
 
-    if (!res.ok) throw new Error(`Gemini ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Gemini ${res.status}: ${body.slice(0, 200)}`);
+    }
     const data: any = await res.json();
     return (
       data?.candidates?.[0]?.content?.parts
@@ -188,7 +273,10 @@ Responde ÚNICAMENTE un JSON válido con esta forma exacta, sin texto extra ni m
       }),
     });
 
-    if (!res.ok) throw new Error(`OpenAI-compat ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`OpenAI-compat ${res.status}: ${body.slice(0, 200)}`);
+    }
     const data: any = await res.json();
     return data?.choices?.[0]?.message?.content || '';
   }
