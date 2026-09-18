@@ -228,33 +228,56 @@ Responde ÚNICAMENTE JSON válido, sin markdown:
       cfg.model,
     )}:generateContent?key=${encodeURIComponent(cfg.apiKey)}`;
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2048,
-          responseMimeType: 'application/json',
-          // Los modelos Gemini 3.x "piensan" antes de responder; sin esto se
-          // gastan los tokens pensando y el texto sale vacío. Lo desactivamos.
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      }),
+    const body = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 2048,
+        responseMimeType: 'application/json',
+        // Los modelos Gemini 3.x "piensan" antes de responder; sin esto se
+        // gastan los tokens pensando y el texto sale vacío. Lo desactivamos.
+        thinkingConfig: { thinkingBudget: 0 },
+      },
     });
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`Gemini ${res.status}: ${body.slice(0, 200)}`);
+    return this.withRetry(async () => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        const err: any = new Error(`Gemini ${res.status}: ${t.slice(0, 200)}`);
+        err.status = res.status;
+        throw err;
+      }
+      const data: any = await res.json();
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+      // Solo el texto de la RESPUESTA (descarta las partes de "pensamiento").
+      return parts
+        .filter((p: any) => !p?.thought)
+        .map((p: any) => p?.text || '')
+        .join('');
+    });
+  }
+
+  /** Reintenta ante errores temporales del proveedor (503 sobrecargado, 429
+   * rate limit, 500). Espera creciente entre intentos. */
+  private async withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+    let lastErr: any;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await fn();
+      } catch (e: any) {
+        lastErr = e;
+        const status = e?.status;
+        const retryable = status === 503 || status === 429 || status === 500;
+        if (!retryable || i === attempts - 1) throw e;
+        await new Promise((r) => setTimeout(r, 700 * (i + 1) + Math.random() * 500));
+      }
     }
-    const data: any = await res.json();
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-    // Solo el texto de la RESPUESTA (descarta las partes de "pensamiento").
-    return parts
-      .filter((p: any) => !p?.thought)
-      .map((p: any) => p?.text || '')
-      .join('');
+    throw lastErr;
   }
 
   private async callOpenAiCompatible(
@@ -262,27 +285,32 @@ Responde ÚNICAMENTE JSON válido, sin markdown:
     prompt: string,
   ) {
     const base = (cfg.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
-    const res = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${cfg.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: cfg.model,
-        temperature: 0.7,
-        max_tokens: 1024,
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content: prompt }],
-      }),
+    const body = JSON.stringify({
+      model: cfg.model,
+      temperature: 0.7,
+      max_tokens: 1024,
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content: prompt }],
     });
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`OpenAI-compat ${res.status}: ${body.slice(0, 200)}`);
-    }
-    const data: any = await res.json();
-    return data?.choices?.[0]?.message?.content || '';
+    return this.withRetry(async () => {
+      const res = await fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${cfg.apiKey}`,
+        },
+        body,
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        const err: any = new Error(`OpenAI-compat ${res.status}: ${t.slice(0, 200)}`);
+        err.status = res.status;
+        throw err;
+      }
+      const data: any = await res.json();
+      return data?.choices?.[0]?.message?.content || '';
+    });
   }
 
   /** Extrae el primer objeto JSON del texto (tolerante a ```json ... ```). */
