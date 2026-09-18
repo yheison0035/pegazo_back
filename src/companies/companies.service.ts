@@ -112,6 +112,7 @@ export class CompaniesService {
         subtitle: cfg.subtitle || '',
         whatsapp: cfg.whatsapp || '',
         heroImage: cfg.heroImage || '',
+        ravenImage: cfg.ravenImage || '',
         introCta: cfg.intro?.cta || '',
         introPills: cfg.intro?.pills || '',
       },
@@ -142,6 +143,7 @@ export class CompaniesService {
     setStr('tagline');
     setStr('subtitle');
     setStr('heroImage');
+    setStr('ravenImage');
     if (dto.whatsapp !== undefined) {
       const w = String(dto.whatsapp || '').replace(/\D/g, '');
       if (w) cfg.whatsapp = w;
