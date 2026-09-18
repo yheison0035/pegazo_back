@@ -2411,6 +2411,21 @@ model PlanModuleGate {
 // Cuentas de pago de la PLATAFORMA (Pegazo). Config global única (una fila) que
 // alimenta el modal "Pagar" que ven los negocios: a qué cuenta consignar y a qué
 // WhatsApp enviar el comprobante. Se administra desde SUPER_PLATFORM.
+// Configuración GLOBAL de IA (solo la maneja el SUPER_PLATFORM_ADMIN). Con esto
+// el botón "IA" del inventario genera descripción/características/especificaciones
+// a partir del nombre. Proveedor configurable (gemini u OpenAI-compatible como
+// Groq/OpenRouter) para poder empezar GRATIS y cambiar sin tocar el código.
+model PlatformAiSettings {
+  id        Int      @id @default(1)
+  enabled   Boolean  @default(false)
+  provider  String   @default("gemini") // gemini | openai
+  apiKey    String   @default("")
+  model     String   @default("gemini-2.0-flash")
+  baseUrl   String   @default("") // solo para proveedores compatibles con OpenAI
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model PlatformPaymentSettings {
   id             Int      @id @default(1)
   bankName       String   @default("BANCOLOMBIA")

@@ -13,6 +13,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { StockRequestsModule } from './stock-requests/stock-requests.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PlatformPaymentModule } from './platform-payment/platform-payment.module';
+import { PlatformAiModule } from './platform-ai/platform-ai.module';
 import { SupportModule } from './support/support.module';
 import { AssetsModule } from './assets/assets.module';
 import { LedgerAccountsModule } from './ledger-accounts/ledger-accounts.module';
@@ -76,6 +77,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     PrismaModule,
     PlansConfigModule,
     PlatformPlansModule,
+    PlatformAiModule,
     AuthModule,
     BrandsModule,
     CategoriesModule,
