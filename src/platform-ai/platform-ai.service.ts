@@ -13,7 +13,7 @@ const DEFAULTS = {
   enabled: false,
   provider: 'gemini',
   apiKey: '',
-  model: 'gemini-2.0-flash',
+  model: 'gemini-3.6-flash',
   baseUrl: '',
 };
 

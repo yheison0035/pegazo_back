@@ -2420,7 +2420,7 @@ model PlatformAiSettings {
   enabled   Boolean  @default(false)
   provider  String   @default("gemini") // gemini | openai
   apiKey    String   @default("")
-  model     String   @default("gemini-2.0-flash")
+  model     String   @default("gemini-3.6-flash")
   baseUrl   String   @default("") // solo para proveedores compatibles con OpenAI
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
