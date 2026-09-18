@@ -45,7 +45,7 @@ export class PlatformAiController {
   @Get('status')
   async status() {
     const s = await this.service.get();
-    return { available: s.enabled && s.hasKey };
+    return { success: true, data: { available: s.data.enabled && s.data.hasKey } };
   }
 
   // Generación de contenido de producto a partir del nombre (botón IA).

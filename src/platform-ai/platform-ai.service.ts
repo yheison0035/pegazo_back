@@ -36,12 +36,15 @@ export class PlatformAiService {
   async get() {
     const s = await this.getRaw();
     return {
-      enabled: s.enabled,
-      provider: s.provider,
-      model: s.model,
-      baseUrl: s.baseUrl,
-      hasKey: !!s.apiKey,
-      keyPreview: s.apiKey ? `••••${s.apiKey.slice(-4)}` : '',
+      success: true,
+      data: {
+        enabled: s.enabled,
+        provider: s.provider,
+        model: s.model,
+        baseUrl: s.baseUrl,
+        hasKey: !!s.apiKey,
+        keyPreview: s.apiKey ? `••••${s.apiKey.slice(-4)}` : '',
+      },
     };
   }
 
@@ -98,7 +101,7 @@ export class PlatformAiService {
     }
 
     const json = this.extractJson(raw);
-    return {
+    const payload = {
       description: typeof json.description === 'string' ? json.description : '',
       features: Array.isArray(json.features)
         ? json.features
@@ -116,6 +119,7 @@ export class PlatformAiService {
             }))
         : [],
     };
+    return { success: true, data: payload };
   }
 
   private buildPrompt(name: string, category?: string, brand?: string) {
