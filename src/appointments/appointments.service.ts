@@ -120,6 +120,7 @@ export class AppointmentsService {
         subtitle: override.subtitle || null,
         heroImage: override.heroImage || null,
         ravenImage: override.ravenImage || null,
+        musicUrl: override.musicUrl || null,
         // Reglas de categorías para agrupar los servicios como un menú (orden
         // definido por la empresa). Cada grupo: { title, icon?, any?, all?, not? }
         // con palabras clave que se buscan en el nombre del servicio.
