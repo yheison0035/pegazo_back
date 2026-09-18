@@ -25,6 +25,20 @@ export class CompanySettingsController {
     return this.service.getOwnSettings(req.user);
   }
 
+  // Página pública de citas (/booking/:slug): leer y editar su diseño (skin,
+  // marca, portada). La categorización de servicios la gestiona la plataforma.
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Get('booking-config')
+  getBookingConfig(@Req() req) {
+    return this.service.getBookingPageConfig(req.user);
+  }
+
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Patch('booking-config')
+  updateBookingConfig(@Body() dto: any, @Req() req) {
+    return this.service.updateBookingPageConfig(req.user, dto);
+  }
+
   // Sin @Roles: cualquier usuario autenticado (incluida la caja/cajero) puede
   // leer la config fiscal mínima que el POS necesita para calcular el IVA.
   @Get('fiscal-config')

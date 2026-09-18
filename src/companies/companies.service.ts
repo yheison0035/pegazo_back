@@ -81,6 +81,98 @@ export class CompaniesService {
     return { success: true, data: { ...company, mailConfigured } };
   }
 
+  // ---- Página pública de citas (/booking/:slug) ----
+  // El dueño edita el "skin" y la marca de su página de citas. Se guarda en
+  // Company.bookingConfig (JSON). La categorización (serviceGroups) NO se toca
+  // aquí (la gestiona la plataforma).
+  async getBookingPageConfig(user: any) {
+    const company = await this.prisma.company.findUnique({
+      where: { id: user.companyId },
+      select: {
+        name: true,
+        logo: true,
+        phone: true,
+        slug: true,
+        primaryColor: true,
+        bookingConfig: true,
+      },
+    });
+    const cfg: any = company?.bookingConfig || {};
+    return {
+      success: true,
+      data: {
+        name: company?.name || '',
+        logo: company?.logo || null,
+        slug: company?.slug || null,
+        phone: company?.phone || '',
+        defaultAccent: company?.primaryColor || '',
+        skin: cfg.skin || '',
+        accent: cfg.accent || '',
+        tagline: cfg.tagline || '',
+        subtitle: cfg.subtitle || '',
+        whatsapp: cfg.whatsapp || '',
+        heroImage: cfg.heroImage || '',
+        introCta: cfg.intro?.cta || '',
+        introPills: cfg.intro?.pills || '',
+      },
+    };
+  }
+
+  async updateBookingPageConfig(user: any, dto: any) {
+    const company = await this.prisma.company.findUnique({
+      where: { id: user.companyId },
+      select: { bookingConfig: true },
+    });
+    const cfg: any = { ...((company?.bookingConfig as any) || {}) };
+
+    const setStr = (k: string) => {
+      if (dto[k] !== undefined) {
+        const v = String(dto[k] ?? '').trim();
+        if (v) cfg[k] = v;
+        else delete cfg[k];
+      }
+    };
+
+    if (dto.skin !== undefined) {
+      const skin = String(dto.skin || '').trim();
+      if (['dark', 'light', 'classic'].includes(skin)) cfg.skin = skin;
+      else delete cfg.skin;
+    }
+    setStr('accent');
+    setStr('tagline');
+    setStr('subtitle');
+    setStr('heroImage');
+    if (dto.whatsapp !== undefined) {
+      const w = String(dto.whatsapp || '').replace(/\D/g, '');
+      if (w) cfg.whatsapp = w;
+      else delete cfg.whatsapp;
+    }
+
+    // Intro (portada) — se preserva serviceGroups y demás claves existentes.
+    if (dto.introCta !== undefined || dto.introPills !== undefined) {
+      const intro = { ...(cfg.intro || {}) };
+      if (dto.introCta !== undefined) {
+        const v = String(dto.introCta || '').trim();
+        if (v) intro.cta = v;
+        else delete intro.cta;
+      }
+      if (dto.introPills !== undefined) {
+        const v = String(dto.introPills || '').trim();
+        if (v) intro.pills = v;
+        else delete intro.pills;
+      }
+      if (Object.keys(intro).length) cfg.intro = intro;
+      else delete cfg.intro;
+    }
+
+    await this.prisma.company.update({
+      where: { id: user.companyId },
+      data: { bookingConfig: cfg },
+    });
+
+    return this.getBookingPageConfig(user);
+  }
+
   // Correo propio del negocio (SMTP). La contraseña solo se actualiza si viene
   // (para no borrarla al guardar el resto). Enviar '' explícito la limpia.
   async updateMailConfig(
