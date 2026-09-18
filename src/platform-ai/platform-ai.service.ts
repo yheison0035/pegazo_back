@@ -235,8 +235,11 @@ Responde ÚNICAMENTE JSON válido, sin markdown:
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 1024,
+          maxOutputTokens: 2048,
           responseMimeType: 'application/json',
+          // Los modelos Gemini 3.x "piensan" antes de responder; sin esto se
+          // gastan los tokens pensando y el texto sale vacío. Lo desactivamos.
+          thinkingConfig: { thinkingBudget: 0 },
         },
       }),
     });
@@ -246,11 +249,12 @@ Responde ÚNICAMENTE JSON válido, sin markdown:
       throw new Error(`Gemini ${res.status}: ${body.slice(0, 200)}`);
     }
     const data: any = await res.json();
-    return (
-      data?.candidates?.[0]?.content?.parts
-        ?.map((p: any) => p?.text || '')
-        .join('') || ''
-    );
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    // Solo el texto de la RESPUESTA (descarta las partes de "pensamiento").
+    return parts
+      .filter((p: any) => !p?.thought)
+      .map((p: any) => p?.text || '')
+      .join('');
   }
 
   private async callOpenAiCompatible(
