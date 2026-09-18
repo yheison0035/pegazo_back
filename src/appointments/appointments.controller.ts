@@ -35,6 +35,13 @@ export class AppointmentsController {
     return this.service.getAvailability(query);
   }
 
+  // Config pública de la página de citas por slug (marca + skin del diseño).
+  @Public()
+  @Get('booking-config/:slug')
+  getBookingConfig(@Param('slug') slug: string) {
+    return this.service.getBookingConfig(slug);
+  }
+
   // Agenda de hoy + mañana (modal de inicio y recordatorios). Debe declararse
   // antes de :id para que "agenda" no se interprete como un id.
   @Get('agenda')

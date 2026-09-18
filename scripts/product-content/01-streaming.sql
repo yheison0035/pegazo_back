@@ -6,25 +6,26 @@
 -- Las especificaciones son típicas del producto; confirma contra tu stock.
 -- ============================================================================
 
--- ── id 75 · M15 PLUS → Proyector Inteligente M15 Plus ──────────────────────
+-- ── id 75 · M15 PLUS → Consola Retro Game Stick Pro M15 Plus 4K ────────────
 UPDATE "Inventory" SET
-  name = 'PROYECTOR INTELIGENTE M15 PLUS',
-  description = '<p>Convierte cualquier pared en tu pantalla gigante. El <strong>Proyector Inteligente M15 Plus</strong> funciona con sistema Android y WiFi, así que reproduces tus apps de streaming favoritas sin necesidad de otros dispositivos. Ideal para películas, series, deportes y videojuegos en casa.</p>'
+  name = 'CONSOLA RETRO GAME STICK PRO M15 PLUS 4K',
+  description = '<p>Revive los videojuegos clásicos en tu televisor. La <strong>consola Game Stick Pro M15 Plus</strong> se conecta al puerto HDMI de tu TV y trae miles de juegos retro listos para jugar. Incluye <strong>2 controles inalámbricos</strong> para jugar en pareja o en familia, con salida de video hasta 4K y soporte para juegos 3D. Plug and play: conéctala y empieza a jugar sin instalar nada.</p><p><strong>Contenido del paquete:</strong> consola Game Stick, 2 controles inalámbricos, cable HDMI, receptor USB y manual.</p>'
 WHERE id = 75;
 DELETE FROM "InventoryFeature" WHERE "inventoryId" = 75;
 INSERT INTO "InventoryFeature" ("title","inventoryId","order","visible","createdAt") VALUES
- ('Sistema Android con apps de streaming integradas', 75, 0, true, now()),
- ('WiFi de doble banda y Bluetooth para audio inalámbrico', 75, 1, true, now()),
- ('Proyecta imagen grande, ideal para cine en casa', 75, 2, true, now()),
- ('Conexión con celular, TV Box, consolas y USB', 75, 3, true, now()),
- ('Compacto y portátil: llévalo a cualquier lugar', 75, 4, true, now());
+ ('Miles de juegos retro listos para jugar', 75, 0, true, now()),
+ ('Incluye 2 controles inalámbricos (2.4G) para 2 jugadores', 75, 1, true, now()),
+ ('Salida de video hasta 4K y soporte para juegos 3D', 75, 2, true, now()),
+ ('Se conecta al HDMI del televisor', 75, 3, true, now()),
+ ('Plug and play: sin instalaciones ni descargas', 75, 4, true, now());
 DELETE FROM "InventorySpecification" WHERE "inventoryId" = 75;
 INSERT INTO "InventorySpecification" ("key","value","inventoryId","order","visible","createdAt") VALUES
- ('Sistema operativo', 'Android', 75, 0, true, now()),
- ('Conectividad', 'WiFi doble banda + Bluetooth', 75, 1, true, now()),
- ('Entradas', 'HDMI, USB', 75, 2, true, now()),
- ('Fuente de luz', 'LED', 75, 3, true, now()),
- ('Uso recomendado', 'Interior / ambiente con poca luz', 75, 4, true, now());
+ ('Modelo', 'M15 Plus (Game Stick Pro)', 75, 0, true, now()),
+ ('Conexión', 'HDMI', 75, 1, true, now()),
+ ('Controles', '2 inalámbricos (2.4G)', 75, 2, true, now()),
+ ('Salida de video', 'Hasta 4K', 75, 3, true, now()),
+ ('Alimentación', 'USB', 75, 4, true, now()),
+ ('Contenido del paquete', 'Consola + 2 controles + cable HDMI + receptor USB', 75, 5, true, now());
 
 -- ── id 106 · CAMARA V380 PRO WIFI → Cámara de Seguridad WiFi V380 Pro ───────
 UPDATE "Inventory" SET
@@ -123,22 +124,26 @@ INSERT INTO "InventorySpecification" ("key","value","inventoryId","order","visib
  ('Altura', 'Ajustable / extensible', 409, 2, true, now()),
  ('Material', 'Aluminio y plástico resistente', 409, 3, true, now());
 
--- ── id 17 · PROYECTOR GAMES ────────────────────────────────────────────────
+-- ── id 17 · PROYECTOR GAMES → Proyector Inteligente Game 2 en 1 Android TV ──
 UPDATE "Inventory" SET
-  description = '<p>Cine, series y juegos en pantalla grande. Este <strong>proyector multimedia</strong> se conecta a tu celular, consola, TV Box o USB para proyectar tus contenidos favoritos en la pared. Compacto y fácil de usar, ideal para disfrutar en casa.</p>'
+  name = 'PROYECTOR INTELIGENTE GAME 2 EN 1 ANDROID TV WIFI',
+  description = '<p>Cine y videojuegos en una sola pantalla gigante. Este <strong>proyector inteligente 2 en 1</strong> tiene Android TV con WiFi, así que reproduces YouTube, Netflix, Spotify, Prime Video y HBO Max directamente, sin otros aparatos. Además incluye <strong>2 controles inalámbricos</strong> para jugar títulos retro y en 3D. Compatible con imagen hasta 4K: conéctalo por HDMI o USB y convierte tu pared en tu pantalla.</p><p><strong>Contenido del paquete:</strong> proyector, 2 controles inalámbricos y control remoto.</p>'
 WHERE id = 17;
 DELETE FROM "InventoryFeature" WHERE "inventoryId" = 17;
 INSERT INTO "InventoryFeature" ("title","inventoryId","order","visible","createdAt") VALUES
- ('Proyecta películas, series y videojuegos', 17, 0, true, now()),
- ('Conexión con celular, consola, TV Box y USB', 17, 1, true, now()),
- ('Imagen grande ajustable en la pared', 17, 2, true, now()),
- ('Compacto y fácil de instalar', 17, 3, true, now());
+ ('2 en 1: proyector de cine + consola de juegos', 17, 0, true, now()),
+ ('Android TV con apps: YouTube, Netflix, Spotify, Prime Video y HBO Max', 17, 1, true, now()),
+ ('Incluye 2 controles inalámbricos para juegos retro y 3D', 17, 2, true, now()),
+ ('WiFi integrado y compatible con contenido 4K', 17, 3, true, now()),
+ ('Conexión por HDMI, USB y WiFi (celular)', 17, 4, true, now());
 DELETE FROM "InventorySpecification" WHERE "inventoryId" = 17;
 INSERT INTO "InventorySpecification" ("key","value","inventoryId","order","visible","createdAt") VALUES
- ('Entradas', 'HDMI, USB', 17, 0, true, now()),
- ('Fuente de luz', 'LED', 17, 1, true, now()),
- ('Uso recomendado', 'Interior / poca luz', 17, 2, true, now()),
- ('Alimentación', 'Corriente / adaptador', 17, 3, true, now());
+ ('Sistema', 'Android TV', 17, 0, true, now()),
+ ('Conectividad', 'WiFi + Bluetooth', 17, 1, true, now()),
+ ('Compatibilidad de video', 'Hasta 4K', 17, 2, true, now()),
+ ('Entradas', 'HDMI, USB', 17, 3, true, now()),
+ ('Incluye', '2 controles inalámbricos + control remoto', 17, 4, true, now()),
+ ('Fuente de luz', 'LED', 17, 5, true, now());
 
 -- ── id 68 · PROYECTOR HD ───────────────────────────────────────────────────
 UPDATE "Inventory" SET
@@ -188,19 +193,23 @@ INSERT INTO "InventorySpecification" ("key","value","inventoryId","order","visib
  ('Controles', 'Incluidos', 74, 1, true, now()),
  ('Alimentación', 'USB', 74, 2, true, now());
 
--- ── id 73 · WATCH ONN (smartwatch) ─────────────────────────────────────────
+-- ── id 73 · WATCH ONN → onn. Dispositivo de Streaming Full HD con Google TV ─
 UPDATE "Inventory" SET
-  description = '<p>Tu asistente en la muñeca. Este <strong>smartwatch</strong> te muestra notificaciones, llamadas y mensajes, y registra tus pasos, ritmo cardíaco y actividad física. Combina con cualquier look y se sincroniza con tu celular.</p>'
+  name = 'ONN. DISPOSITIVO DE STREAMING FULL HD CON GOOGLE TV',
+  description = '<p>Convierte tu televisor en un Smart TV con Google TV. El <strong>dispositivo de streaming onn.</strong> se conecta al HDMI de tu TV y te da acceso a Netflix, YouTube, Disney+, Prime Video y todas tus apps favoritas en Full HD. Incluye control remoto por voz con Google Assistant (“Hey Google”) y sonido Dolby Audio. Fácil de instalar: conéctalo, enlázalo a tu WiFi y empieza a ver.</p>'
 WHERE id = 73;
 DELETE FROM "InventoryFeature" WHERE "inventoryId" = 73;
 INSERT INTO "InventoryFeature" ("title","inventoryId","order","visible","createdAt") VALUES
- ('Notificaciones de llamadas y mensajes', 73, 0, true, now()),
- ('Registra pasos, ritmo cardíaco y actividad', 73, 1, true, now()),
- ('Se sincroniza con tu celular por Bluetooth', 73, 2, true, now()),
- ('Pantalla táctil y batería recargable', 73, 3, true, now());
+ ('Google TV: todas tus apps en un solo lugar', 73, 0, true, now()),
+ ('Control remoto por voz con Google Assistant (“Hey Google”)', 73, 1, true, now()),
+ ('Resolución Full HD (1080p) con sonido Dolby Audio', 73, 2, true, now()),
+ ('Se conecta al puerto HDMI del televisor', 73, 3, true, now()),
+ ('Fácil de instalar por WiFi', 73, 4, true, now());
 DELETE FROM "InventorySpecification" WHERE "inventoryId" = 73;
 INSERT INTO "InventorySpecification" ("key","value","inventoryId","order","visible","createdAt") VALUES
- ('Conexión', 'Bluetooth', 73, 0, true, now()),
- ('Pantalla', 'Táctil', 73, 1, true, now()),
- ('Funciones', 'Notificaciones, pasos, ritmo cardíaco', 73, 2, true, now()),
- ('Batería', 'Recargable por USB', 73, 3, true, now());
+ ('Marca', 'onn.', 73, 0, true, now()),
+ ('Sistema', 'Google TV', 73, 1, true, now()),
+ ('Resolución', 'Full HD 1080p', 73, 2, true, now()),
+ ('Audio', 'Dolby Audio', 73, 3, true, now()),
+ ('Conexión', 'HDMI + WiFi', 73, 4, true, now()),
+ ('Control', 'Remoto por voz (Google Assistant)', 73, 5, true, now());
