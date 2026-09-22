@@ -56,14 +56,18 @@ export class CompaniesController {
     return this.service.companyDetail(req.user, id);
   }
 
-  // Renovar/marcar pagado: extiende la fecha de pago +N días (default 30).
+  // Registrar pago / renovar. Preferir `months` (anclado al día de cobro, apto
+  // para pago adelantado); `days` queda por compatibilidad.
   @Patch('platform/:id/renew')
   renew(
     @Param('id', ParseIntPipe) id: number,
-    @Body('days') days: number,
+    @Body() body: { months?: number; days?: number },
     @Req() req,
   ) {
-    return this.service.renewCompany(req.user, id, days ? Number(days) : 30);
+    return this.service.renewCompany(req.user, id, {
+      months: body?.months != null ? Number(body.months) : undefined,
+      days: body?.days != null ? Number(body.days) : undefined,
+    });
   }
 
   @Get(':id')
