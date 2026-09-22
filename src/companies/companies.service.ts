@@ -1118,6 +1118,7 @@ export class CompaniesService {
         plan: true,
         paidUntil: true,
         startDate: true,
+        paymentDay: true,
         createdAt: true,
         monthlyPrice: true,
         discountedPrice: true,
@@ -1208,13 +1209,54 @@ export class CompaniesService {
 
   // Renovar/registrar el pago manual de una empresa: extiende paidUntil +N días
   // (por defecto 30) desde hoy o desde la fecha vigente si aún no ha vencido.
-  async renewCompany(user: any, id: number, days = 30) {
+  // Suma `n` meses a una fecha anclando el día del mes a `day` (si viene), con
+  // recorte al último día del mes (ej. día 31 en un mes de 30 -> 30).
+  private addMonthsAnchored(base: Date, n: number, day?: number | null): Date {
+    const d = new Date(base.getTime());
+    const targetMonth = d.getUTCMonth() + n;
+    const year = d.getUTCFullYear() + Math.floor(targetMonth / 12);
+    const month = ((targetMonth % 12) + 12) % 12;
+    const anchorDay = day && day >= 1 && day <= 31 ? day : d.getUTCDate();
+    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    const dayOfMonth = Math.min(anchorDay, lastDay);
+    return new Date(Date.UTC(year, month, dayOfMonth));
+  }
+
+  // Registrar pago / renovar. Con `months` (recomendado) avanza `paidUntil`
+  // por meses ANCLADOS al día de cobro (apto para pago adelantado: 1/3/6/12).
+  // Con `days` (legado) avanza en días. Siempre extiende desde el mayor entre
+  // paidUntil y hoy (no se pierde el tiempo ya pagado). Fija startDate/paymentDay
+  // si faltan y reactiva si estaba suspendida.
+  async renewCompany(
+    user: any,
+    id: number,
+    opts: { months?: number; days?: number } | number = {},
+  ) {
     if (user.role !== Role.SUPER_PLATFORM_ADMIN) {
       throw new ForbiddenException('No tienes permisos');
     }
+    // Compat: si llega un número, se interpreta como días (legado).
+    const options =
+      typeof opts === 'number' ? { days: opts } : opts || {};
+    const months =
+      options.months && options.months > 0 ? Math.floor(options.months) : null;
+    const days =
+      !months && options.days && options.days > 0
+        ? Math.floor(options.days)
+        : !months
+          ? 30
+          : null;
+
     const company = await this.prisma.company.findUnique({
       where: { id },
-      select: { id: true, paidUntil: true, status: true },
+      select: {
+        id: true,
+        paidUntil: true,
+        status: true,
+        startDate: true,
+        paymentDay: true,
+        createdAt: true,
+      },
     });
     if (!company) throw new NotFoundException('Empresa no encontrada');
 
@@ -1223,16 +1265,34 @@ export class CompaniesService {
       company.paidUntil && new Date(company.paidUntil) > now
         ? new Date(company.paidUntil)
         : now;
-    const paidUntil = new Date(from.getTime() + days * 86_400_000);
+
+    // Día de cobro: el configurado, o el de la fecha de inicio, o el de hoy.
+    const startDate = company.startDate ?? company.createdAt ?? now;
+    const billingDay =
+      company.paymentDay ??
+      new Date(startDate).getUTCDate();
+
+    const paidUntil = months
+      ? this.addMonthsAnchored(from, months, billingDay)
+      : new Date(from.getTime() + (days as number) * 86_400_000);
 
     const updated = await this.prisma.company.update({
       where: { id },
       data: {
         paidUntil,
-        // Si estaba suspendida por impago, al renovar se reactiva.
+        // Deja organizada la suscripción: fecha de inicio y día de cobro.
+        ...(company.startDate ? {} : { startDate }),
+        ...(company.paymentDay ? {} : { paymentDay: billingDay }),
+        // Si estaba suspendida (manual), al registrar pago se reactiva.
         ...(company.status === Status.INACTIVO && { status: Status.ACTIVO }),
       },
-      select: { id: true, paidUntil: true, status: true },
+      select: {
+        id: true,
+        paidUntil: true,
+        status: true,
+        startDate: true,
+        paymentDay: true,
+      },
     });
     return { success: true, data: updated };
   }
