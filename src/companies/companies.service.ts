@@ -820,15 +820,16 @@ export class CompaniesService {
     return { success: true, data: company };
   }
 
-  // AUTO-SUSPENSIÓN POR IMPAGO: cada día se desactivan las empresas activas
-  // cuya fecha de pago (paidUntil) ya venció. Reactivar = extender paidUntil a
-  // futuro y volver a ACTIVO desde el panel. Las empresas sin paidUntil (null)
-  // no se tocan (control manual / sin vencimiento).
+  // AVISO DE VENCIMIENTO (cada día). El bloqueo por impago ahora es EN TIEMPO
+  // REAL (muro de pago in-app + SubscriptionInterceptor que rechaza escrituras
+  // cuando paidUntil < ahora), estilo Alegra/Siigo/Treinta: la empresa vencida
+  // NO se pone INACTIVO (así el dueño puede entrar y ver cómo pagar). El estado
+  // INACTIVO queda solo para la suspensión MANUAL desde la plataforma. Las
+  // empresas sin paidUntil (null) no se ven afectadas (control manual).
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async autoSuspendOverdue() {
     const now = new Date();
 
-    // Se buscan ANTES de suspender para poder avisar al dueño por correo.
     const overdue = await this.prisma.company.findMany({
       where: { status: Status.ACTIVO, paidUntil: { lt: now } },
       select: {
@@ -849,16 +850,7 @@ export class CompaniesService {
 
     if (overdue.length === 0) return;
 
-    const result = await this.prisma.company.updateMany({
-      where: { status: Status.ACTIVO, paidUntil: { lt: now } },
-      data: { status: Status.INACTIVO },
-    });
-
-    this.logger.warn(
-      `Auto-suspensión: ${result.count} empresa(s) vencida(s) desactivada(s).`,
-    );
-
-    // Aviso "venció / acceso suspendido" al dueño (no bloquea la suspensión).
+    // Aviso "venció, realiza el pago" al dueño (ya NO se suspende automáticamente).
     for (const c of overdue) {
       const owner = c.users[0];
       if (!owner?.email || !c.paidUntil) continue;

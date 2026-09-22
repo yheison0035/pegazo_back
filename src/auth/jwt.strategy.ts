@@ -31,15 +31,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // petición, así al desactivarla se cortan también las sesiones ya abiertas
     // (no hay que esperar a que expire el token). El SUPER_PLATFORM_ADMIN es
     // de plataforma y no depende de ninguna empresa.
+    let paidUntil: Date | null = null;
     if (payload.role !== 'SUPER_PLATFORM_ADMIN' && payload.companyId) {
       const company = await this.prisma.company.findUnique({
         where: { id: payload.companyId },
-        select: { status: true },
+        select: { status: true, paidUntil: true },
       });
 
       if (!company || company.status !== 'ACTIVO') {
         throw new UnauthorizedException('Tu empresa está suspendida.');
       }
+      // Se adjunta la fecha de pago para el bloqueo por impago en tiempo real
+      // (el SubscriptionInterceptor bloquea las escrituras si ya venció).
+      paidUntil = company.paidUntil ?? null;
     }
 
     return {
@@ -49,6 +53,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: payload.role,
       companyId: payload.companyId,
       localId: payload.localId,
+      paidUntil,
     };
   }
 }

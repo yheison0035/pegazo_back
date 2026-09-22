@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { SubscriptionInterceptor } from './common/subscription.interceptor';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { BrandsModule } from './brands/brands.module';
@@ -141,6 +142,8 @@ import { RealtimeModule } from './realtime/realtime.module';
   providers: [
     // Aplica el rate-limiting a todas las rutas
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Bloqueo por impago en tiempo real: rechaza escrituras si la empresa venció.
+    { provide: APP_INTERCEPTOR, useClass: SubscriptionInterceptor },
   ],
 })
 export class AppModule {}
