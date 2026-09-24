@@ -11,6 +11,7 @@ import { FixedExpensesModule } from './fixed-expenses/fixed-expenses.module';
 import { MembershipsModule } from './memberships/memberships.module';
 import { StorageModule } from './storage/storage.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { SearchModule } from './search/search.module';
 import { StockRequestsModule } from './stock-requests/stock-requests.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PlatformPaymentModule } from './platform-payment/platform-payment.module';
@@ -88,6 +89,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     MembershipsModule,
     StorageModule,
     InventoryModule,
+    SearchModule,
     StockRequestsModule,
     NotificationsModule,
     PlatformPaymentModule,
