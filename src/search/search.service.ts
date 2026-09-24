@@ -18,12 +18,13 @@ export class SearchService {
       return { term: '', products: [], customers: [] };
     }
 
-    const [products, customers] = await Promise.all([
+    const [products, customers, sales] = await Promise.all([
       this.searchProducts(user, term),
       this.searchCustomers(user, term),
+      this.searchSales(user, term),
     ]);
 
-    return { term, products, customers };
+    return { term, products, customers, sales };
   }
 
   private async searchProducts(user: any, term: string) {
@@ -76,6 +77,45 @@ export class SearchService {
         categoryName: p.category?.name || null,
       };
     });
+  }
+
+  private async searchSales(user: any, term: string) {
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+
+    const where: any = {
+      local: { companyId: user.companyId },
+      OR: [
+        { code: { contains: term, mode: 'insensitive' } },
+        { customer: { name: { contains: term, mode: 'insensitive' } } },
+      ],
+    };
+
+    if (localIds !== null) {
+      where.localId = localIds.length === 0 ? -1 : { in: localIds };
+    }
+
+    const items = await this.prisma.sale.findMany({
+      where,
+      take: 6,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        code: true,
+        totalAmount: true,
+        saleStatus: true,
+        createdAt: true,
+        customer: { select: { name: true } },
+      },
+    });
+
+    return items.map((s) => ({
+      id: s.id,
+      code: s.code,
+      totalAmount: s.totalAmount,
+      status: s.saleStatus,
+      createdAt: s.createdAt,
+      customerName: s.customer?.name || null,
+    }));
   }
 
   private async searchCustomers(user: any, term: string) {
