@@ -266,7 +266,8 @@ export class InventoryService {
 
   async findAllPaginated(user: any, query: any) {
     const localIds = await getAccessibleLocalIds(this.prisma, user);
-    const { page, limit, skip } = getPagination(query);
+    const { limit } = getPagination(query);
+    const requestedPage = Math.max(Number(query.page) || 1, 1);
 
     const where: any = {
       local: {
@@ -321,23 +322,28 @@ export class InventoryService {
       }
     }
 
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.inventory.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { updatedAt: 'desc' },
-        include: {
-          images: { orderBy: { position: 'asc' } },
-          variants: { where: { isActive: true } },
-          brand: true,
-          provider: true,
-          local: true,
-          category: true,
-        },
-      }),
-      this.prisma.inventory.count({ where }),
-    ]);
+    // Blindaje de paginación: si piden una página fuera de rango (p. ej. estaban
+    // en la 2 y un filtro deja los resultados en 1 sola página), se recorta a la
+    // última página CON datos, para no devolver una lista vacía.
+    const total = await this.prisma.inventory.count({ where });
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const page = Math.min(requestedPage, totalPages);
+    const skip = (page - 1) * limit;
+
+    const items = await this.prisma.inventory.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        images: { orderBy: { position: 'asc' } },
+        variants: { where: { isActive: true } },
+        brand: true,
+        provider: true,
+        local: true,
+        category: true,
+      },
+    });
 
     const canSeePurchasePrice = hasRole(user.role, [
       Role.SUPER_ADMIN,
