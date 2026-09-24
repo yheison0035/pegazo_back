@@ -5,6 +5,9 @@ import {
   IsDateString,
   IsEmail,
   IsBoolean,
+  IsInt,
+  Min,
+  Max,
   MinLength,
 } from 'class-validator';
 import { Status } from '@prisma/client';
@@ -47,6 +50,21 @@ export class CreateCompanyDto {
 
   @IsOptional()
   @IsDateString()
+  billingMode?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyPrice?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  paymentDay?: number | null;
+
+  @IsOptional()
+  @IsString()
   paidUntil?: string;
 
   @IsOptional()

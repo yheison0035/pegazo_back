@@ -1119,6 +1119,7 @@ export class CompaniesService {
         paidUntil: true,
         startDate: true,
         paymentDay: true,
+        billingMode: true,
         createdAt: true,
         monthlyPrice: true,
         discountedPrice: true,
@@ -1549,6 +1550,9 @@ export class CompaniesService {
           type: dto.type,
           status: dto.status ?? Status.ACTIVO,
           plan: dto.plan ?? null,
+          billingMode: dto.billingMode === 'paquete' ? 'paquete' : 'mensual',
+          ...(dto.monthlyPrice != null && { monthlyPrice: Number(dto.monthlyPrice) }),
+          ...(dto.paymentDay != null && { paymentDay: Number(dto.paymentDay) }),
           paidUntil: dto.paidUntil ? new Date(dto.paidUntil) : null,
           startDate: dto.startDate ? new Date(dto.startDate) : null,
           ...typeDefaults,
@@ -1668,6 +1672,9 @@ export class CompaniesService {
         ...(dto.type !== undefined && { type: dto.type }),
         ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.plan !== undefined && { plan: dto.plan || null }),
+        ...(dto.billingMode !== undefined && {
+          billingMode: dto.billingMode === 'paquete' ? 'paquete' : 'mensual',
+        }),
         ...(dto.paidUntil !== undefined && {
           paidUntil: dto.paidUntil ? new Date(dto.paidUntil) : null,
         }),
