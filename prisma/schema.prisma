@@ -294,6 +294,9 @@ model Company {
 
   // Facturación / suscripción (control de la plataforma)
   plan       String?
+  // Modo de cobro: 'mensual' (mes a mes, se registra cada pago) o 'paquete'
+  // (pagó varios meses por adelantado; se muestra "pago hasta").
+  billingMode String  @default("mensual")
   paidUntil  DateTime? // fecha hasta la que la empresa está al día; si vence, se auto-suspende
   startDate  DateTime? // fecha en que la empresa empezó con nosotros (si null, se usa createdAt)
   couponCode String? // cupón de descuento con el que se registró (informativo)

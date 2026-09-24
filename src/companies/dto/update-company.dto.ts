@@ -40,6 +40,11 @@ export class UpdateCompanyDto {
   @IsString()
   plan?: string;
 
+  // Modo de cobro: 'mensual' | 'paquete'.
+  @IsOptional()
+  @IsString()
+  billingMode?: string;
+
   // Fecha (ISO) hasta la que la empresa está al día. null/'' para quitarla.
   @IsOptional()
   @IsDateString()
