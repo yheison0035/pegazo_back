@@ -50,7 +50,7 @@ export class CheckInDto {
   checkInAt?: string;
 
   @IsOptional()
-  @IsIn(['HORA', 'DIA', 'MENSUALIDAD'])
+  @IsIn(['HORA', 'DIA', 'SEMANA', 'MENSUALIDAD'])
   billingMode?: string;
 
   @IsOptional()

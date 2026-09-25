@@ -47,6 +47,8 @@ export class StorageService {
     const data: any = {};
     if (dto.hourRate !== undefined) data.hourRate = Number(dto.hourRate);
     if (dto.dayRate !== undefined) data.dayRate = Number(dto.dayRate);
+    if (dto.weekRate !== undefined) data.weekRate = Number(dto.weekRate);
+    if (dto.monthRate !== undefined) data.monthRate = Number(dto.monthRate);
     if (dto.washPrice !== undefined) data.washPrice = Number(dto.washPrice);
     if (dto.graceMinutes !== undefined)
       data.graceMinutes = Number(dto.graceMinutes);
@@ -71,22 +73,17 @@ export class StorageService {
     const ms = at.getTime() - new Date(ticket.checkInAt).getTime();
     const rawMin = Math.max(0, Math.floor(ms / 60000));
     const label = this.elapsedLabel(ms);
-    if (mode === 'MENSUALIDAD') {
-      return {
-        mode,
-        minutes: rawMin,
-        billableMinutes: 0,
-        rate: 0,
-        unitMin: 0,
-        helmets,
-        perHelmet: 0,
-        storageCharge: 0,
-        elapsedLabel: label,
-      };
-    }
     const grace = settings.graceMinutes || 0;
-    const rate = mode === 'DIA' ? settings.dayRate || 0 : settings.hourRate || 0;
-    const unitMin = mode === 'DIA' ? 1440 : 60;
+    // Cada modo tiene su tarifa y su unidad de tiempo. Todas por defecto en 0:
+    // hasta que el dueño configure la tarifa, ese modo no cobra (comportamiento
+    // seguro, igual que antes para mensualidad).
+    const PLAN: Record<string, { rate: number; unitMin: number }> = {
+      HORA: { rate: settings.hourRate || 0, unitMin: 60 },
+      DIA: { rate: settings.dayRate || 0, unitMin: 1440 },
+      SEMANA: { rate: settings.weekRate || 0, unitMin: 10080 },
+      MENSUALIDAD: { rate: settings.monthRate || 0, unitMin: 43200 },
+    };
+    const { rate, unitMin } = PLAN[mode] || PLAN.HORA;
     let perHelmet = 0;
     let billable = 0;
     // Dentro del periodo de gracia que configure el dueño no se cobra. Superado

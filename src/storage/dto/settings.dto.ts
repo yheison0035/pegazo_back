@@ -14,6 +14,16 @@ export class StorageSettingsDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  weekRate?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthRate?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   washPrice?: number;
 
   @IsOptional()
@@ -22,6 +32,6 @@ export class StorageSettingsDto {
   graceMinutes?: number;
 
   @IsOptional()
-  @IsIn(['HORA', 'DIA', 'MENSUALIDAD'])
+  @IsIn(['HORA', 'DIA', 'SEMANA', 'MENSUALIDAD'])
   defaultMode?: string;
 }

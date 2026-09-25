@@ -1311,9 +1311,11 @@ model StorageSettings {
   companyId    Int    @unique
   hourRate     Float  @default(0) // $ por hora de guardado
   dayRate      Float  @default(0) // $ por día de guardado
+  weekRate     Float  @default(0) // $ por semana de guardado
+  monthRate    Float  @default(0) // $ por mes (mensualidad) de guardado
   washPrice    Float  @default(0) // $ del lavado de casco
   graceMinutes Int    @default(0) // minutos sin cobro al inicio
-  defaultMode  String @default("HORA") // HORA | DIA | MENSUALIDAD
+  defaultMode  String @default("HORA") // HORA | DIA | SEMANA | MENSUALIDAD
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
