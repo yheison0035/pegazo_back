@@ -58,6 +58,12 @@ export class CheckInDto {
   @Min(1)
   helmetCount?: number;
 
+  // Casilleros/lockers usados: el GUARDADO se cobra por locker (no por casco).
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  lockerCount?: number;
+
   @IsOptional()
   @IsBoolean()
   washRequested?: boolean;

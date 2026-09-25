@@ -69,6 +69,9 @@ export class StorageService {
   //    (ej. 1h30 = 1.5 horas, 2h20 = 2.33 horas).
   private computeCharge(settings: any, ticket: any, at: Date) {
     const helmets = Math.max(1, ticket.helmetCount || 1);
+    // El GUARDADO se cobra por LOCKER (casillero), no por casco. Varios cascos
+    // pueden ir en un mismo locker. El lavado sí es individual por casco.
+    const lockers = Math.max(1, ticket.lockerCount || 1);
     const mode = ticket.billingMode || settings.defaultMode || 'HORA';
     const ms = at.getTime() - new Date(ticket.checkInAt).getTime();
     const rawMin = Math.max(0, Math.floor(ms / 60000));
@@ -84,14 +87,14 @@ export class StorageService {
       MENSUALIDAD: { rate: settings.monthRate || 0, unitMin: 43200 },
     };
     const { rate, unitMin } = PLAN[mode] || PLAN.HORA;
-    let perHelmet = 0;
+    let perLocker = 0;
     let billable = 0;
     // Dentro del periodo de gracia que configure el dueño no se cobra. Superado
     // ese punto, desde el minuto 1 se cobra la primera unidad completa (primera
     // hora / primer día); al pasar la unidad, el cobro es proporcional.
     if (rawMin >= grace) {
       billable = Math.max(1, rawMin - grace);
-      perHelmet =
+      perLocker =
         billable <= unitMin
           ? Math.round(rate) // 1 unidad completa (mínimo, desde el minuto 1)
           : Math.round((rate * billable) / unitMin); // proporcional (fracción)
@@ -103,8 +106,9 @@ export class StorageService {
       rate,
       unitMin,
       helmets,
-      perHelmet,
-      storageCharge: perHelmet * helmets,
+      lockers,
+      perLocker,
+      storageCharge: perLocker * lockers,
       elapsedLabel: label,
     };
   }
@@ -235,6 +239,7 @@ export class StorageService {
     }
 
     const helmetCount = Math.max(1, Number(dto.helmetCount) || 1);
+    const lockerCount = Math.max(1, Number(dto.lockerCount) || 1);
     // Cuántos lavar: lo que venga; si pidió lavado sin número, se lavan todos.
     let washCount = Number(dto.washCount) || 0;
     if (dto.washRequested && washCount <= 0) washCount = helmetCount;
@@ -252,6 +257,7 @@ export class StorageService {
         checkInAt: dto.checkInAt ? new Date(dto.checkInAt) : new Date(),
         billingMode: dto.billingMode || settings.defaultMode || 'HORA',
         helmetCount,
+        lockerCount,
         washCount,
         washRequested: washCount > 0,
         notes: dto.notes?.trim() || null,
@@ -326,16 +332,16 @@ export class StorageService {
 
     const items: any[] = [];
 
-    // Guardado: valor por casco × cantidad de cascos (cantidad en la factura).
-    if (charge.perHelmet > 0 && charge.helmets > 0) {
+    // Guardado: valor por LOCKER × cantidad de lockers (cantidad en la factura).
+    if (charge.perLocker > 0 && charge.lockers > 0) {
       const guardadoId = await this.ensureService(
         user.companyId,
         GUARDADO_SERVICE,
       );
       items.push({
         serviceId: guardadoId,
-        quantity: charge.helmets,
-        priceOverride: charge.perHelmet,
+        quantity: charge.lockers,
+        priceOverride: charge.perLocker,
       });
     }
 
