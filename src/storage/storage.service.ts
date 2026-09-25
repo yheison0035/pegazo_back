@@ -240,6 +240,32 @@ export class StorageService {
 
     const helmetCount = Math.max(1, Number(dto.helmetCount) || 1);
     const lockerCount = Math.max(1, Number(dto.lockerCount) || 1);
+
+    // FIDELIZACIÓN POR PLACA: si se identifica por placa (y no viene un cliente
+    // explícito), buscamos/creamos un cliente cuya "identidad" es la placa
+    // (document = placa). Así cada custodia de esa placa suma una visita y la
+    // fidelización funciona aunque el cliente no dé datos. La racha es por placa.
+    let customerId = dto.customerId ?? null;
+    if (!customerId && plate) {
+      const existing = await this.prisma.customer.findFirst({
+        where: { companyId: user.companyId, document: plate },
+        select: { id: true },
+      });
+      if (existing) {
+        customerId = existing.id;
+      } else {
+        const created = await this.prisma.customer.create({
+          data: {
+            companyId: user.companyId,
+            name: dto.customerName?.trim() || `Placa ${plate}`,
+            document: plate,
+            phone: dto.customerPhone?.trim() || null,
+          },
+          select: { id: true },
+        });
+        customerId = created.id;
+      }
+    }
     // Cuántos lavar: lo que venga; si pidió lavado sin número, se lavan todos.
     let washCount = Number(dto.washCount) || 0;
     if (dto.washRequested && washCount <= 0) washCount = helmetCount;
@@ -253,7 +279,7 @@ export class StorageService {
         customerPhone: dto.customerPhone?.trim() || null,
         customerEmail: dto.customerEmail?.trim() || null,
         plate: plate || null,
-        customerId: dto.customerId ?? null,
+        customerId,
         checkInAt: dto.checkInAt ? new Date(dto.checkInAt) : new Date(),
         billingMode: dto.billingMode || settings.defaultMode || 'HORA',
         helmetCount,
