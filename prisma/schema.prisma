@@ -1338,8 +1338,9 @@ model StorageTicket {
   checkInAt     DateTime  @default(now()) // hora de ingreso
   checkOutAt    DateTime? // hora de entrega (null mientras está en custodia)
   status        String    @default("EN_CUSTODIA") // EN_CUSTODIA | ENTREGADO | ANULADO
-  billingMode   String    @default("HORA") // HORA | DIA | MENSUALIDAD
-  helmetCount   Int       @default(1)
+  billingMode   String    @default("HORA") // HORA | DIA | SEMANA | MENSUALIDAD
+  helmetCount   Int       @default(1) // cascos (para lavado individual e info)
+  lockerCount   Int       @default(1) // casilleros usados: el GUARDADO se cobra por locker
   washRequested Boolean   @default(false)
   washCount     Int       @default(0) // cuántos de los cascos se van a lavar
   washDone      Boolean   @default(false)
