@@ -210,10 +210,18 @@ export class StorageService {
   }
 
   async checkIn(user: any, dto: CheckInDto) {
-    if (!dto.customerName?.trim())
-      throw new BadRequestException('El nombre del cliente es obligatorio.');
-    if (!dto.customerPhone?.trim() && !dto.customerEmail?.trim())
-      throw new BadRequestException('Indica celular o correo del cliente.');
+    // Identificación: SOLO placa, o datos (nombre + celular/correo). Basta con uno.
+    const plate = dto.plate?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') || '';
+    const hasName = !!dto.customerName?.trim();
+    if (!plate && !hasName)
+      throw new BadRequestException(
+        'Indica la placa o el nombre del cliente.',
+      );
+    if (!plate) {
+      // Modo con datos: el nombre exige un contacto.
+      if (!dto.customerPhone?.trim() && !dto.customerEmail?.trim())
+        throw new BadRequestException('Indica celular o correo del cliente.');
+    }
 
     const settings = (await this.getSettings(user)).data;
     const localId = await this.localId(user.companyId);
@@ -239,9 +247,10 @@ export class StorageService {
       data: {
         companyId: user.companyId,
         localId,
-        customerName: dto.customerName.trim(),
+        customerName: dto.customerName?.trim() || null,
         customerPhone: dto.customerPhone?.trim() || null,
         customerEmail: dto.customerEmail?.trim() || null,
+        plate: plate || null,
         customerId: dto.customerId ?? null,
         checkInAt: dto.checkInAt ? new Date(dto.checkInAt) : new Date(),
         billingMode: dto.billingMode || settings.defaultMode || 'HORA',

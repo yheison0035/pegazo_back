@@ -12,8 +12,17 @@ import {
 
 // Ingreso (check-in) de un casco a custodia.
 export class CheckInDto {
+  // Nombre opcional: se puede identificar SOLO por placa.
+  @IsOptional()
   @IsString()
-  customerName: string;
+  customerName?: string;
+
+  // Placa del vehículo (identificación sin datos personales). 5–7 alfanuméricos.
+  @IsOptional()
+  @Matches(/^[A-Za-z0-9]{5,7}$/, {
+    message: 'La placa no es válida (ej: ABC12D).',
+  })
+  plate?: string;
 
   // Celular colombiano: 10 dígitos y empieza por 3.
   @IsOptional()

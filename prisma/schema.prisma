@@ -1326,9 +1326,12 @@ model StorageTicket {
   id            Int       @id @default(autoincrement())
   companyId     Int
   localId       Int
-  customerName  String
+  // Identificación del cliente: por datos (nombre + contacto) O SOLO por placa,
+  // para quien no quiere dar datos. Basta con uno de los dos.
+  customerName  String?
   customerPhone String?
   customerEmail String?
+  plate         String? // placa del vehículo (identificación sin datos)
   customerId    Int? // vínculo opcional a un cliente registrado (mensualidad)
   checkInAt     DateTime  @default(now()) // hora de ingreso
   checkOutAt    DateTime? // hora de entrega (null mientras está en custodia)
