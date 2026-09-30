@@ -385,6 +385,9 @@ export class UsersService {
 
     if (user.role !== Role.SUPER_ADMIN) {
       where.status = Status.ACTIVO;
+    } else {
+      // El dueño ve activos e inactivos, pero NUNCA los eliminados (soft-delete).
+      where.status = { not: Status.ELIMINADO };
     }
 
     applyLocalFilter(where, user, localIds);
@@ -748,8 +751,40 @@ export class UsersService {
     });
 
     if (!found) throw new NotFoundException('Usuario no encontrado');
+    if (found.status === Status.ELIMINADO)
+      return { success: true, message: 'El usuario ya estaba eliminado' };
+    if (found.id === user.id)
+      throw new BadRequestException('No puedes eliminar tu propio usuario.');
 
-    await this.prisma.user.delete({ where: { id } });
+    // No dejar la empresa sin administrador principal.
+    if (found.role === Role.SUPER_ADMIN) {
+      const otros = await this.prisma.user.count({
+        where: {
+          companyId: user.companyId,
+          role: Role.SUPER_ADMIN,
+          status: { not: Status.ELIMINADO },
+          id: { not: id },
+        },
+      });
+      if (otros === 0)
+        throw new BadRequestException(
+          'No puedes eliminar al único administrador principal de la empresa.',
+        );
+    }
+
+    // SOFT-DELETE: se marca ELIMINADO pero la fila del usuario SE CONSERVA, de
+    // modo que TODO lo hecho a su nombre (ventas, citas, comisiones, movimientos)
+    // permanece intacto y sigue apuntando a este usuario (nada se borra). Un hard
+    // delete fallaba por llaves foráneas (p. ej. barberos con ventas). Se libera
+    // el email (único) anteponiendo un marcador, para poder reutilizarlo al crear
+    // otro usuario.
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        status: Status.ELIMINADO,
+        email: `eliminado.${id}.${found.email}`,
+      },
+    });
 
     return { success: true, message: 'Usuario eliminado' };
   }
