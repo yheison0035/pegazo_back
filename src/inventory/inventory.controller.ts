@@ -87,6 +87,13 @@ export class InventoryController {
     return this.inventoryService.create(dto, req.user);
   }
 
+  // Carga masiva por Excel: el front envía las filas ya normalizadas.
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA')
+  @Post('bulk-import')
+  bulkImport(@Body() dto: any, @Req() req) {
+    return this.inventoryService.bulkImport(req.user, dto);
+  }
+
   @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA')
   @Put(':id')
   update(
