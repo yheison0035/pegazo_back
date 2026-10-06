@@ -768,11 +768,16 @@ export class InventoryService {
         localName?: string;
         barcode?: string;
         color?: string;
-        onlinePrice?: number | string;
-        oldPrice?: number | string;
         unit?: string;
         minStock?: number | string;
         description?: string;
+        // Stock por variante (color/talla) según la vertical. Si no viene, se usa
+        // color/stock de arriba como una sola variante.
+        variants?: Array<{
+          color?: string;
+          size?: string;
+          stock?: number | string;
+        }>;
       }>;
     },
   ) {
@@ -927,8 +932,6 @@ export class InventoryService {
               barcode: clean(it.barcode) || null,
               purchasePrice,
               salePrice,
-              oldPrice: num(it.oldPrice) || null,
-              onlinePrice: num(it.onlinePrice) || null,
               publishInEcommerce: false,
               status: 'ACTIVO',
               minStock: num(it.minStock),
@@ -947,15 +950,33 @@ export class InventoryService {
               updatedBy: { connect: { id: user.id } },
             },
           });
-          const color = clean(it.color) || 'ÚNICO';
-          const variant = await tx.inventoryVariant.create({
-            data: { inventoryId: product.id, color, stock, sku: 'PENDING' },
-          });
-          const sku = generateSku(name, variant.sequence, variant.color);
-          await tx.inventoryVariant.update({
-            where: { id: variant.id },
-            data: { sku },
-          });
+          // Variantes según la vertical: si llega `variants` (color/talla), se
+          // crean todas; si no, una sola variante con el stock de la fila.
+          const variantList =
+            Array.isArray(it.variants) && it.variants.length
+              ? it.variants.map((v) => ({
+                  color: clean(v.color) || 'ÚNICO',
+                  size: clean(v.size) || null,
+                  stock: num(v.stock),
+                }))
+              : [{ color: clean(it.color) || 'ÚNICO', size: null, stock }];
+
+          for (const v of variantList) {
+            const variant = await tx.inventoryVariant.create({
+              data: {
+                inventoryId: product.id,
+                color: v.color,
+                size: v.size,
+                stock: v.stock,
+                sku: 'PENDING',
+              },
+            });
+            const sku = generateSku(name, variant.sequence, variant.color);
+            await tx.inventoryVariant.update({
+              where: { id: variant.id },
+              data: { sku },
+            });
+          }
         });
         created++;
       } catch (e: any) {
