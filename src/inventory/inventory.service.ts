@@ -747,6 +747,232 @@ export class InventoryService {
     return result;
   }
 
+  // CARGA MASIVA desde Excel (el front parsea y mapea las columnas del cliente a
+  // estos campos normalizados). Resuelve categoría/marca/proveedor/local POR
+  // NOMBRE (los crea si no existen), genera slug y SKU, y crea el producto con su
+  // variante. Devuelve un resumen con creados y errores por fila (no aborta todo
+  // por una fila mala). Se adapta a cualquier vertical: los campos que no apliquen
+  // simplemente llegan vacíos.
+  async bulkImport(
+    user: any,
+    dto: {
+      items: Array<{
+        row?: number;
+        name?: string;
+        salePrice?: number | string;
+        purchasePrice?: number | string;
+        stock?: number | string;
+        categoryName?: string;
+        brandName?: string;
+        providerName?: string;
+        localName?: string;
+        barcode?: string;
+        color?: string;
+        onlinePrice?: number | string;
+        oldPrice?: number | string;
+        unit?: string;
+        minStock?: number | string;
+        description?: string;
+      }>;
+    },
+  ) {
+    const items = Array.isArray(dto?.items) ? dto.items : [];
+    if (!items.length)
+      throw new BadRequestException('No hay filas para importar.');
+    if (items.length > 3000)
+      throw new BadRequestException('Máximo 3000 filas por carga.');
+
+    const num = (v: any) => {
+      if (v === null || v === undefined || v === '') return 0;
+      const n =
+        typeof v === 'number' ? v : Number(String(v).replace(/[^\d.-]/g, ''));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const clean = (v: any) => String(v ?? '').trim();
+
+    const defaultLocal = await this.prisma.local.findFirst({
+      where: { companyId: user.companyId },
+      orderBy: { id: 'asc' },
+      select: { id: true },
+    });
+
+    // Cachés para no repetir consultas por cada fila.
+    const localCache = new Map<string, number>();
+    const catCache = new Map<string, number>();
+    const brandCache = new Map<string, number>();
+    const provCache = new Map<string, number>();
+
+    const resolveLocal = async (name?: string) => {
+      const key = clean(name).toLowerCase();
+      if (!key) return defaultLocal?.id ?? null;
+      if (localCache.has(key)) return localCache.get(key)!;
+      let l = await this.prisma.local.findFirst({
+        where: {
+          companyId: user.companyId,
+          name: { equals: clean(name), mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (!l)
+        l = await this.prisma.local.create({
+          data: { name: clean(name), companyId: user.companyId },
+          select: { id: true },
+        });
+      localCache.set(key, l.id);
+      return l.id;
+    };
+    const resolveCategory = async (name: string, localId: number | null) => {
+      const key = clean(name).toLowerCase();
+      if (catCache.has(key)) return catCache.get(key)!;
+      let c = await this.prisma.category.findFirst({
+        where: {
+          companyId: user.companyId,
+          name: { equals: clean(name), mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (!c)
+        c = await this.prisma.category.create({
+          data: { name: clean(name), companyId: user.companyId, localId },
+          select: { id: true },
+        });
+      catCache.set(key, c.id);
+      return c.id;
+    };
+    const resolveBrand = async (name: string) => {
+      const key = clean(name).toLowerCase();
+      if (brandCache.has(key)) return brandCache.get(key)!;
+      let b = await this.prisma.brand.findFirst({
+        where: {
+          companyId: user.companyId,
+          name: { equals: clean(name), mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (!b)
+        b = await this.prisma.brand.create({
+          data: { name: clean(name), companyId: user.companyId },
+          select: { id: true },
+        });
+      brandCache.set(key, b.id);
+      return b.id;
+    };
+    const resolveProvider = async (name: string) => {
+      const key = clean(name).toLowerCase();
+      if (provCache.has(key)) return provCache.get(key)!;
+      let p = await this.prisma.provider.findFirst({
+        where: {
+          companyId: user.companyId,
+          name: { equals: clean(name), mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (!p)
+        p = await this.prisma.provider.create({
+          data: { name: clean(name), companyId: user.companyId },
+          select: { id: true },
+        });
+      provCache.set(key, p.id);
+      return p.id;
+    };
+
+    const errors: Array<{ row: number; name: string; message: string }> = [];
+    let created = 0;
+
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i] || {};
+      const rowNum = Number(it.row) || i + 2; // fila de Excel (encabezado = 1)
+      const name = clean(it.name);
+      try {
+        if (!name) {
+          errors.push({ row: rowNum, name: '', message: 'Falta el nombre' });
+          continue;
+        }
+        const salePrice = num(it.salePrice);
+        if (!(salePrice > 0)) {
+          errors.push({
+            row: rowNum,
+            name,
+            message: 'Falta el precio de venta (o es 0)',
+          });
+          continue;
+        }
+        const purchasePrice = num(it.purchasePrice);
+        const stock = num(it.stock);
+
+        const localId = await resolveLocal(it.localName);
+        const categoryId = clean(it.categoryName)
+          ? await resolveCategory(it.categoryName!, localId)
+          : null;
+        const brandId = clean(it.brandName)
+          ? await resolveBrand(it.brandName!)
+          : null;
+        const providerId = clean(it.providerName)
+          ? await resolveProvider(it.providerName!)
+          : null;
+
+        // Slug único.
+        const base = generateSlug(name);
+        let slug = base;
+        let c = 1;
+        while (await this.prisma.inventory.findFirst({ where: { slug } })) {
+          slug = `${base}-${c++}`;
+        }
+
+        await this.prisma.$transaction(async (tx) => {
+          const product = await tx.inventory.create({
+            data: {
+              name,
+              description: clean(it.description) || null,
+              barcode: clean(it.barcode) || null,
+              purchasePrice,
+              salePrice,
+              oldPrice: num(it.oldPrice) || null,
+              onlinePrice: num(it.onlinePrice) || null,
+              publishInEcommerce: false,
+              status: 'ACTIVO',
+              minStock: num(it.minStock),
+              unit: clean(it.unit).toUpperCase() || 'UNIDAD',
+              slug,
+              company: { connect: { id: user.companyId } },
+              ...(localId && { local: { connect: { id: localId } } }),
+              ...(categoryId && {
+                category: { connect: { id: categoryId } },
+              }),
+              ...(brandId && { brand: { connect: { id: brandId } } }),
+              ...(providerId && {
+                provider: { connect: { id: providerId } },
+              }),
+              createdBy: { connect: { id: user.id } },
+              updatedBy: { connect: { id: user.id } },
+            },
+          });
+          const color = clean(it.color) || 'ÚNICO';
+          const variant = await tx.inventoryVariant.create({
+            data: { inventoryId: product.id, color, stock, sku: 'PENDING' },
+          });
+          const sku = generateSku(name, variant.sequence, variant.color);
+          await tx.inventoryVariant.update({
+            where: { id: variant.id },
+            data: { sku },
+          });
+        });
+        created++;
+      } catch (e: any) {
+        errors.push({
+          row: rowNum,
+          name,
+          message: e?.message || 'No se pudo crear el producto',
+        });
+      }
+    }
+
+    return {
+      success: true,
+      data: { total: items.length, created, failed: errors.length, errors },
+    };
+  }
+
   async update(id: number, dto: UpdateInventoryDto, user: any) {
     if (!hasRole(user.role, [Role.SUPER_ADMIN, Role.ADMIN, Role.RECEPCIONISTA])) {
       throw new ForbiddenException('No autorizado');
