@@ -1239,12 +1239,14 @@ export class StatisticsService {
       'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
     ];
     try {
+      // Cumpleaños de TODO el equipo de la empresa (sin filtrar por local): así
+      // todos ven a todos, incluido el DUEÑO/administradores (que suelen no
+      // tener un local asignado y antes quedaban fuera para los empleados).
       const teamRows = await this.prisma.user.findMany({
         where: {
           companyId: user.companyId,
           status: 'ACTIVO' as any,
           birthdate: { not: null },
-          ...(user.localId ? { localId: user.localId } : {}),
         },
         select: { id: true, name: true, birthdate: true },
       });
