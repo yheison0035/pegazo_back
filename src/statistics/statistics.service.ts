@@ -900,11 +900,15 @@ export class StatisticsService {
     const monthEarn = earn(mMonth.services, mMonth.products);
     const weekEarn = earn(wWeek.services, wWeek.products);
 
+    // Cumpleaños del equipo: ahora TODOS los roles (incluido el barbero) pueden
+    // verlos, para que el equipo celebre junto.
+    const teamBirthdays = await this.teamBirthdays(user, y, m, d);
+
     return {
       success: true,
       data: {
-        // El barbero solo ve SU información: nada de compañeros (sin cumpleaños
-        // del equipo) ni del negocio.
+        // El barbero ve SU información del negocio + los cumpleaños del equipo.
+        teamBirthdays,
         ratesConfigured,
         rates: { service: svcRate, product: prodRate },
         today: { earnings: earn(tDay.services, tDay.products), cuts: tDay.cuts },
