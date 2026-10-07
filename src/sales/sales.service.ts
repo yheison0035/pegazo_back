@@ -1816,6 +1816,10 @@ export class SalesService {
             service: true,
           },
         },
+        payments: {
+          select: { amount: true, method: true, paidAt: true },
+          orderBy: { paidAt: 'asc' },
+        },
         customer: true,
         user: { select: { name: true } },
         local: {
@@ -1861,6 +1865,15 @@ export class SalesService {
     const taxTotal = Number(sale.taxTotal) || 0;
     const taxable = sale.subtotal != null ? Number(sale.subtotal) : null;
 
+    // Plan separe (apartado): abonado y saldo pendiente para mostrarlos en la
+    // página pública de validación (el QR del comprobante lleva aquí).
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const isLayaway = sale.paymentStatus === 'PLAN_SEPARE';
+    const paid = r2(
+      (sale.payments || []).reduce((a, p) => a + Number(p.amount), 0),
+    );
+    const total = Number(sale.totalAmount) || 0;
+
     return {
       valid: true,
       code: sale.code,
@@ -1875,6 +1888,15 @@ export class SalesService {
       taxTotal,
       responsableIVA: !!sale.local?.company?.responsableIVA,
       totalAmount: sale.totalAmount,
+      // Plan separe: estado del apartado.
+      isLayaway,
+      paid,
+      saldo: r2(total - paid),
+      payments: (sale.payments || []).map((p) => ({
+        amount: p.amount,
+        method: p.method,
+        paidAt: p.paidAt,
+      })),
       customer: {
         name: sale.customer?.name || 'CONSUMIDOR FINAL',
         document: sale.customer?.document || null,
