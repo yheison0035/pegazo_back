@@ -142,6 +142,17 @@ export class SalesController {
     return this.salesService.completeLayaway(id, req.user, dto || {});
   }
 
+  // Plan separe: editar productos (no toca stock; recomputa totales).
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA')
+  @Put(':id/layaway-items')
+  updateLayawayItems(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: any,
+    @Req() req,
+  ) {
+    return this.salesService.updateLayawayItems(id, dto, req.user);
+  }
+
   // Plan separe: anular (no descuenta stock; los abonos quedan en caja).
   @Roles('SUPER_ADMIN', 'ADMIN')
   @Post(':id/cancel-layaway')
