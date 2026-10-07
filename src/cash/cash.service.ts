@@ -137,6 +137,10 @@ export class CashService {
         localId: register.localId,
         paymentMethod: 'EFECTIVO',
         saleStatus: { notIn: ['CANCELADA', 'RECHAZADA', 'DEVUELTA'] as any },
+        // Plan separe activo: su dinero entra por ABONOS (concept 'Abono plan
+        // separe'), nunca como 'Venta en efectivo' por el total. Excluirlo evita
+        // que la reconciliación le cree un movimiento duplicado por el total.
+        paymentStatus: { not: 'PLAN_SEPARE' as any },
         saleDate,
       },
       select: { id: true, totalAmount: true },
@@ -180,6 +184,8 @@ export class CashService {
         localId: register.localId,
         paymentMethod: 'EFECTIVO',
         saleStatus: { notIn: ['CANCELADA', 'RECHAZADA', 'DEVUELTA'] as any },
+        // No autogenerar "Venta en efectivo" para apartados activos.
+        paymentStatus: { not: 'PLAN_SEPARE' as any },
         saleDate,
         cashMovements: { none: {} },
       },

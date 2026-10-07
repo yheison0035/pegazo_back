@@ -275,9 +275,13 @@ export class SalesService {
     } else {
       // Ocultar pedidos de la tienda online con pago NO confirmado
       // (EN_VALIDACION): no son ventas reales hasta que el pago se confirme.
+      // Y ocultar los PLAN_SEPARE (apartados activos): no son ventas realizadas
+      // hasta que se entregan (ahí pasan a PAGADA y aparecen aquí). Para LISTAR
+      // los apartados se consulta con ?paymentStatus=PLAN_SEPARE.
       where.NOT = [
         ...(where.NOT || []),
         { source: 'ECOMMERCE', paymentStatus: 'EN_VALIDACION' },
+        { paymentStatus: 'PLAN_SEPARE' },
       ];
     }
 
@@ -1094,6 +1098,11 @@ export class SalesService {
     const loyaltyPct = await this.loyaltyDiscountForSale(user.companyId, dto);
 
     return this.prisma.$transaction(async (tx) => {
+      // Plan separe (apartado): la venta se registra con paymentStatus
+      // PLAN_SEPARE, NO descuenta stock ni entra a caja como venta completa. El
+      // dinero entra por ABONOS (SalePayment) y el stock se descuenta al
+      // ENTREGAR (completeLayaway / al saldar).
+      const isPlanSepare = dto.paymentStatus === 'PLAN_SEPARE';
       let total = 0;
       let saleSubtotal = 0;
       let saleTax = 0;
@@ -1145,7 +1154,8 @@ export class SalesService {
 
           // Solo se descuenta stock si el producto controla inventario. Los
           // "elaborados" (platos de un menú) se venden sin descontar existencias.
-          if (variant.inventory.trackStock !== false) {
+          // En plan separe NO se descuenta aquí: se hace al ENTREGAR.
+          if (!isPlanSepare && variant.inventory.trackStock !== false) {
             await this.stockService.decrement(variant.id, item.quantity, tx);
           }
 
@@ -1291,7 +1301,11 @@ export class SalesService {
 
       // Caja: si la venta es en efectivo y hay una caja abierta en el local, se
       // registra el ingreso automáticamente para que el arqueo cuadre.
-      if (dto.paymentMethod === 'EFECTIVO' && !(dto as any).skipCash) {
+      if (
+        dto.paymentMethod === 'EFECTIVO' &&
+        !(dto as any).skipCash &&
+        !isPlanSepare
+      ) {
         const openReg = await tx.cashRegister.findFirst({
           where: {
             localId: dto.localId,
@@ -1311,6 +1325,51 @@ export class SalesService {
               userId: dto.userId ?? user.id,
             },
           });
+        }
+      }
+
+      // Plan separe: el pago que entrega el cliente al crear el apartado se
+      // registra como PRIMER ABONO (SalePayment) y, si es efectivo, entra a la
+      // caja abierta como "Abono plan separe". No se registra como "venta en
+      // efectivo": eso solo ocurre al entregar, y para entonces el dinero ya
+      // habrá entrado por los abonos.
+      if (isPlanSepare) {
+        const initial = r2(Number((dto as any).initialPayment) || 0);
+        if (initial > 0) {
+          const abono = Math.min(initial, total);
+          await tx.salePayment.create({
+            data: {
+              saleId: sale.id,
+              companyId: user.companyId,
+              amount: abono,
+              method: dto.paymentMethod,
+              note: 'Abono inicial plan separe',
+              paidAt: saleDate,
+              createdById: dto.userId ?? user.id ?? null,
+            },
+          });
+          if (dto.paymentMethod === 'EFECTIVO') {
+            const openReg = await tx.cashRegister.findFirst({
+              where: {
+                localId: dto.localId,
+                companyId: user.companyId,
+                status: 'ABIERTA',
+              },
+              select: { id: true },
+            });
+            if (openReg) {
+              await tx.cashMovement.create({
+                data: {
+                  cashRegisterId: openReg.id,
+                  type: 'INGRESO',
+                  amount: abono,
+                  concept: 'Abono plan separe',
+                  saleId: sale.id,
+                  userId: dto.userId ?? user.id,
+                },
+              });
+            }
+          }
         }
       }
 
@@ -1859,6 +1918,8 @@ export class SalesService {
     const sales = await this.prisma.sale.findMany({
       where: {
         localId: Number(localId),
+        // Los plan separe (apartados) NO cuentan hasta entregarse.
+        paymentStatus: { not: 'PLAN_SEPARE' },
         saleDate: {
           gte: start,
           lte: end,
@@ -1958,6 +2019,8 @@ export class SalesService {
     const sales = await this.prisma.sale.findMany({
       where: {
         localId: Number(localId),
+        // Los plan separe (apartados) NO cuentan hasta entregarse.
+        paymentStatus: { not: 'PLAN_SEPARE' },
         // El asesor es opcional: si no se indica, se agregan las ventas de
         // todos los vendedores del rango (reporte semanal completo).
         ...(userId ? { userId: Number(userId) } : {}),
@@ -2153,6 +2216,8 @@ export class SalesService {
     const sales = await this.prisma.sale.findMany({
       where: {
         localId: Number(localId),
+        // Los plan separe (apartados) NO cuentan hasta entregarse.
+        paymentStatus: { not: 'PLAN_SEPARE' },
         saleDate: {
           gte: start,
           lte: end,
@@ -2250,6 +2315,8 @@ export class SalesService {
     const sales = await this.prisma.sale.findMany({
       where: {
         localId: Number(localId),
+        // Los plan separe (apartados) NO cuentan hasta entregarse.
+        paymentStatus: { not: 'PLAN_SEPARE' },
         saleDate: {
           gte: start,
           lte: end,
@@ -2461,6 +2528,20 @@ export class SalesService {
       include: {
         local: { select: { companyId: true } },
         payments: { select: { amount: true } },
+        // items: para poder ENTREGAR (descontar stock) si el abono salda un
+        // plan separe.
+        items: {
+          select: {
+            quantity: true,
+            inventoryVariantId: true,
+            variant: {
+              select: {
+                id: true,
+                inventory: { select: { id: true, trackStock: true } },
+              },
+            },
+          },
+        },
       },
     });
     if (!sale) throw new NotFoundException('Venta no encontrada');
@@ -2505,11 +2586,19 @@ export class SalesService {
 
       const newPaid = r2(paid + amount);
       const settled = newPaid >= total - 0.01;
-      if (settled && sale.paymentStatus !== 'PAGADA') {
-        await tx.sale.update({
-          where: { id: saleId },
-          data: { paymentStatus: 'PAGADA' },
-        });
+      if (settled) {
+        if (sale.paymentStatus === 'PLAN_SEPARE') {
+          // Al SALDAR el apartado se ENTREGA automáticamente: descuenta stock,
+          // pasa a PAGADA/ENTREGADA y se mueve a Ventas realizadas (con fecha de
+          // hoy, para que la comisión cuente en el periodo real de entrega). El
+          // dinero ya entró por los abonos, así que no se re-registra en caja.
+          await this.finalizeLayaway(tx, sale as any, user);
+        } else if (sale.paymentStatus !== 'PAGADA') {
+          await tx.sale.update({
+            where: { id: saleId },
+            data: { paymentStatus: 'PAGADA' },
+          });
+        }
       }
 
       // Caja: el efectivo del abono entra a la caja abierta de la sede.
@@ -2528,7 +2617,10 @@ export class SalesService {
               cashRegisterId: openReg.id,
               type: 'INGRESO',
               amount,
-              concept: 'Abono venta fiada',
+              concept:
+                sale.paymentStatus === 'PLAN_SEPARE'
+                  ? 'Abono plan separe'
+                  : 'Abono venta fiada',
               saleId,
               userId: user.id ?? null,
             },
@@ -2553,6 +2645,125 @@ export class SalesService {
         },
       };
     });
+  }
+
+  // Entrega un plan separe DENTRO de una transacción: descuenta el stock de sus
+  // productos, descuenta insumos por receta si tiene, lo marca PAGADA/ENTREGADA
+  // y fija la fecha de venta a HOY (para que cuente como venta realizada del
+  // periodo de entrega). NO toca caja: el dinero ya entró por los abonos.
+  private async finalizeLayaway(
+    tx: any,
+    sale: any,
+    user: any,
+    fullyPaid = true,
+  ) {
+    const recipeConsumption: { inventoryId: number; quantity: number }[] = [];
+    for (const it of sale.items || []) {
+      if (!it.inventoryVariantId || !it.variant) continue;
+      if (it.variant.inventory?.trackStock !== false) {
+        await this.stockService.decrement(it.variant.id, it.quantity, tx);
+      }
+      if (it.variant.inventory?.id) {
+        recipeConsumption.push({
+          inventoryId: it.variant.inventory.id,
+          quantity: it.quantity,
+        });
+      }
+    }
+    await this.recipes.consume(tx, user.companyId, recipeConsumption, user.id);
+    await tx.sale.update({
+      where: { id: sale.id },
+      data: {
+        // Si se entregó con saldo pendiente (entrega forzada) queda como FIADO
+        // para que el saldo siga cobrable en Cartera; si no, PAGADA.
+        paymentStatus: fullyPaid ? 'PAGADA' : 'FIADO',
+        saleStatus: 'ENTREGADA',
+        saleDate: new Date(),
+      },
+    });
+  }
+
+  // Entrega MANUAL de un plan separe (botón "Entregar ahora"). Exige saldo 0
+  // salvo que se pase force=true (entregar antes de terminar de pagar).
+  async completeLayaway(saleId: number, user: any, dto: any = {}) {
+    const sale = await this.prisma.sale.findUnique({
+      where: { id: saleId },
+      include: {
+        local: { select: { companyId: true } },
+        payments: { select: { amount: true } },
+        items: {
+          select: {
+            quantity: true,
+            inventoryVariantId: true,
+            variant: {
+              select: {
+                id: true,
+                inventory: { select: { id: true, trackStock: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!sale) throw new NotFoundException('Venta no encontrada');
+    if (sale.local.companyId !== user.companyId) {
+      throw new ForbiddenException('No tienes permiso');
+    }
+    if (sale.paymentStatus !== 'PLAN_SEPARE') {
+      throw new BadRequestException('La venta no es un plan separe activo');
+    }
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const total = Number(sale.totalAmount) || 0;
+    const paid = sale.payments.reduce((a, p) => a + Number(p.amount), 0);
+    const saldo = r2(total - paid);
+    if (saldo > 0.01 && !dto.force) {
+      throw new BadRequestException(
+        `Aún tiene saldo pendiente ($${saldo}). Abónalo o usa entrega forzada.`,
+      );
+    }
+    const fullyPaid = saldo <= 0.01;
+    const result = await this.prisma.$transaction(async (tx) => {
+      await this.finalizeLayaway(tx, sale as any, user, fullyPaid);
+      return { success: true };
+    });
+    await this.audit.log({
+      entity: 'sale',
+      entityId: saleId,
+      action: 'UPDATE',
+      user,
+      changes: {
+        planSepareEntregado: { before: 'PLAN_SEPARE', after: 'ENTREGADA' },
+      },
+    });
+    return result;
+  }
+
+  // Anula un plan separe activo: lo marca ANULADO/CANCELADA. No restaura stock
+  // (nunca se descontó). Los abonos ya cobrados permanecen en caja.
+  async cancelLayaway(saleId: number, user: any) {
+    const sale = await this.prisma.sale.findUnique({
+      where: { id: saleId },
+      include: { local: { select: { companyId: true } } },
+    });
+    if (!sale) throw new NotFoundException('Venta no encontrada');
+    if (sale.local.companyId !== user.companyId) {
+      throw new ForbiddenException('No tienes permiso');
+    }
+    if (sale.paymentStatus !== 'PLAN_SEPARE') {
+      throw new BadRequestException('La venta no es un plan separe activo');
+    }
+    await this.prisma.sale.update({
+      where: { id: saleId },
+      data: { paymentStatus: 'ANULADO', saleStatus: 'CANCELADA' },
+    });
+    await this.audit.log({
+      entity: 'sale',
+      entityId: saleId,
+      action: 'UPDATE',
+      user,
+      changes: { planSepareAnulado: { before: 'PLAN_SEPARE', after: 'ANULADO' } },
+    });
+    return { success: true };
   }
 
   // Lista los abonos de una venta + su saldo.
@@ -2583,6 +2794,116 @@ export class SalesService {
         dueDate: sale.dueDate,
         payments: sale.payments,
       },
+    };
+  }
+
+  // Planes separe (apartados) ACTIVOS: ventas con paymentStatus=PLAN_SEPARE,
+  // con su saldo, abonos e ítems. Soporta filtros (cliente, local, código,
+  // rango de fechas) para poder filtrar como se quiera desde el módulo.
+  async listLayaways(user: any, query: any) {
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const where: any = { paymentStatus: 'PLAN_SEPARE' };
+    if (user.role !== 'SUPER_PLATFORM_ADMIN') {
+      where.local = { is: { companyId: user.companyId } };
+    }
+    applyLocalFilter(where, user, localIds, 'sale');
+
+    if (query.customerId) where.customerId = Number(query.customerId);
+    if (query.customer) {
+      where.customer = {
+        is: {
+          OR: [
+            { name: { contains: query.customer, mode: 'insensitive' } },
+            { phone: { contains: query.customer, mode: 'insensitive' } },
+          ],
+        },
+      };
+    }
+    if (query.code) {
+      where.code = { contains: query.code, mode: 'insensitive' };
+    }
+    if (query.localId && /^\d+$/.test(String(query.localId).trim())) {
+      where.localId = Number(query.localId);
+    }
+    if (query.from || query.to) {
+      where.saleDate = {};
+      if (query.from) where.saleDate.gte = new Date(query.from);
+      if (query.to) where.saleDate.lte = new Date(query.to);
+    }
+
+    const sales = await this.prisma.sale.findMany({
+      where,
+      orderBy: [{ saleDate: 'desc' }],
+      include: {
+        customer: {
+          select: { id: true, name: true, phone: true, document: true },
+        },
+        local: { select: { id: true, name: true } },
+        payments: {
+          orderBy: { paidAt: 'desc' },
+          include: { createdBy: { select: { name: true } } },
+        },
+        items: {
+          select: {
+            id: true,
+            quantity: true,
+            price: true,
+            subtotal: true,
+            discount: true,
+            variant: {
+              select: {
+                color: true,
+                size: true,
+                inventory: { select: { name: true } },
+              },
+            },
+            service: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const rows = sales.map((s) => {
+      const total = Number(s.totalAmount) || 0;
+      const paid = s.payments.reduce((a, p) => a + Number(p.amount), 0);
+      return {
+        id: s.id,
+        code: s.code,
+        saleDate: s.saleDate,
+        notes: s.notes,
+        paymentMethod: s.paymentMethod,
+        customer: s.customer,
+        local: s.local,
+        total,
+        paid: r2(paid),
+        saldo: r2(total - paid),
+        itemsCount: s.items.length,
+        items: s.items.map((it) => ({
+          id: it.id,
+          name: it.variant?.inventory?.name || it.service?.name || 'Ítem',
+          color: it.variant?.color || null,
+          size: it.variant?.size || null,
+          quantity: it.quantity,
+          price: it.price,
+          subtotal: it.subtotal,
+        })),
+        payments: s.payments.map((p) => ({
+          id: p.id,
+          amount: p.amount,
+          method: p.method,
+          paidAt: p.paidAt,
+          note: p.note,
+          by: p.createdBy?.name || null,
+        })),
+      };
+    });
+
+    const totalSaldo = r2(rows.reduce((a, r) => a + r.saldo, 0));
+    return {
+      success: true,
+      data: rows,
+      summary: { active: rows.length, totalBalance: totalSaldo },
     };
   }
 
