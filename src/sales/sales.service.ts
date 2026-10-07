@@ -2661,7 +2661,13 @@ export class SalesService {
     for (const it of sale.items || []) {
       if (!it.inventoryVariantId || !it.variant) continue;
       if (it.variant.inventory?.trackStock !== false) {
-        await this.stockService.decrement(it.variant.id, it.quantity, tx);
+        // A diferencia de una venta normal, aquí NO se bloquea por stock
+        // insuficiente: la entrega se dispara al saldar (o manual) y no debe
+        // fallar el abono. Si queda en negativo, el dueño lo reconcilia.
+        await tx.inventoryVariant.update({
+          where: { id: it.variant.id },
+          data: { stock: { decrement: it.quantity } },
+        });
       }
       if (it.variant.inventory?.id) {
         recipeConsumption.push({
