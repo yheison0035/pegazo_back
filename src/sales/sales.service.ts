@@ -1030,7 +1030,9 @@ export class SalesService {
       where: { id: user.companyId },
       select: { requireCashOpen: true },
     });
-    if (company?.requireCashOpen) {
+    // `skipCash`: lo usa la ENTREGA de un plan separe → el dinero ya entró a
+    // caja vía abonos, así que ni exige caja abierta ni registra el ingreso.
+    if (company?.requireCashOpen && !(dto as any).skipCash) {
       const now = new Date();
       const col = new Date(now.getTime() - 5 * 3600 * 1000);
       const dayStart = new Date(
@@ -1123,7 +1125,10 @@ export class SalesService {
             throw new NotFoundException('Producto no válido');
           }
 
-          const price = variant.inventory.salePrice;
+          // Precio CONGELADO (plan separe) si viene priceOverride; si no, el
+          // precio de venta actual del producto.
+          const price =
+            (item as any).priceOverride ?? variant.inventory.salePrice;
           const discount = item.discount ?? 0;
 
           const subtotal = this.calculateSubtotal(
@@ -1286,7 +1291,7 @@ export class SalesService {
 
       // Caja: si la venta es en efectivo y hay una caja abierta en el local, se
       // registra el ingreso automáticamente para que el arqueo cuadre.
-      if (dto.paymentMethod === 'EFECTIVO') {
+      if (dto.paymentMethod === 'EFECTIVO' && !(dto as any).skipCash) {
         const openReg = await tx.cashRegister.findFirst({
           where: {
             localId: dto.localId,
