@@ -101,6 +101,13 @@ export class SalesController {
     return this.salesService.getPaymentsHistory(req.user, query);
   }
 
+  // ---- PLANES SEPARE (apartados). Antes de :id ----
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA')
+  @Get('layaway/list')
+  listLayaways(@Req() req, @Query() query) {
+    return this.salesService.listLayaways(req.user, query);
+  }
+
   @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA', 'VENTAS')
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number, @Req() req) {
@@ -122,6 +129,24 @@ export class SalesController {
     @Req() req,
   ) {
     return this.salesService.addPayment(id, dto, req.user);
+  }
+
+  // Plan separe: entregar (descuenta stock y mueve a Ventas realizadas).
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA')
+  @Post(':id/complete-layaway')
+  completeLayaway(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: any,
+    @Req() req,
+  ) {
+    return this.salesService.completeLayaway(id, req.user, dto || {});
+  }
+
+  // Plan separe: anular (no descuenta stock; los abonos quedan en caja).
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Post(':id/cancel-layaway')
+  cancelLayaway(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.salesService.cancelLayaway(id, req.user);
   }
 
   @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA', 'VENTAS')

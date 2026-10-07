@@ -123,7 +123,9 @@ export class AccountingService {
           where: {
             local: { companyId },
             saleDate: { gte: r.start, lt: r.end },
-            paymentStatus: { notIn: ['ANULADO', 'RECHAZADA'] as any },
+            // PLAN_SEPARE: apartado activo, no es ingreso contable hasta
+            // entregarse (ahí pasa a PAGADA con fecha de entrega).
+            paymentStatus: { notIn: ['ANULADO', 'RECHAZADA', 'PLAN_SEPARE'] as any },
           },
           select: {
             code: true,

@@ -83,6 +83,12 @@ export class CreateSaleDto {
   @IsNumber()
   cashReceived?: number;
 
+  // Plan separe (apartado): abono inicial que entrega el cliente al crear el
+  // apartado. Se registra como primer SalePayment (y a caja si es efectivo).
+  @IsOptional()
+  @IsNumber()
+  initialPayment?: number;
+
   // Venta sin comisión para el empleado (corte de cortesía / mal aplicado).
   @IsOptional()
   @IsBoolean()

@@ -465,6 +465,8 @@ export class StatisticsService {
         local: { companyId },
         ...localFilter,
         saleStatus: notCanceled,
+        // Los plan separe (apartados) NO cuentan hasta entregarse.
+        paymentStatus: { not: 'PLAN_SEPARE' as any },
         saleDate: { gte: monthStart, lt: end },
       },
       _sum: { totalAmount: true, taxTotal: true },

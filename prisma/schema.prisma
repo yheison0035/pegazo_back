@@ -2451,61 +2451,6 @@ model PlatformPaymentSettings {
   updatedAt      DateTime @updatedAt
 }
 
-//////////////////////////////////////////////////
-// PLAN SEPARE (apartado / layaway): se abona hasta
-// completar; al entregar se descuenta stock y se
-// genera la venta real. No toca stock hasta entregar.
-//////////////////////////////////////////////////
-
-model Layaway {
-  id          Int       @id @default(autoincrement())
-  code        String    @unique
-  companyId   Int
-  localId     Int
-  customerId  Int?
-  userId      Int? // quién lo atiende/crea
-  status      String    @default("ACTIVO") // ACTIVO | COMPLETADO | ANULADO
-  totalAmount Float     @default(0)
-  paidAmount  Float     @default(0) // suma de abonos (se recalcula)
-  notes       String?
-  saleId      Int? // venta generada al entregar
-  completedAt DateTime?
-
-  items    LayawayItem[]
-  payments LayawayPayment[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([companyId])
-  @@index([localId])
-  @@index([status])
-}
-
-model LayawayItem {
-  id                 Int   @id @default(autoincrement())
-  layawayId          Int
-  inventoryVariantId Int
-  quantity           Float
-  price              Float // precio CONGELADO al crear/editar el plan
-  subtotal           Float
-
-  layaway Layaway @relation(fields: [layawayId], references: [id], onDelete: Cascade)
-
-  @@index([layawayId])
-}
-
-model LayawayPayment {
-  id          Int           @id @default(autoincrement())
-  layawayId   Int
-  amount      Float
-  method      PaymentMethod @default(EFECTIVO)
-  note        String?
-  createdById Int?
-
-  layaway Layaway @relation(fields: [layawayId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-
-  @@index([layawayId])
-}
+// NOTA: el "plan separe" (apartado) NO usa modelo propio. Es una Sale normal
+// con paymentStatus=PLAN_SEPARE que no descuenta stock hasta ENTREGARSE; los
+// abonos usan SalePayment (el mismo modelo del fiado). Ver sales.service.ts.

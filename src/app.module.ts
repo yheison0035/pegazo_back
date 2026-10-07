@@ -12,7 +12,6 @@ import { MembershipsModule } from './memberships/memberships.module';
 import { StorageModule } from './storage/storage.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { SearchModule } from './search/search.module';
-import { LayawayModule } from './layaway/layaway.module';
 import { StockRequestsModule } from './stock-requests/stock-requests.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PlatformPaymentModule } from './platform-payment/platform-payment.module';
@@ -91,7 +90,6 @@ import { RealtimeModule } from './realtime/realtime.module';
     StorageModule,
     InventoryModule,
     SearchModule,
-    LayawayModule,
     StockRequestsModule,
     NotificationsModule,
     PlatformPaymentModule,
