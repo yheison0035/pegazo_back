@@ -2766,6 +2766,158 @@ export class SalesService {
     return { success: true };
   }
 
+  // Edita los PRODUCTOS/servicios de un plan separe ACTIVO. No toca stock (el
+  // apartado no retiene inventario hasta entregarse); recomputa totales e IVA
+  // igual que una venta. No permite dejar el total por debajo de lo ya abonado.
+  async updateLayawayItems(saleId: number, dto: any, user: any) {
+    const sale = await this.prisma.sale.findUnique({
+      where: { id: saleId },
+      include: {
+        local: { select: { companyId: true } },
+        payments: { select: { amount: true } },
+      },
+    });
+    if (!sale) throw new NotFoundException('Venta no encontrada');
+    if (sale.local.companyId !== user.companyId) {
+      throw new ForbiddenException('No tienes permiso');
+    }
+    if (sale.paymentStatus !== 'PLAN_SEPARE') {
+      throw new BadRequestException(
+        'Solo se pueden editar planes separe activos',
+      );
+    }
+    const items = Array.isArray(dto.items) ? dto.items : [];
+    if (!items.length) {
+      throw new BadRequestException('Debe quedar al menos un producto');
+    }
+
+    const fiscal = await this.prisma.company.findUnique({
+      where: { id: user.companyId },
+      select: {
+        responsableIVA: true,
+        preciosIncluyenIVA: true,
+        defaultTaxRate: true,
+      },
+    });
+    const includeIva = fiscal?.preciosIncluyenIVA ?? true;
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const paid = sale.payments.reduce((a, p) => a + Number(p.amount), 0);
+
+    return this.prisma.$transaction(async (tx) => {
+      let total = 0;
+      let saleSubtotal = 0;
+      let saleTax = 0;
+      const itemsData: any[] = [];
+
+      for (const item of items) {
+        this.validateItem(item);
+        if (item.inventoryVariantId) {
+          const variant = await tx.inventoryVariant.findFirst({
+            where: {
+              id: item.inventoryVariantId,
+              inventory: { local: { companyId: user.companyId } },
+            },
+            include: { inventory: true },
+          });
+          if (!variant) throw new NotFoundException('Producto no válido');
+          const price = item.priceOverride ?? variant.inventory.salePrice;
+          const discount = item.discount ?? 0;
+          const subtotal = this.calculateSubtotal(
+            price,
+            item.quantity,
+            discount,
+          );
+          const rate = this.itemTaxRate(variant.inventory.taxRate, fiscal as any);
+          const { base, tax } = this.taxParts(subtotal, rate, includeIva);
+          itemsData.push({
+            inventoryVariantId: variant.id,
+            serviceId: null,
+            quantity: item.quantity,
+            price,
+            discount,
+            subtotal,
+            taxRate: rate,
+            taxAmount: tax,
+          });
+          total += includeIva ? subtotal : subtotal + tax;
+          saleSubtotal += base;
+          saleTax += tax;
+        } else if (item.serviceId) {
+          const service = await tx.service.findFirst({
+            where: { id: item.serviceId, companyId: user.companyId },
+            include: { serviceLocals: true },
+          });
+          if (!service) throw new NotFoundException('Servicio no válido');
+          let price: number;
+          if (item.priceOverride != null) {
+            price = Number(item.priceOverride);
+          } else {
+            const serviceLocal = service.serviceLocals.find(
+              (sl) => sl.localId === sale.localId,
+            );
+            if (!serviceLocal) {
+              throw new BadRequestException(
+                'Servicio no disponible en este local',
+              );
+            }
+            price = serviceLocal.price;
+          }
+          const discount = item.discount ?? 0;
+          const subtotal = this.calculateSubtotal(
+            price,
+            item.quantity,
+            discount,
+          );
+          const rate = this.itemTaxRate(service.taxRate, fiscal as any);
+          const { base, tax } = this.taxParts(subtotal, rate, includeIva);
+          itemsData.push({
+            inventoryVariantId: null,
+            serviceId: service.id,
+            quantity: item.quantity,
+            price,
+            discount,
+            subtotal,
+            taxRate: rate,
+            taxAmount: tax,
+          });
+          total += includeIva ? subtotal : subtotal + tax;
+          saleSubtotal += base;
+          saleTax += tax;
+        }
+      }
+
+      total = r2(total);
+      if (total < paid - 0.01) {
+        throw new BadRequestException(
+          `El total ($${total}) no puede quedar por debajo de lo ya abonado ($${r2(
+            paid,
+          )}). Anula un abono o ajusta los productos.`,
+        );
+      }
+
+      await tx.saleItem.deleteMany({ where: { saleId } });
+      const updated = await tx.sale.update({
+        where: { id: saleId },
+        data: {
+          totalAmount: total,
+          subtotal: r2(saleSubtotal),
+          taxTotal: r2(saleTax),
+          items: { create: itemsData },
+        },
+      });
+
+      await this.audit.log({
+        entity: 'sale',
+        entityId: saleId,
+        action: 'UPDATE',
+        user,
+        changes: { planSepareItems: { before: null, after: itemsData.length } },
+      });
+
+      return { success: true, data: { id: updated.id, total } };
+    });
+  }
+
   // Lista los abonos de una venta + su saldo.
   async getPayments(saleId: number, user: any) {
     const sale = await this.prisma.sale.findUnique({
@@ -2850,6 +3002,8 @@ export class SalesService {
             price: true,
             subtotal: true,
             discount: true,
+            inventoryVariantId: true,
+            serviceId: true,
             variant: {
               select: {
                 color: true,
@@ -2881,6 +3035,8 @@ export class SalesService {
         itemsCount: s.items.length,
         items: s.items.map((it) => ({
           id: it.id,
+          inventoryVariantId: it.inventoryVariantId,
+          serviceId: it.serviceId,
           name: it.variant?.inventory?.name || it.service?.name || 'Ítem',
           color: it.variant?.color || null,
           size: it.variant?.size || null,
