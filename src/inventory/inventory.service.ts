@@ -30,6 +30,17 @@ export class InventoryService {
     private notifications: NotificationsService,
   ) {}
 
+  // Carta ligera para gestionar disponibilidad (cocina): solo id, nombre y
+  // disponible — sin costos ni datos sensibles.
+  async menuAvailability(user: any) {
+    const data = await this.prisma.inventory.findMany({
+      where: { companyId: user.companyId, status: 'ACTIVO' as any },
+      select: { id: true, name: true, available: true },
+      orderBy: { name: 'asc' },
+    });
+    return { success: true, data };
+  }
+
   // Disponibilidad del menú (restaurante): cocina/admin/dueño marcan un plato
   // como disponible o no. NO borra ni inactiva el producto; es un apagado
   // temporal de la carta. Al dejarlo NO disponible, avisa a los meseros.
@@ -218,6 +229,7 @@ export class InventoryService {
           price: product.salePrice,
           unit: product.unit,
           trackStock: product.trackStock,
+          available: product.available !== false,
           image: product.images?.[0]?.url ?? null,
           localId: product.localId,
           score,
