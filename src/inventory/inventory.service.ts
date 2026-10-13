@@ -45,11 +45,13 @@ export class InventoryService {
       throw new NotFoundException('Catálogo no disponible');
     }
 
+    // Incluye TODOS los activos (también los NO disponibles): el front los
+    // muestra marcados — "Agotado" (productos con stock) o "No disponible"
+    // (menú). No oculta, para que el cliente vea la carta/catálogo completo.
     const products = await this.prisma.inventory.findMany({
       where: {
         companyId: company.id,
         status: 'ACTIVO' as any,
-        available: true,
       },
       select: {
         id: true,
@@ -57,10 +59,16 @@ export class InventoryService {
         description: true,
         salePrice: true,
         onlinePrice: true,
+        available: true,
+        trackStock: true,
         category: { select: { id: true, name: true } },
         images: {
           orderBy: { position: 'asc' },
           select: { url: true },
+        },
+        variants: {
+          where: { isActive: true },
+          select: { stock: true },
         },
         features: {
           where: { visible: true },
@@ -76,6 +84,20 @@ export class InventoryService {
       orderBy: [{ categoryId: 'asc' }, { name: 'asc' }],
     });
 
+    // Quita etiquetas HTML de la descripción (viene de editor enriquecido) para
+    // que NO aparezca markup "impreso" en la página pública.
+    const stripHtml = (s: string | null) =>
+      s
+        ? s
+            .replace(/<br\s*\/?>/gi, ' ')
+            .replace(/<\/p>/gi, ' ')
+            .replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/&amp;/gi, '&')
+            .replace(/\s+/g, ' ')
+            .trim() || null
+        : null;
+
     const groups = new Map<number, any>();
     for (const p of products) {
       const key = p.category?.id ?? 0;
@@ -87,10 +109,14 @@ export class InventoryService {
         });
       }
       const imgs = (p.images || []).map((im) => im.url).filter(Boolean);
+      const stock = (p.variants || []).reduce(
+        (a, v) => a + (Number(v.stock) || 0),
+        0,
+      );
       groups.get(key).products.push({
         id: p.id,
         name: p.name,
-        description: p.description || null,
+        description: stripHtml(p.description),
         price: p.onlinePrice ?? p.salePrice,
         image: imgs[0] || null,
         images: imgs,
@@ -100,6 +126,10 @@ export class InventoryService {
           key: s.key,
           value: s.value,
         })),
+        // Disponibilidad: menú usa `available`; productos usan `stock`.
+        available: p.available !== false,
+        trackStock: p.trackStock !== false,
+        stock,
       });
     }
 
