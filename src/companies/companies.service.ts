@@ -122,6 +122,7 @@ export class CompaniesService {
         phone: company?.phone || '',
         defaultAccent: company?.primaryColor || '',
         skin: cfg.skin || '',
+        catalogTheme: cfg.catalogTheme || '',
         accent: cfg.accent || '',
         tagline: cfg.tagline || '',
         subtitle: cfg.subtitle || '',
@@ -154,6 +155,13 @@ export class CompaniesService {
       const skin = String(dto.skin || '').trim();
       if (['dark', 'light', 'classic'].includes(skin)) cfg.skin = skin;
       else delete cfg.skin;
+    }
+    // Tema del catálogo/menú (página pública de productos).
+    if (dto.catalogTheme !== undefined) {
+      const th = String(dto.catalogTheme || '').trim();
+      if (['clean', 'dark', 'warm', 'fresh', 'bold'].includes(th))
+        cfg.catalogTheme = th;
+      else delete cfg.catalogTheme;
     }
     setStr('accent');
     setStr('tagline');
