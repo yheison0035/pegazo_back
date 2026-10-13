@@ -17,7 +17,7 @@ import { FiscalService } from './fiscal.service';
 
 // Facturación electrónica DIAN vía la Pegazo Fiscal API (integración propia).
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('SUPER_ADMIN', 'ADMIN')
+@Roles('SUPER_ADMIN', 'ADMIN', 'CONTADOR')
 @Controller('fiscal')
 export class FiscalController {
   constructor(private readonly service: FiscalService) {}

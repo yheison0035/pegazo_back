@@ -66,6 +66,8 @@ export class AppointmentsController {
     return this.service.findOne(id, req.user);
   }
 
+  // Barbero/profesional NO agenda ni edita: solo visualiza su agenda. Agendar y
+  // editar queda en recepción/admin/dueño.
   @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA')
   @Post()
   create(@Body() dto: CreateAppointmentDto, @Req() req) {
