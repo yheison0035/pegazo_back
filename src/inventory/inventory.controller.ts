@@ -40,6 +40,20 @@ export class InventoryController {
     return this.inventoryService.findAllPaginated(req.user, query);
   }
 
+  // Exportar TODO el inventario a Excel (lo arma el front). Antes de :id.
+  @Roles(
+    'SUPER_ADMIN',
+    'ADMIN', 'RECEPCIONISTA',
+    'COORDINADOR',
+    'AUXILIAR',
+    'ASESOR',
+    'BODEGUERO',
+  )
+  @Get('export')
+  exportAll(@Req() req) {
+    return this.inventoryService.exportAll(req.user);
+  }
+
   // Productos con stock bajo (para el dashboard/alertas). Antes de :id.
   @Roles(
     'SUPER_ADMIN',
