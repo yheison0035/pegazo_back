@@ -82,6 +82,14 @@ export class InventoryController {
     return this.inventoryService.getExpiring(req.user);
   }
 
+  // Carta ligera (nombre + disponible) para la pantalla de cocina. Debe ir
+  // ANTES de :id para que "menu" no se interprete como un id.
+  @Roles('SUPER_ADMIN', 'ADMIN', 'COCINERO')
+  @Get('menu')
+  menuAvailability(@Req() req) {
+    return this.inventoryService.menuAvailability(req.user);
+  }
+
   @Roles(
     'SUPER_ADMIN',
     'ADMIN', 'RECEPCIONISTA',
