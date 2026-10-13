@@ -460,11 +460,11 @@ export class InventoryService {
 
   async findOne(id: number, user: any) {
     const product = await this.prisma.inventory.findFirst({
+      // Scoping por EMPRESA (ancla de tenant). No por local.companyId: si se
+      // borró la sede, localId queda null y el producto seguiría siendo editable.
       where: {
         id,
-        local: {
-          companyId: user.companyId,
-        },
+        companyId: user.companyId,
       },
       include: {
         images: { orderBy: { position: 'asc' } },
@@ -555,7 +555,7 @@ export class InventoryService {
       throw new BadRequestException('La cantidad a reponer debe ser mayor a 0.');
     }
     const product = await this.prisma.inventory.findFirst({
-      where: { id, local: { companyId: user.companyId } },
+      where: { id, companyId: user.companyId },
       include: { variants: { where: { isActive: true } } },
     });
     if (!product) throw new NotFoundException('Producto no encontrado');
@@ -1199,9 +1199,7 @@ export class InventoryService {
     const product = await this.prisma.inventory.findFirst({
       where: {
         id,
-        local: {
-          companyId: user.companyId,
-        },
+        companyId: user.companyId,
       },
       include: { images: true },
     });
@@ -1234,9 +1232,7 @@ export class InventoryService {
     const product = await this.prisma.inventory.findFirst({
       where: {
         id: inventoryId,
-        local: {
-          companyId: user.companyId,
-        },
+        companyId: user.companyId,
       },
       include: {
         images: true,

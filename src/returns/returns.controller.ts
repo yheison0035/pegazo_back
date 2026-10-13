@@ -15,7 +15,13 @@ import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
 import { Roles } from '@/auth/roles.decorator';
 
-const ROLES = ['SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR'] as const;
+const ROLES = [
+  'SUPER_ADMIN',
+  'ADMIN',
+  'RECEPCIONISTA',
+  'ASESOR',
+  'CAJA',
+] as const;
 
 @Controller('returns')
 @UseGuards(JwtAuthGuard, RolesGuard)
