@@ -129,6 +129,18 @@ export class InventoryController {
     return this.inventoryService.restock(id, amount, req.user);
   }
 
+  // Disponibilidad del menú (restaurante): cocina/admin/dueño encienden o apagan
+  // un plato de la carta. Avisa a los meseros cuando queda NO disponible.
+  @Roles('SUPER_ADMIN', 'ADMIN', 'COCINERO')
+  @Patch(':id/availability')
+  setAvailability(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('available') available: boolean,
+    @Req() req,
+  ) {
+    return this.inventoryService.setAvailability(id, !!available, req.user);
+  }
+
   @Roles('SUPER_ADMIN')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req) {

@@ -17,6 +17,7 @@ import { getPagination } from '@/common/pagination.util';
 import { generateSku } from '../../utils/sku.util';
 import { AuditService } from '@/audit/audit.service';
 import { PlanLimitsService } from '@/common/plan-limits.service';
+import { NotificationsService } from '@/notifications/notifications.service';
 
 @Injectable()
 export class InventoryService {
@@ -26,7 +27,52 @@ export class InventoryService {
     private variantsService: VariantsService,
     private audit: AuditService,
     private planLimits: PlanLimitsService,
+    private notifications: NotificationsService,
   ) {}
+
+  // Disponibilidad del menú (restaurante): cocina/admin/dueño marcan un plato
+  // como disponible o no. NO borra ni inactiva el producto; es un apagado
+  // temporal de la carta. Al dejarlo NO disponible, avisa a los meseros.
+  async setAvailability(id: number, available: boolean, user: any) {
+    if (!hasRole(user.role, [Role.SUPER_ADMIN, Role.ADMIN, Role.COCINERO])) {
+      throw new ForbiddenException('No autorizado');
+    }
+    const product = await this.prisma.inventory.findFirst({
+      where: { id, companyId: user.companyId },
+      select: { id: true, name: true },
+    });
+    if (!product) throw new NotFoundException('Producto no encontrado');
+
+    await this.prisma.inventory.update({
+      where: { id },
+      data: { available },
+    });
+
+    await this.audit.log({
+      entity: 'inventory',
+      entityId: id,
+      action: 'UPDATE',
+      user,
+      changes: { available: { before: !available, after: available } },
+    });
+
+    // Aviso a los meseros cuando un plato queda NO disponible.
+    if (!available) {
+      await this.notifications.createForRoles(user.companyId, ['MESERO'], {
+        type: 'MENU_ITEM_UNAVAILABLE',
+        title: 'Plato no disponible',
+        body: `"${product.name}" se marcó como NO disponible en la carta.`,
+        url: '/dashboard/mesas',
+      });
+    }
+
+    return {
+      success: true,
+      message: available
+        ? 'Producto disponible'
+        : 'Producto marcado como no disponible',
+    };
+  }
 
   // Búsqueda avanzada de productos y servicios
   async search(term: string, user: any) {

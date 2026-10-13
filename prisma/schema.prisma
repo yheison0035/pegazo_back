@@ -766,6 +766,12 @@ model Inventory {
   // = elaborado al momento sin stock (platos de un menú), se puede vender siempre.
   trackStock Boolean @default(true)
 
+  // Disponibilidad para la venta/menú (restaurante): un plato se marca "no
+  // disponible" desde cocina/admin cuando se agota; sigue visible pero NO se
+  // puede pedir, y el mesero lo ve inactivo en vivo. No borra ni inactiva el
+  // producto (eso es `status`): es un apagado temporal de la carta.
+  available Boolean @default(true)
+
   // Vencimiento y lote (droguería / perecederos). Opcionales.
   expiryDate DateTime?
   lot        String?
