@@ -93,17 +93,32 @@ export class CompaniesService {
         logo: true,
         phone: true,
         slug: true,
+        type: true,
         primaryColor: true,
         bookingConfig: true,
+        publicPageEnabled: true,
       },
     });
     const cfg: any = company?.bookingConfig || {};
+    // Prefijo de la URL pública según el tipo: servicios → /booking (citas),
+    // comida → /menu, demás productos → /catalog.
+    const t = String(company?.type || '').toUpperCase();
+    const APPT = ['SERVICIOS', 'ODONTOLOGIA', 'LAVADO_VEHICULOS', 'CANCHAS_SINTETICAS'];
+    const FOOD = ['RESTAURANTE', 'COMIDA_RAPIDA', 'CAFETERIA'];
+    const publicPath = APPT.includes(t)
+      ? 'booking'
+      : FOOD.includes(t)
+        ? 'menu'
+        : 'catalog';
     return {
       success: true,
       data: {
         name: company?.name || '',
         logo: company?.logo || null,
         slug: company?.slug || null,
+        enabled: company?.publicPageEnabled !== false,
+        type: company?.type || null,
+        publicPath,
         phone: company?.phone || '',
         defaultAccent: company?.primaryColor || '',
         skin: cfg.skin || '',
@@ -169,9 +184,38 @@ export class CompaniesService {
       else delete cfg.intro;
     }
 
+    // Slug (enlace público /booking/:slug). El dueño puede fijarlo/cambiarlo o
+    // vaciarlo (desactiva su página). Se normaliza y se valida que sea único.
+    const data: any = { bookingConfig: cfg };
+    if (dto.slug !== undefined) {
+      const raw = String(dto.slug || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+      if (!raw) {
+        data.slug = null; // vacío = quita el enlace público
+      } else {
+        if (raw.length < 3) {
+          throw new BadRequestException(
+            'El enlace debe tener al menos 3 caracteres (letras, números o guiones).',
+          );
+        }
+        const taken = await this.prisma.company.findFirst({
+          where: { slug: raw, id: { not: user.companyId } },
+          select: { id: true },
+        });
+        if (taken) {
+          throw new BadRequestException('Ese enlace ya está en uso. Elige otro.');
+        }
+        data.slug = raw;
+      }
+    }
+
     await this.prisma.company.update({
       where: { id: user.companyId },
-      data: { bookingConfig: cfg },
+      data,
     });
 
     return this.getBookingPageConfig(user);
