@@ -1691,6 +1691,9 @@ export class CompaniesService {
         ...(dto.websiteEnabled !== undefined && {
           websiteEnabled: dto.websiteEnabled,
         }),
+        ...(dto.publicPageEnabled !== undefined && {
+          publicPageEnabled: dto.publicPageEnabled,
+        }),
         // Control manual de módulos + precio/descuento (superplatform).
         ...(dto.enabledModules !== undefined && {
           enabledModules: Array.isArray(dto.enabledModules)

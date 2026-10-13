@@ -328,6 +328,9 @@ model Company {
   domain         String? @unique
   slug           String? @unique
   websiteEnabled Boolean @default(false)
+  // Página pública /booking/:slug (citas o catálogo según el tipo). Se muestra
+  // solo si la empresa tiene slug; super platform puede apagarla con este flag.
+  publicPageEnabled Boolean @default(true)
   websiteName    String?
   favicon        String?
   theme          String  @default("default")

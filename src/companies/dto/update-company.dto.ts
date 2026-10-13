@@ -65,6 +65,11 @@ export class UpdateCompanyDto {
   @IsBoolean()
   websiteEnabled?: boolean;
 
+  // Activa/desactiva la página pública /booking/:slug (citas o catálogo).
+  @IsOptional()
+  @IsBoolean()
+  publicPageEnabled?: boolean;
+
   // Control MANUAL de módulos habilitados por empresa (superplatform).
   @IsOptional()
   @IsArray()

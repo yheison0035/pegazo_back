@@ -83,21 +83,39 @@ export class AppointmentsService {
         primaryColor: true,
         type: true,
         bookingConfig: true,
+        publicPageEnabled: true,
       },
     });
     if (!company) throw new NotFoundException('Negocio no encontrado.');
 
     const override: any = company.bookingConfig || {};
 
-    // Default del skin por tipo de negocio (configurable desde la plataforma).
+    // Default del skin por tipo de negocio + MODO de la página pública:
+    // 'appointments' (agenda de citas) para verticales de servicios, o 'catalog'
+    // (menú/catálogo solo lectura) para las de productos. Se decide por los
+    // módulos del tipo (BusinessTypeConfig) y, si no hay, por una lista base.
     let typeSkin: string | null = null;
+    let typeModules: string[] | null = null;
     if (company.type) {
       const tc = await this.prisma.businessTypeConfig.findUnique({
         where: { type: company.type },
-        select: { storefront: true, active: true },
+        select: { storefront: true, active: true, modules: true },
       });
-      if (tc?.active) typeSkin = (tc.storefront as any)?.bookingSkin || null;
+      if (tc?.active) {
+        typeSkin = (tc.storefront as any)?.bookingSkin || null;
+        if (Array.isArray(tc.modules)) typeModules = tc.modules as string[];
+      }
     }
+    const APPOINTMENT_TYPES = [
+      'SERVICIOS',
+      'ODONTOLOGIA',
+      'LAVADO_VEHICULOS',
+      'CANCHAS_SINTETICAS',
+    ];
+    const usesAppointments = typeModules
+      ? typeModules.includes('appointments')
+      : APPOINTMENT_TYPES.includes(String(company.type || '').toUpperCase());
+    const mode = usesAppointments ? 'appointments' : 'catalog';
 
     const skin =
       override.skin || typeSkin || this.defaultSkinForType(company.type);
@@ -130,6 +148,11 @@ export class AppointmentsService {
         // Texto de la "experiencia" (intro tipo portada) para el skin oscuro.
         intro: override.intro || null,
         type: company.type || null,
+        // Modo de la página pública (servicios=citas / productos=catálogo).
+        mode,
+        // Interruptor de super platform: si está apagada, el front muestra
+        // "página no disponible" en vez del contenido.
+        enabled: company.publicPageEnabled !== false,
       },
     };
   }
