@@ -60,8 +60,17 @@ export class InventoryService {
         category: { select: { id: true, name: true } },
         images: {
           orderBy: { position: 'asc' },
-          take: 1,
           select: { url: true },
+        },
+        features: {
+          where: { visible: true },
+          orderBy: { order: 'asc' },
+          select: { title: true },
+        },
+        specifications: {
+          where: { visible: true },
+          orderBy: { order: 'asc' },
+          select: { key: true, value: true },
         },
       },
       orderBy: [{ categoryId: 'asc' }, { name: 'asc' }],
@@ -77,12 +86,20 @@ export class InventoryService {
           products: [],
         });
       }
+      const imgs = (p.images || []).map((im) => im.url).filter(Boolean);
       groups.get(key).products.push({
         id: p.id,
         name: p.name,
         description: p.description || null,
         price: p.onlinePrice ?? p.salePrice,
-        image: p.images?.[0]?.url || null,
+        image: imgs[0] || null,
+        images: imgs,
+        // "Etiquetas" (features visibles) para las cards y el detalle (PDP).
+        tags: (p.features || []).map((f) => f.title).filter(Boolean),
+        specs: (p.specifications || []).map((s) => ({
+          key: s.key,
+          value: s.value,
+        })),
       });
     }
 
