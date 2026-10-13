@@ -61,6 +61,12 @@ export class ComandasService {
       include: { inventory: true },
     });
     if (!variant) throw new NotFoundException('Producto no válido');
+    // No se puede pedir un plato marcado como NO disponible por cocina/admin.
+    if (variant.inventory.available === false) {
+      throw new BadRequestException(
+        `"${variant.inventory.name}" no está disponible en este momento.`,
+      );
+    }
     return {
       name: variant.inventory.name,
       price: variant.inventory.salePrice,
