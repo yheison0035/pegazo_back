@@ -30,6 +30,65 @@ export class InventoryService {
     private notifications: NotificationsService,
   ) {}
 
+  // Catálogo PÚBLICO (solo lectura) de un negocio por su slug — para la página
+  // /booking/:slug cuando es de productos (restaurante, supermercado, zapatería…).
+  // Agrupa por categoría; no expone costos ni stock. Sin carrito (eso es la
+  // tienda online). Respeta el flag publicPageEnabled.
+  async publicCatalog(slug: string) {
+    const clean = (slug || '').trim().toLowerCase();
+    if (!clean) throw new NotFoundException('Catálogo no disponible');
+    const company = await this.prisma.company.findUnique({
+      where: { slug: clean },
+      select: { id: true, publicPageEnabled: true },
+    });
+    if (!company || company.publicPageEnabled === false) {
+      throw new NotFoundException('Catálogo no disponible');
+    }
+
+    const products = await this.prisma.inventory.findMany({
+      where: {
+        companyId: company.id,
+        status: 'ACTIVO' as any,
+        available: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        salePrice: true,
+        onlinePrice: true,
+        category: { select: { id: true, name: true } },
+        images: {
+          orderBy: { position: 'asc' },
+          take: 1,
+          select: { url: true },
+        },
+      },
+      orderBy: [{ categoryId: 'asc' }, { name: 'asc' }],
+    });
+
+    const groups = new Map<number, any>();
+    for (const p of products) {
+      const key = p.category?.id ?? 0;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          id: key,
+          title: p.category?.name || 'Otros',
+          products: [],
+        });
+      }
+      groups.get(key).products.push({
+        id: p.id,
+        name: p.name,
+        description: p.description || null,
+        price: p.onlinePrice ?? p.salePrice,
+        image: p.images?.[0]?.url || null,
+      });
+    }
+
+    return { success: true, data: Array.from(groups.values()) };
+  }
+
   // Carta ligera para gestionar disponibilidad (cocina): solo id, nombre y
   // disponible — sin costos ni datos sensibles.
   async menuAvailability(user: any) {
