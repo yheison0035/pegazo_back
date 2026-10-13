@@ -30,13 +30,15 @@ export class ComandasController {
     return this.service.byMesa(mesaId, req.user);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA', 'MESERO')
+  // Tomar y editar órdenes: mesero (y dueño/admin). La caja/recepción NO toma
+  // órdenes (solo maneja plata).
+  @Roles('SUPER_ADMIN', 'ADMIN', 'MESERO')
   @Post()
   create(@Body() dto: any, @Req() req) {
     return this.service.create(dto, req.user);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA', 'MESERO')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'MESERO')
   @Post(':id/items')
   addItems(
     @Param('id', ParseIntPipe) id: number,
@@ -46,7 +48,9 @@ export class ComandasController {
     return this.service.addItems(id, body?.items || [], req.user);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA', 'MESERO', 'COCINERO')
+  // Estados: mesero (entregar/cancelar) y cocina (preparando/listo); dueño/admin
+  // todo. El propio servicio limita qué estado puede poner cada rol.
+  @Roles('SUPER_ADMIN', 'ADMIN', 'MESERO', 'COCINERO')
   @Patch(':id/status')
   setStatus(
     @Param('id', ParseIntPipe) id: number,
@@ -56,14 +60,15 @@ export class ComandasController {
     return this.service.setStatus(id, status, req.user);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA')
+  // Cobrar: solo maneja plata la caja/recepción (y dueño/admin).
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CAJA', 'RECEPCIONISTA')
   @Post(':id/charge')
   charge(@Param('id', ParseIntPipe) id: number, @Body() dto: any, @Req() req) {
     return this.service.charge(id, dto, req.user);
   }
 
   // Cobrar toda la mesa (todas sus comandas abiertas en una sola venta).
-  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CAJA', 'RECEPCIONISTA')
   @Post('mesa/:mesaId/charge')
   chargeMesa(
     @Param('mesaId', ParseIntPipe) mesaId: number,
