@@ -30,6 +30,8 @@ const TRANSITIONS: Record<string, string[]> = {
 };
 // La cocina solo mueve estados de cocina.
 const COCINERO_ALLOWED = ['PREPARANDO', 'LISTO'];
+// El mesero solo entrega (marca ENTREGADO) o cancela la orden; no cocina.
+const MESERO_ALLOWED = ['ENTREGADO', 'CANCELADA'];
 
 @Injectable()
 export class ComandasService {
@@ -205,6 +207,12 @@ export class ComandasService {
     // La cocina únicamente marca "Preparando" / "Listo".
     if (user.role === 'COCINERO' && !COCINERO_ALLOWED.includes(status)) {
       throw new ForbiddenException('La cocina solo marca Preparando o Listo');
+    }
+    // El mesero solo puede ENTREGAR o CANCELAR (no cocina ni cobra).
+    if (user.role === 'MESERO' && !MESERO_ALLOWED.includes(status)) {
+      throw new ForbiddenException(
+        'El mesero solo puede entregar o cancelar la orden',
+      );
     }
 
     const comanda = await this.prisma.comanda.findFirst({
