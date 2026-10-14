@@ -25,6 +25,13 @@ export class CompanySettingsController {
     return this.service.getOwnSettings(req.user);
   }
 
+  // Facturación del dueño: estado de la suscripción + meses/pagos realizados.
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Get('subscription')
+  getSubscription(@Req() req) {
+    return this.service.getOwnSubscription(req.user);
+  }
+
   // Página pública de citas (/booking/:slug): leer y editar su diseño (skin,
   // marca, portada). La categorización de servicios la gestiona la plataforma.
   @Roles('SUPER_ADMIN', 'ADMIN')
