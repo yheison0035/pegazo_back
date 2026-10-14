@@ -127,6 +127,7 @@ enum BusinessType {
   TELEVENTAS
   RESTAURANTE
   SERVICIOS
+  BARBERIA
   ECOMMERCE
   DISTRIBUCION
   // Verticales específicas (multi-negocio)
