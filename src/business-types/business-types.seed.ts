@@ -17,6 +17,7 @@ export const BUSINESS_TYPE_LABELS: Record<string, string> = {
   CALZADO: 'Calzado',
   FRUVER: 'Fruver',
   FLORISTERIA: 'Floristería',
+  PANALERIA: 'Pañalería',
   COMIDA_RAPIDA: 'Comida rápida',
   CAFETERIA: 'Cafetería',
   CARNICERIA: 'Carnicería',
@@ -61,6 +62,9 @@ export const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
   DROGUERIA: RETAIL,
   ROPA: RETAIL,
   CALZADO: RETAIL,
+  // Pañalería: retail con variantes (tallas/etapas de pañal, ropa de bebé) +
+  // fidelización (cliente recurrente).
+  PANALERIA: [...RETAIL, 'loyalty'],
   FRUVER: PERECEDERO,
   CARNICERIA: PERECEDERO,
   CAFETERIA: PERECEDERO,
