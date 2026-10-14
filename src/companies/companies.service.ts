@@ -14,6 +14,7 @@ import { PrismaService } from '@/prisma.service';
 import { MailService } from '@/mail/mail.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
+import { BUSINESS_TYPE_LABELS } from '@/business-types/business-types.seed';
 import { Role, Status, Prisma, BusinessType } from '@prisma/client';
 
 @Injectable()
@@ -1957,10 +1958,22 @@ export class CompaniesService {
   async publicClients() {
     const list = await this.prisma.company.findMany({
       where: { status: { not: Status.ELIMINADO } },
-      select: { id: true, name: true, logo: true },
+      select: { id: true, name: true, logo: true, type: true },
       orderBy: { createdAt: 'asc' },
     });
-    return { success: true, data: list };
+    const sentence = (s: string) => {
+      const t = (s || '').trim().toLowerCase();
+      return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
+    };
+    const data = list.map((c) => ({
+      id: c.id,
+      name: c.name,
+      logo: c.logo,
+      typeLabel: c.type
+        ? BUSINESS_TYPE_LABELS[c.type] || sentence(c.type)
+        : '',
+    }));
+    return { success: true, data };
   }
 
   async remove(id: number, user: any) {
