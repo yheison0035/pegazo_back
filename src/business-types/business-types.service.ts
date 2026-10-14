@@ -66,7 +66,7 @@ export class BusinessTypesService {
       'LAVADO_VEHICULOS',
       'CANCHAS_SINTETICAS',
     ];
-    const FOOD = ['RESTAURANTE', 'COMIDA_RAPIDA', 'CAFETERIA'];
+    const FOOD = ['RESTAURANTE', 'COMIDA_RAPIDA', 'CAFETERIA', 'BAR', 'PIZZERIA'];
     // Formato de nombre: Primera letra mayúscula, resto minúscula (conserva
     // tildes). Preferimos el nombre canónico (con acentos correctos); si es un
     // tipo nuevo sin mapa, formateamos su etiqueta guardada.
