@@ -1952,6 +1952,17 @@ export class CompaniesService {
   }
 
   // ELIMINAR (SOFT DELETE)
+  // Clientes para la landing (público): todas las empresas registradas que no
+  // estén eliminadas. Solo nombre + logo (sin datos sensibles).
+  async publicClients() {
+    const list = await this.prisma.company.findMany({
+      where: { status: { not: Status.ELIMINADO } },
+      select: { id: true, name: true, logo: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return { success: true, data: list };
+  }
+
   async remove(id: number, user: any) {
     if (user.role !== Role.SUPER_PLATFORM_ADMIN) {
       throw new ForbiddenException('No tienes permisos');
