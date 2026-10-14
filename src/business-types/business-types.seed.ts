@@ -23,6 +23,7 @@ export const BUSINESS_TYPE_LABELS: Record<string, string> = {
   LAVADO_VEHICULOS: 'Lavado de vehículos',
   CANCHAS_SINTETICAS: 'Canchas sintéticas',
   GUARDA_CASCOS: 'Guarda cascos',
+  PARQUEADERO: 'Parqueadero',
   BAR: 'Bar',
   FERRETERIA: 'Ferretería',
   GIMNASIO: 'Gimnasio',
@@ -120,6 +121,13 @@ export const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
   GUARDA_CASCOS: [
     'locals', 'users', 'categories', 'providers', 'inventory', 'purchases',
     'customers', 'impuestos', 'loyalty', 'memberships', 'storage',
+    'delivered_sales', 'cash', 'expenses', 'payables', 'statistics',
+  ],
+  // Parqueadero: TODO se cobra desde 'parking' (ingreso/salida/factura), como
+  // guarda cascos → NO lleva 'sales' para evitar doble punto de cobro.
+  PARQUEADERO: [
+    'locals', 'users', 'parking', 'customers', 'memberships', 'categories',
+    'inventory', 'providers', 'purchases', 'impuestos', 'loyalty',
     'delivered_sales', 'cash', 'expenses', 'payables', 'statistics',
   ],
 };

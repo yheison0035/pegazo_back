@@ -10,6 +10,7 @@ import { ExpensesModule } from './expenses/expenses.module';
 import { FixedExpensesModule } from './fixed-expenses/fixed-expenses.module';
 import { MembershipsModule } from './memberships/memberships.module';
 import { StorageModule } from './storage/storage.module';
+import { ParkingModule } from './parking/parking.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { SearchModule } from './search/search.module';
 import { StockRequestsModule } from './stock-requests/stock-requests.module';
@@ -88,6 +89,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     FixedExpensesModule,
     MembershipsModule,
     StorageModule,
+    ParkingModule,
     InventoryModule,
     SearchModule,
     StockRequestsModule,

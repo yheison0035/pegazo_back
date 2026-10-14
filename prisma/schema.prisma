@@ -144,6 +144,7 @@ enum BusinessType {
   LAVADO_VEHICULOS
   CANCHAS_SINTETICAS
   GUARDA_CASCOS
+  PARQUEADERO
 }
 
 enum DiscountType {
@@ -1359,6 +1360,67 @@ model StorageTicket {
   userId        Int? // asesor que recibió el casco
 
   local Local @relation("LocalStorageTickets", fields: [localId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([localId])
+  @@index([status])
+}
+
+// PARQUEADERO — control de ingreso/salida de vehículos con cobro por tiempo y
+// TARIFA POR TIPO DE VEHÍCULO (carro, moto, camioneta…). Flujo similar a Guarda
+// cascos. Aislado: solo lo usa el tipo PARQUEADERO.
+model ParkingSettings {
+  id            Int     @id @default(autoincrement())
+  companyId     Int     @unique
+  graceMinutes  Int     @default(0) // minutos sin cobro al inicio
+  roundUpToHour Boolean @default(false) // cobrar hora completa (sin fracción)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Tipos de vehículo CONFIGURABLES por el cliente, cada uno con su tarifa.
+model ParkingVehicleType {
+  id        Int     @id @default(autoincrement())
+  companyId Int
+  name      String // Carro, Moto, Camioneta, Bicicleta…
+  hourRate  Float   @default(0) // $ por hora (prorrateado por minuto)
+  dayMax    Float   @default(0) // tope por día (0 = sin tope)
+  monthRate Float   @default(0) // mensualidad
+  capacity  Int     @default(0) // cupos (0 = ilimitado)
+  order     Int     @default(0)
+  active    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+}
+
+// Ticket de parqueo: se crea al INGRESO (imprime ticket) y se cobra a la SALIDA
+// (genera venta/factura). El cobro sale de la tarifa del tipo de vehículo.
+model ParkingTicket {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  localId         Int
+  code            String // código corto del ticket (para buscar a la salida)
+  plate           String?
+  vehicleTypeId   Int?
+  vehicleTypeName String? // snapshot del tipo (histórico)
+  customerName    String?
+  customerPhone   String?
+  customerId      Int?
+  checkInAt       DateTime  @default(now())
+  checkOutAt      DateTime?
+  status          String    @default("DENTRO") // DENTRO | ENTREGADO | ANULADO
+  isMonthly       Boolean   @default(false) // cubierto por mensualidad (no cobra tiempo)
+  notes           String?
+  amount          Float?
+  saleId          Int?
+  userId          Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
