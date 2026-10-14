@@ -2319,6 +2319,30 @@ model SubscriptionPayment {
   @@index([companyId])
 }
 
+// Historial de pagos de suscripción registrados MANUALMENTE por la plataforma
+// (botón "Registrar pago"). Es el control de cobros por empresa: cuándo pagó,
+// cuánto, cuántos meses, con qué descuento, por qué medio y quién lo registró.
+// Cada fila acompaña una extensión de Company.paidUntil (período de→hasta).
+model CompanyPayment {
+  id            Int       @id @default(autoincrement())
+  companyId     Int
+  months        Int // meses cubiertos por este pago
+  unitPrice     Int // precio/mes aplicado (COP)
+  gross         Int // bruto = unitPrice * months (COP)
+  discountType  String? // 'AMOUNT' | 'PERCENT' | null
+  discountValue Int       @default(0) // valor del descuento ($ o %, según discountType)
+  amount        Int // monto final cobrado (COP)
+  method        String    @default("TRANSFERENCIA") // TRANSFERENCIA | EFECTIVO
+  note          String?
+  paidAt        DateTime // fecha real del pago
+  periodFrom    DateTime? // paidUntil ANTES del pago
+  periodTo      DateTime // paidUntil DESPUÉS del pago
+  registeredBy  Int? // userId (plataforma) que registró el pago
+  createdAt     DateTime  @default(now())
+
+  @@index([companyId])
+}
+
 // Configuración editable de cada TIPO DE NEGOCIO (vertical): su etiqueta y el
 // set de módulos que trae por defecto. Es GLOBAL (no por empresa) y la gestiona
 // el rol plataforma. `type` = clave del enum BusinessType. Reemplaza al mapa

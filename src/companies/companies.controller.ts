@@ -61,13 +61,38 @@ export class CompaniesController {
   @Patch('platform/:id/renew')
   renew(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { months?: number; days?: number },
+    @Body()
+    body: {
+      months?: number;
+      days?: number;
+      unitPrice?: number;
+      discountType?: 'AMOUNT' | 'PERCENT' | null;
+      discountValue?: number;
+      amount?: number;
+      method?: string;
+      note?: string;
+      paidAt?: string;
+    },
     @Req() req,
   ) {
     return this.service.renewCompany(req.user, id, {
       months: body?.months != null ? Number(body.months) : undefined,
       days: body?.days != null ? Number(body.days) : undefined,
+      unitPrice: body?.unitPrice != null ? Number(body.unitPrice) : undefined,
+      discountType: body?.discountType ?? null,
+      discountValue:
+        body?.discountValue != null ? Number(body.discountValue) : undefined,
+      amount: body?.amount != null ? Number(body.amount) : undefined,
+      method: body?.method,
+      note: body?.note,
+      paidAt: body?.paidAt,
     });
+  }
+
+  // Historial de pagos de suscripción de una empresa (solo plataforma).
+  @Get('platform/:id/payments')
+  payments(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.service.listCompanyPayments(req.user, id);
   }
 
   @Get(':id')
