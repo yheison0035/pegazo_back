@@ -50,6 +50,36 @@ export class BusinessTypesService {
     return { success: true, data: items };
   }
 
+  // Lista PÚBLICA (landing): tipos de negocio ACTIVOS con el "modo" de su página
+  // pública (booking=citas / menu=comida / catalog=productos). Sin datos
+  // sensibles. Dinámica: al activar un tipo nuevo aparece solo.
+  async publicList() {
+    await this.ensureSeeded();
+    const items = await this.prisma.businessTypeConfig.findMany({
+      where: { active: true },
+      orderBy: { label: 'asc' },
+      select: { type: true, label: true, modules: true },
+    });
+    const APPT = [
+      'SERVICIOS',
+      'ODONTOLOGIA',
+      'LAVADO_VEHICULOS',
+      'CANCHAS_SINTETICAS',
+    ];
+    const FOOD = ['RESTAURANTE', 'COMIDA_RAPIDA', 'CAFETERIA'];
+    const data = items.map((it) => {
+      const mods = Array.isArray(it.modules) ? it.modules : [];
+      const mode =
+        mods.includes('appointments') || APPT.includes(it.type)
+          ? 'booking'
+          : FOOD.includes(it.type)
+            ? 'menu'
+            : 'catalog';
+      return { type: it.type, label: it.label, mode };
+    });
+    return { success: true, data };
+  }
+
   // Clave normalizada para un tipo nuevo: MAYÚSCULAS, sin acentos, espacios y
   // símbolos → guion bajo. Ej. "Ferretería mayorista" -> "FERRETERIA_MAYORISTA".
   private normalizeKey(raw: string) {
