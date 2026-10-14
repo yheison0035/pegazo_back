@@ -75,7 +75,7 @@ export class BusinessTypesService {
           : FOOD.includes(it.type)
             ? 'menu'
             : 'catalog';
-      return { type: it.type, label: it.label, mode };
+      return { type: it.type, label: it.label, mode, modules: mods };
     });
     return { success: true, data };
   }
