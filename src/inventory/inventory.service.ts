@@ -560,68 +560,6 @@ export class InventoryService {
     };
   }
 
-  // Exportación a Excel: TODOS los productos de la empresa (sin paginar), con
-  // variantes activas y nombres de local/categoría/marca/proveedor. Respeta los
-  // locales accesibles del usuario y oculta el precio de compra a quien no debe verlo.
-  async exportAll(user: any) {
-    const localIds = await getAccessibleLocalIds(this.prisma, user);
-    const where: any = { local: { companyId: user.companyId } };
-    if (localIds !== null) {
-      where.localId = localIds.length === 0 ? -1 : { in: localIds };
-    }
-
-    const items = await this.prisma.inventory.findMany({
-      where,
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        purchasePrice: true,
-        salePrice: true,
-        status: true,
-        barcode: true,
-        minStock: true,
-        unit: true,
-        local: { select: { name: true } },
-        category: { select: { name: true } },
-        brand: { select: { name: true } },
-        provider: { select: { name: true } },
-        variants: {
-          where: { isActive: true },
-          orderBy: { id: 'asc' },
-          select: { color: true, size: true, stock: true, sku: true },
-        },
-      },
-    });
-
-    const canSeePurchasePrice = hasRole(user.role, [
-      Role.SUPER_ADMIN,
-      Role.ADMIN,
-      Role.COORDINADOR,
-      Role.AUXILIAR,
-    ]);
-
-    const data = items.map((p) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description,
-      purchasePrice: canSeePurchasePrice ? p.purchasePrice : null,
-      salePrice: p.salePrice,
-      status: p.status,
-      barcode: p.barcode,
-      minStock: p.minStock,
-      unit: p.unit,
-      localName: p.local?.name || '',
-      categoryName: p.category?.name || '',
-      brandName: p.brand?.name || '',
-      providerName: p.provider?.name || '',
-      variants: p.variants,
-    }));
-
-    return { success: true, data, total: data.length };
-  }
-
   async findOne(id: number, user: any) {
     const product = await this.prisma.inventory.findFirst({
       // Scoping por EMPRESA (ancla de tenant). No por local.companyId: si se
