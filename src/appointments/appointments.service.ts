@@ -108,6 +108,7 @@ export class AppointmentsService {
     }
     const APPOINTMENT_TYPES = [
       'SERVICIOS',
+      'BARBERIA',
       'ODONTOLOGIA',
       'LAVADO_VEHICULOS',
       'CANCHAS_SINTETICAS',

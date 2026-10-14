@@ -8,6 +8,7 @@ export const BUSINESS_TYPE_LABELS: Record<string, string> = {
   TELEVENTAS: 'Televentas',
   RESTAURANTE: 'Restaurante',
   SERVICIOS: 'Servicios',
+  BARBERIA: 'Barbería',
   ECOMMERCE: 'Ecommerce',
   DISTRIBUCION: 'Distribución',
   ODONTOLOGIA: 'Odontología',
@@ -80,6 +81,13 @@ export const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
   RESTAURANTE: COMIDA,
   COMIDA_RAPIDA: COMIDA,
   SERVICIOS: [
+    'locals', 'users', 'categories', 'brands', 'providers', 'inventory',
+    'purchases', 'customers', 'cartera', 'impuestos', 'loyalty', 'services', 'appointments',
+    'sales', 'delivered_sales', 'cash', 'expenses', 'payables', 'employee-charges', 'statistics',
+  ],
+  // Barbería: IDÉNTICA a SERVICIOS (mismos módulos) — un tipo propio para que se
+  // identifique como "Barbería" sin cambiar la operación de un barbería real.
+  BARBERIA: [
     'locals', 'users', 'categories', 'brands', 'providers', 'inventory',
     'purchases', 'customers', 'cartera', 'impuestos', 'loyalty', 'services', 'appointments',
     'sales', 'delivered_sales', 'cash', 'expenses', 'payables', 'employee-charges', 'statistics',

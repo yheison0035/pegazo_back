@@ -62,6 +62,7 @@ export class BusinessTypesService {
     });
     const APPT = [
       'SERVICIOS',
+      'BARBERIA',
       'ODONTOLOGIA',
       'LAVADO_VEHICULOS',
       'CANCHAS_SINTETICAS',
