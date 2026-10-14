@@ -49,7 +49,7 @@ export class CreateCompanyDto {
   plan?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsString()
   billingMode?: string;
 
   @IsOptional()
@@ -64,7 +64,7 @@ export class CreateCompanyDto {
   paymentDay?: number | null;
 
   @IsOptional()
-  @IsString()
+  @IsDateString()
   paidUntil?: string;
 
   @IsOptional()
