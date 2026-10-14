@@ -1325,11 +1325,13 @@ export class CompaniesService {
         ? new Date(company.paidUntil)
         : now;
 
-    // Día de cobro: el configurado, o el de la fecha de inicio, o el de hoy.
+    // Día de cobro = SIEMPRE el día de "Cliente desde" (fuente de verdad del
+    // ciclo). Si no hay inicio, cae al día guardado o, en última instancia, al de
+    // hoy. Esto evita que un `paymentDay` viejo/desincronizado salte el ciclo.
     const startDate = company.startDate ?? company.createdAt ?? now;
-    const billingDay =
-      company.paymentDay ??
-      new Date(startDate).getUTCDate();
+    const billingDay = company.startDate
+      ? new Date(company.startDate).getUTCDate()
+      : (company.paymentDay ?? new Date(startDate).getUTCDate());
 
     const paidUntil = months
       ? this.addMonthsAnchored(from, months, billingDay)
@@ -1339,9 +1341,10 @@ export class CompaniesService {
       where: { id },
       data: {
         paidUntil,
-        // Deja organizada la suscripción: fecha de inicio y día de cobro.
+        // Deja organizada la suscripción: fecha de inicio y día de cobro. El día
+        // se escribe SIEMPRE (autocorrige datos viejos desincronizados).
         ...(company.startDate ? {} : { startDate }),
-        ...(company.paymentDay ? {} : { paymentDay: billingDay }),
+        paymentDay: billingDay,
         // Si estaba suspendida (manual), al registrar pago se reactiva.
         ...(company.status === Status.INACTIVO && { status: Status.ACTIVO }),
       },
