@@ -1453,6 +1453,55 @@ export class CompaniesService {
     };
   }
 
+  // Suscripción del PROPIO dueño (dashboard → Facturación). Estado de cobro +
+  // historial de pagos de SU empresa. No requiere rol plataforma (lo ve el
+  // SUPER_ADMIN/ADMIN de la empresa, scopeado a su companyId).
+  async getOwnSubscription(user: any) {
+    const company = await this.prisma.company.findUnique({
+      where: { id: user.companyId },
+      select: {
+        name: true,
+        status: true,
+        billingMode: true,
+        monthlyPrice: true,
+        startDate: true,
+        paymentDay: true,
+        paidUntil: true,
+      },
+    });
+    if (!company) throw new NotFoundException('Empresa no encontrada');
+
+    const payments = await this.prisma.companyPayment.findMany({
+      where: { companyId: user.companyId },
+      orderBy: { paidAt: 'desc' },
+    });
+    const now = new Date();
+    const daysLeft = company.paidUntil
+      ? Math.ceil(
+          (new Date(company.paidUntil).getTime() - now.getTime()) / 86_400_000,
+        )
+      : null;
+
+    return {
+      success: true,
+      data: {
+        name: company.name,
+        status: company.status,
+        billingMode: company.billingMode,
+        monthlyPrice: company.monthlyPrice,
+        startDate: company.startDate,
+        paymentDay: company.paymentDay,
+        paidUntil: company.paidUntil,
+        daysLeft,
+        overdue: daysLeft !== null && daysLeft < 0,
+        payments,
+        totalPaid: payments.reduce((a, p) => a + (p.amount || 0), 0),
+        totalMonths: payments.reduce((a, p) => a + (p.months || 0), 0),
+        count: payments.length,
+      },
+    };
+  }
+
   // AUDITORÍA GLOBAL: últimos accesos de soporte (impersonaciones).
   async platformAudit(user: any, query: any = {}) {
     if (user.role !== Role.SUPER_PLATFORM_ADMIN) {
