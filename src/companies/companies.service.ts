@@ -1199,7 +1199,8 @@ export class CompaniesService {
     const now = new Date();
     const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [users, locals, salesMonth, salesMonthPaid] = await Promise.all([
+    const [users, locals, salesMonth, salesMonthPaid, payments] =
+      await Promise.all([
       this.prisma.user.findMany({
         where: { companyId: id, status: { not: Status.ELIMINADO } },
         select: {
@@ -1229,6 +1230,11 @@ export class CompaniesService {
           paymentStatus: 'PAGADA' as any,
         },
         _sum: { totalAmount: true },
+      }),
+      this.prisma.companyPayment.findMany({
+        where: { companyId: id },
+        orderBy: { paidAt: 'desc' },
+        take: 24,
       }),
     ]);
 
@@ -1262,6 +1268,12 @@ export class CompaniesService {
           paidTotal: salesMonthPaid._sum.totalAmount || 0,
         },
         users,
+        payments,
+        paymentsSummary: {
+          totalPaid: payments.reduce((a, p) => a + (p.amount || 0), 0),
+          count: payments.length,
+          lastPaidAt: payments[0]?.paidAt ?? null,
+        },
       },
     };
   }
@@ -1289,7 +1301,21 @@ export class CompaniesService {
   async renewCompany(
     user: any,
     id: number,
-    opts: { months?: number; days?: number } | number = {},
+    opts:
+      | {
+          months?: number;
+          days?: number;
+          // Datos del pago para dejar historial (opcionales; si no vienen se
+          // calculan con el precio de la empresa).
+          unitPrice?: number;
+          discountType?: 'AMOUNT' | 'PERCENT' | null;
+          discountValue?: number;
+          amount?: number;
+          method?: string;
+          note?: string;
+          paidAt?: string | Date;
+        }
+      | number = {},
   ) {
     if (user.role !== Role.SUPER_PLATFORM_ADMIN) {
       throw new ForbiddenException('No tienes permisos');
@@ -1315,6 +1341,7 @@ export class CompaniesService {
         startDate: true,
         paymentDay: true,
         createdAt: true,
+        monthlyPrice: true,
       },
     });
     if (!company) throw new NotFoundException('Empresa no encontrada');
@@ -1356,7 +1383,74 @@ export class CompaniesService {
         paymentDay: true,
       },
     });
-    return { success: true, data: updated };
+
+    // Historial del pago: deja constancia de cuánto/cuántos meses/descuento/medio
+    // y quién lo registró, junto con el período cubierto (de→hasta).
+    const recordMonths =
+      months ?? Math.max(1, Math.round((days as number) / 30));
+    const unitPrice = Math.max(
+      0,
+      Math.round(
+        Number(options.unitPrice ?? company.monthlyPrice ?? 0) || 0,
+      ),
+    );
+    const gross = unitPrice * recordMonths;
+    const discountType =
+      options.discountType === 'AMOUNT' || options.discountType === 'PERCENT'
+        ? options.discountType
+        : null;
+    const discountValue = Math.max(
+      0,
+      Math.round(Number(options.discountValue ?? 0) || 0),
+    );
+    const discountAmount =
+      discountType === 'PERCENT'
+        ? Math.round((gross * discountValue) / 100)
+        : discountType === 'AMOUNT'
+          ? discountValue
+          : 0;
+    const amount =
+      options.amount != null && Number.isFinite(Number(options.amount))
+        ? Math.max(0, Math.round(Number(options.amount)))
+        : Math.max(0, gross - discountAmount);
+    const method = options.method === 'EFECTIVO' ? 'EFECTIVO' : 'TRANSFERENCIA';
+    const paidAt = options.paidAt ? new Date(options.paidAt) : now;
+
+    const payment = await this.prisma.companyPayment.create({
+      data: {
+        companyId: id,
+        months: recordMonths,
+        unitPrice,
+        gross,
+        discountType,
+        discountValue,
+        amount,
+        method,
+        note: options.note ? String(options.note).trim() || null : null,
+        paidAt,
+        periodFrom: company.paidUntil ?? null,
+        periodTo: paidUntil,
+        registeredBy: user.id ?? null,
+      },
+    });
+
+    return { success: true, data: { ...updated, payment } };
+  }
+
+  // Historial de pagos de una empresa (solo plataforma).
+  async listCompanyPayments(user: any, id: number) {
+    if (user.role !== Role.SUPER_PLATFORM_ADMIN) {
+      throw new ForbiddenException('No tienes permisos');
+    }
+    const payments = await this.prisma.companyPayment.findMany({
+      where: { companyId: id },
+      orderBy: { paidAt: 'desc' },
+    });
+    const totalPaid = payments.reduce((a, p) => a + (p.amount || 0), 0);
+    return {
+      success: true,
+      data: { payments, totalPaid, count: payments.length },
+    };
   }
 
   // AUDITORÍA GLOBAL: últimos accesos de soporte (impersonaciones).
