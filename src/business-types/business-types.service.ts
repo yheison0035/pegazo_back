@@ -67,16 +67,26 @@ export class BusinessTypesService {
       'CANCHAS_SINTETICAS',
     ];
     const FOOD = ['RESTAURANTE', 'COMIDA_RAPIDA', 'CAFETERIA'];
-    const data = items.map((it) => {
-      const mods = Array.isArray(it.modules) ? it.modules : [];
-      const mode =
-        mods.includes('appointments') || APPT.includes(it.type)
-          ? 'booking'
-          : FOOD.includes(it.type)
-            ? 'menu'
-            : 'catalog';
-      return { type: it.type, label: it.label, mode, modules: mods };
-    });
+    // Formato de nombre: Primera letra mayúscula, resto minúscula (conserva
+    // tildes). Preferimos el nombre canónico (con acentos correctos); si es un
+    // tipo nuevo sin mapa, formateamos su etiqueta guardada.
+    const sentence = (s: string) => {
+      const t = (s || '').trim().toLowerCase();
+      return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+    };
+    const data = items
+      .map((it) => {
+        const mods = Array.isArray(it.modules) ? it.modules : [];
+        const mode =
+          mods.includes('appointments') || APPT.includes(it.type)
+            ? 'booking'
+            : FOOD.includes(it.type)
+              ? 'menu'
+              : 'catalog';
+        const label = BUSINESS_TYPE_LABELS[it.type] || sentence(it.label);
+        return { type: it.type, label, mode, modules: mods };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label, 'es'));
     return { success: true, data };
   }
 

@@ -23,6 +23,19 @@ export const BUSINESS_TYPE_LABELS: Record<string, string> = {
   LAVADO_VEHICULOS: 'Lavado de vehículos',
   CANCHAS_SINTETICAS: 'Canchas sintéticas',
   GUARDA_CASCOS: 'Guarda cascos',
+  BAR: 'Bar',
+  FERRETERIA: 'Ferretería',
+  GIMNASIO: 'Gimnasio',
+  LAVANDERIA: 'Lavandería',
+  LICORERA: 'Licorera',
+  PANADERIA: 'Panadería',
+  PAPELERIA: 'Papelería',
+  PESCADERIA: 'Pescadería',
+  PETSHOP: 'Petshop',
+  PIZZERIA: 'Pizzería',
+  TALLER_MECANICO: 'Taller mecánico',
+  TECNOLOGIA: 'Tecnología',
+  VETERINARIA: 'Veterinaria',
 };
 
 const RETAIL = [
