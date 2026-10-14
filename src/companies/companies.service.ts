@@ -104,7 +104,7 @@ export class CompaniesService {
     // comida → /menu, demás productos → /catalog.
     const t = String(company?.type || '').toUpperCase();
     const APPT = ['SERVICIOS', 'ODONTOLOGIA', 'LAVADO_VEHICULOS', 'CANCHAS_SINTETICAS'];
-    const FOOD = ['RESTAURANTE', 'COMIDA_RAPIDA', 'CAFETERIA'];
+    const FOOD = ['RESTAURANTE', 'COMIDA_RAPIDA', 'CAFETERIA', 'BAR', 'PIZZERIA'];
     const publicPath = APPT.includes(t)
       ? 'booking'
       : FOOD.includes(t)
