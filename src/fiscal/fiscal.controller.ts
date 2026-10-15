@@ -32,6 +32,16 @@ export class FiscalController {
     return this.service.setup(req.user);
   }
 
+  @Post('certificate')
+  uploadCertificate(@Req() req, @Body() dto: any) {
+    return this.service.uploadCertificate(req.user, dto);
+  }
+
+  @Post('config')
+  updateConfig(@Req() req, @Body() dto: any) {
+    return this.service.updateConfig(req.user, dto);
+  }
+
   @Post('resolutions')
   addResolution(@Req() req, @Body() dto: any) {
     return this.service.addResolution(req.user, dto);

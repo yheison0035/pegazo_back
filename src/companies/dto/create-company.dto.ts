@@ -71,6 +71,18 @@ export class CreateCompanyDto {
   @IsDateString()
   startDate?: string;
 
+  // Facturación electrónica DIAN: se puede habilitar desde el alta de la empresa
+  // (o después, en editar). Si queda apagado, la empresa no ve nada de DIAN.
+  @IsOptional()
+  @IsBoolean()
+  electronicInvoicingEnabled?: boolean;
+
+  // Empresa de pruebas (sandbox DIAN = entorno HABILITACION). No controla la
+  // visibilidad del módulo, solo el entorno contra el que se emite.
+  @IsOptional()
+  @IsBoolean()
+  isTestCompany?: boolean;
+
   // Credenciales del usuario administrador inicial de la empresa (para que
   // pueda loguear y de ahí en adelante gestione todo por su cuenta).
   @IsOptional()
