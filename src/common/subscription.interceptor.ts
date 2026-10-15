@@ -31,7 +31,15 @@ export class SubscriptionInterceptor implements NestInterceptor {
       user && user.role !== 'SUPER_PLATFORM_ADMIN' && !!user.companyId;
 
     if (isCompanyUser && WRITE_METHODS.has(method) && user.paidUntil) {
-      const overdue = new Date(user.paidUntil).getTime() < Date.now();
+      // paidUntil se guarda a medianoche UTC del día de vencimiento → se
+      // interpreta como ESE día de calendario (igual que en pantalla). La
+      // empresa está al día TODO el día de vencimiento y solo vence al día
+      // siguiente (comparación por fecha en zona Colombia).
+      const paidYmd = new Date(user.paidUntil).toISOString().slice(0, 10);
+      const todayYmd = new Date().toLocaleDateString('en-CA', {
+        timeZone: 'America/Bogota',
+      });
+      const overdue = todayYmd > paidYmd;
       const path = (req.originalUrl || req.url || '').split('?')[0];
       const allowed = ALLOW_PATHS.some((p) => path.includes(p));
 
