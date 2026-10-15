@@ -75,6 +75,15 @@ export class FiscalConsumersService {
     return { success: true, data };
   }
 
+  async setPlan(user: any, id: string, dto: any) {
+    this.assertPlatform(user);
+    const data = await this.admin(`/platforms/${id}/plan`, {
+      method: 'PATCH',
+      body: JSON.stringify(dto || {}),
+    });
+    return { success: true, data };
+  }
+
   async listKeys(user: any, id: string) {
     this.assertPlatform(user);
     const data = await this.admin(`/platforms/${id}/api-keys`);

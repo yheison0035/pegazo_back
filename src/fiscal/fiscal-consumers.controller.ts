@@ -36,6 +36,11 @@ export class FiscalConsumersController {
     return this.service.toggle(req.user, id, dto?.active !== false);
   }
 
+  @Patch(':id/plan')
+  setPlan(@Param('id') id: string, @Body() dto: any, @Req() req) {
+    return this.service.setPlan(req.user, id, dto);
+  }
+
   @Get(':id/keys')
   listKeys(@Param('id') id: string, @Req() req) {
     return this.service.listKeys(req.user, id);
