@@ -1239,11 +1239,7 @@ export class CompaniesService {
       }),
     ]);
 
-    const daysLeft = company.paidUntil
-      ? Math.ceil(
-          (new Date(company.paidUntil).getTime() - now.getTime()) / 86_400_000,
-        )
-      : null;
+    const daysLeft = this.daysLeftColombia(company.paidUntil);
 
     return {
       success: true,
@@ -1454,6 +1450,23 @@ export class CompaniesService {
     };
   }
 
+  // Días que faltan para el vencimiento, por FECHA de calendario: paidUntil se
+  // guarda a medianoche UTC del día de vencimiento → se interpreta en UTC, y
+  // "hoy" en zona Colombia. Así el día de vencimiento da 0 (vence hoy) y solo
+  // pasa a negativo (vencida) al día siguiente. Consistente con el muro y el
+  // banner del front.
+  private daysLeftColombia(paidUntil: Date | null): number | null {
+    if (!paidUntil) return null;
+    const p = new Date(paidUntil);
+    const b = Date.UTC(p.getUTCFullYear(), p.getUTCMonth(), p.getUTCDate());
+    const todayStr = new Date().toLocaleDateString('en-CA', {
+      timeZone: 'America/Bogota',
+    });
+    const [ty, tm, td] = todayStr.split('-').map(Number);
+    const a = Date.UTC(ty, tm - 1, td);
+    return Math.round((b - a) / 86_400_000);
+  }
+
   // Suscripción del PROPIO dueño (dashboard → Facturación). Estado de cobro +
   // historial de pagos de SU empresa. No requiere rol plataforma (lo ve el
   // SUPER_ADMIN/ADMIN de la empresa, scopeado a su companyId).
@@ -1477,11 +1490,7 @@ export class CompaniesService {
       orderBy: { paidAt: 'desc' },
     });
     const now = new Date();
-    const daysLeft = company.paidUntil
-      ? Math.ceil(
-          (new Date(company.paidUntil).getTime() - now.getTime()) / 86_400_000,
-        )
-      : null;
+    const daysLeft = this.daysLeftColombia(company.paidUntil);
 
     return {
       success: true,
