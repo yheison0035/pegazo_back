@@ -1828,6 +1828,20 @@ export class CompaniesService {
       throw new NotFoundException('Empresa no encontrada');
     }
 
+    // El estado se valida IGUAL que en el endpoint dedicado setStatus
+    // (PATCH :id/status): único camino de verdad. Solo ACTIVO/INACTIVO y nunca
+    // se toca una empresa ELIMINADO (ni para revivirla ni para re-eliminarla).
+    if (dto.status !== undefined) {
+      if (dto.status !== Status.ACTIVO && dto.status !== Status.INACTIVO) {
+        throw new ForbiddenException('Estado no válido');
+      }
+      if (found.status === Status.ELIMINADO) {
+        throw new ForbiddenException(
+          'No se puede cambiar el estado de una empresa eliminada.',
+        );
+      }
+    }
+
     await this.assertBusinessType(dto.type);
 
     // Dominio de la tienda: se normaliza (sin protocolo, sin www, sin puerto)
