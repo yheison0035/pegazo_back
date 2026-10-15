@@ -270,6 +270,11 @@ export class SalesService {
       where.paymentMethod = query.paymentMethod;
     }
 
+    // Separar facturación normal vs electrónica en "Ventas realizadas".
+    if (query.invoiceType === 'NORMAL' || query.invoiceType === 'ELECTRONICA') {
+      where.invoiceType = query.invoiceType;
+    }
+
     if (query.paymentStatus) {
       where.paymentStatus = query.paymentStatus;
     } else {
@@ -1268,6 +1273,7 @@ export class SalesService {
           paymentMethodCatalogId,
           paymentStatus: dto.paymentStatus ?? 'PAGADA',
           saleStatus: 'NUEVA',
+          ...(dto.invoiceType && { invoiceType: dto.invoiceType }),
           saleDate: saleDate,
           dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
           notes: dto.notes,

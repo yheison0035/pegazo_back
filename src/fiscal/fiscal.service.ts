@@ -45,18 +45,18 @@ export class FiscalService {
       throw new ForbiddenException('No tienes permisos');
   }
 
-  // TEMPORAL: la DIAN (factura + nómina electrónica) aún no está liberada al
-  // 100%, así que SOLO opera en empresas de prueba (isTestCompany). Los negocios
-  // reales en producción no la ven ni la pueden usar hasta que se libere. Cuando
-  // esté todo listo se elimina este guard y queda solo el gating por plan.
+  // La facturación y nómina electrónica se habilitan POR EMPRESA desde Super
+  // Platform (electronicInvoicingEnabled). Si está apagado, la empresa no ve ni
+  // puede usar nada relacionado con la DIAN. `isTestCompany` NO controla la
+  // visibilidad: solo decide el entorno DIAN (HABILITACION sandbox vs PRODUCCION).
   private async assertFeatureAvailable(user: any) {
     const c = await this.prisma.company.findUnique({
       where: { id: user.companyId },
-      select: { isTestCompany: true },
+      select: { electronicInvoicingEnabled: true },
     });
-    if (!c?.isTestCompany)
+    if (!c?.electronicInvoicingEnabled)
       throw new ForbiddenException(
-        'La facturación y nómina electrónica DIAN aún no está disponible.',
+        'La facturación electrónica no está habilitada para esta empresa.',
       );
   }
 
@@ -144,6 +144,7 @@ export class FiscalService {
         ...base,
         env: detail?.env || 'HABILITACION',
         habilitacion: detail?.habilitacion || 'REGISTRADO',
+        softwareId: detail?.softwareId || null,
         hasCertificate: !!detail?.certExpiresAt,
         certExpiresAt: detail?.certExpiresAt || null,
         resolutions: detail?.resolutions || [],
@@ -179,6 +180,52 @@ export class FiscalService {
       data: { fiscalCompanyId: created.id, electronicInvoicingEnabled: true },
     });
     return { success: true, data: { fiscalCompanyId: created.id } };
+  }
+
+  /** Sube el certificado digital (.p12 en base64 + clave) de la empresa. */
+  async uploadCertificate(user: any, dto: any) {
+    this.assertAdmin(user);
+    await this.assertFeatureAvailable(user);
+    const c = await this.company(user);
+    if (!c.fiscalCompanyId)
+      throw new BadRequestException(
+        'Primero activa la facturación electrónica (vincular la empresa).',
+      );
+    if (!dto?.p12Base64 || !dto?.password)
+      throw new BadRequestException('Falta el archivo .p12 o su clave.');
+    return this.fapi(`/companies/${c.fiscalCompanyId}/certificate`, {
+      method: 'POST',
+      body: JSON.stringify({
+        p12Base64: dto.p12Base64,
+        password: dto.password,
+        expiresAt: dto.expiresAt || undefined,
+      }),
+    });
+  }
+
+  /**
+   * Guarda los datos de habilitación DIAN (softwareId, PIN, testSetId) y el
+   * entorno/estado (pasar de pruebas a producción). Es el paso final del
+   * asistente de conexión.
+   */
+  async updateConfig(user: any, dto: any) {
+    this.assertAdmin(user);
+    await this.assertFeatureAvailable(user);
+    const c = await this.company(user);
+    if (!c.fiscalCompanyId)
+      throw new BadRequestException(
+        'Primero activa la facturación electrónica (vincular la empresa).',
+      );
+    return this.fapi(`/companies/${c.fiscalCompanyId}/config`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        softwareId: dto?.softwareId,
+        softwarePin: dto?.softwarePin,
+        testSetId: dto?.testSetId,
+        env: dto?.env,
+        habilitacion: dto?.habilitacion,
+      }),
+    });
   }
 
   /** Registra una resolución de numeración en la Fiscal API. */

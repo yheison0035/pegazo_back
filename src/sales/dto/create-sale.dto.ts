@@ -9,7 +9,12 @@ import {
   IsString,
   IsDateString,
 } from 'class-validator';
-import { PaymentMethod, PaymentStatus, SaleStatus } from '@prisma/client';
+import {
+  InvoiceType,
+  PaymentMethod,
+  PaymentStatus,
+  SaleStatus,
+} from '@prisma/client';
 
 export class CreateSaleItemDto {
   @IsOptional()
@@ -53,6 +58,13 @@ export class CreateSaleDto {
   @IsEnum(SaleStatus)
   @IsOptional()
   saleStatus?: SaleStatus;
+
+  // Tipo de documento: NORMAL (tiquete/factura de venta) o ELECTRONICA (DIAN).
+  // Solo lo envía el POS cuando la empresa tiene facturación electrónica activa;
+  // el resto de ventas quedan en NORMAL (default del modelo).
+  @IsEnum(InvoiceType)
+  @IsOptional()
+  invoiceType?: InvoiceType;
 
   // Opcional: venta de mostrador sin cliente => backend asigna Consumidor Final.
   @IsOptional()

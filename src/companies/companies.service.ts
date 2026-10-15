@@ -1774,6 +1774,14 @@ export class CompaniesService {
           ...(dto.websiteEnabled !== undefined && {
             websiteEnabled: dto.websiteEnabled,
           }),
+          // Facturación electrónica DIAN: opcional desde el alta. Si no viene,
+          // queda en false (schema) y la empresa no ve nada relacionado.
+          ...(dto.electronicInvoicingEnabled !== undefined && {
+            electronicInvoicingEnabled: dto.electronicInvoicingEnabled,
+          }),
+          ...(dto.isTestCompany !== undefined && {
+            isTestCompany: dto.isTestCompany,
+          }),
         },
       });
 
