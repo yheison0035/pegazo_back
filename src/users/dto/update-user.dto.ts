@@ -50,6 +50,16 @@ export class UpdateUserDto {
   @IsString()
   document?: string;
 
+  // Nómina: cargo y salario mensual base (COP) del empleado.
+  @IsOptional()
+  @IsString()
+  position?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  salary?: number | null;
+
   @IsOptional()
   @IsString()
   avatar?: string;
