@@ -8,6 +8,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { AppointmentStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { PublicBookingDto } from './dto/public-booking.dto';
 import { applyLocalFilter } from '@/common/local-filter.util';
 import { PlanLimitsService } from '@/common/plan-limits.service';
 import { getAccessibleLocalIds } from '@/common/access-locals.util';
@@ -156,6 +157,119 @@ export class AppointmentsService {
         // Interruptor de super platform: si está apagada, el front muestra
         // "página no disponible" en vez del contenido.
         enabled: company.publicPageEnabled !== false,
+      },
+    };
+  }
+
+  // Reserva de punta a punta desde la página pública /booking/:slug. Crea la
+  // cita en el sistema (estado PENDIENTE = por confirmar) y, si hace falta, al
+  // cliente por su celular. Sin usuario autenticado.
+  async publicBook(slug: string, dto: PublicBookingDto) {
+    const clean = (slug || '').trim().toLowerCase();
+    if (!clean) throw new NotFoundException('Negocio no encontrado.');
+    const company = await this.prisma.company.findUnique({
+      where: { slug: clean },
+      select: { id: true, publicPageEnabled: true },
+    });
+    if (!company) throw new NotFoundException('Negocio no encontrado.');
+    if (company.publicPageEnabled === false)
+      throw new BadRequestException('La página de reservas no está disponible.');
+
+    const name = String(dto.customerName || '').trim();
+    const phone = String(dto.customerPhone || '').replace(/\D/g, '');
+    if (name.length < 2) throw new BadRequestException('Escribe tu nombre.');
+    if (phone.length < 7)
+      throw new BadRequestException('Escribe un celular válido.');
+
+    // Servicio, profesional y sede deben ser de la empresa.
+    const [service, barber, local] = await Promise.all([
+      this.prisma.service.findFirst({
+        where: { id: dto.serviceId, companyId: company.id },
+      }),
+      this.prisma.user.findFirst({
+        where: { id: dto.barberId, companyId: company.id },
+        select: { id: true },
+      }),
+      this.prisma.local.findFirst({
+        where: { id: dto.localId, companyId: company.id },
+        select: { id: true },
+      }),
+    ]);
+    if (!service) throw new NotFoundException('Servicio no encontrado.');
+    if (!barber) throw new NotFoundException('Profesional no encontrado.');
+    if (!local) throw new NotFoundException('Sede no encontrada.');
+
+    // Descanso del profesional.
+    const rest = await this.barberOff(dto.barberId, dto.date);
+    if (rest.off)
+      throw new BadRequestException(
+        `El profesional no atiende ese día (${rest.reason}). Elige otra fecha.`,
+      );
+
+    // Conflicto de horario (mismo profesional, misma empresa).
+    const startMinutes = timeToMinutes(dto.startTime);
+    const endMinutes = startMinutes + service.duration;
+    const sameDay = await this.prisma.appointment.findMany({
+      where: {
+        barberId: dto.barberId,
+        date: new Date(dto.date),
+        companyId: company.id,
+        status: { not: AppointmentStatus.CANCELADA },
+      },
+      include: { service: true },
+    });
+    const conflict = sameDay.some((a) => {
+      const aStart = timeToMinutes(a.startTime);
+      const aEnd = aStart + a.service.duration;
+      return startMinutes < aEnd && endMinutes > aStart;
+    });
+    if (conflict)
+      throw new BadRequestException(
+        'Ese horario ya no está disponible. Elige otro.',
+      );
+
+    // Cliente: buscar por celular o crear uno nuevo.
+    let customer = await this.prisma.customer.findFirst({
+      where: { companyId: company.id, phone },
+      select: { id: true },
+    });
+    if (!customer) {
+      customer = await this.prisma.customer.create({
+        data: {
+          name: name.toUpperCase(),
+          phone,
+          companyId: company.id,
+          type_document: 'CC',
+        },
+        select: { id: true },
+      });
+    }
+
+    const created = await this.prisma.appointment.create({
+      data: {
+        date: new Date(dto.date),
+        startTime: dto.startTime,
+        startMinutes,
+        notes: ['Reserva online', dto.notes?.trim()]
+          .filter(Boolean)
+          .join(' · '),
+        serviceId: dto.serviceId,
+        barberId: dto.barberId,
+        customerId: customer.id,
+        localId: dto.localId,
+        companyId: company.id,
+        status: AppointmentStatus.PENDIENTE,
+        clientConfirmed: false,
+      },
+      select: { id: true, date: true, startTime: true },
+    });
+
+    return {
+      success: true,
+      data: {
+        id: created.id,
+        date: created.date,
+        startTime: created.startTime,
       },
     };
   }
