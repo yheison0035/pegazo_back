@@ -124,11 +124,15 @@ export class FiscalService {
   async status(user: any) {
     this.assertAdmin(user);
     const c = await this.company(user);
+    // Datos del Proveedor Tecnológico (Pegazo) que el cliente necesita para
+    // asociarse en la DIAN (NIT y software). No secretos.
+    const ptInfo = await this.fapi('/pt/info').catch(() => null);
     const base = {
       enabled: c.electronicInvoicingEnabled,
       linked: !!c.fiscalCompanyId,
       nit: c.nit,
       hasNit: !!c.nit,
+      pt: ptInfo && (ptInfo.nit || ptInfo.legalName) ? ptInfo : null,
     };
     if (!c.fiscalCompanyId) return { success: true, data: base };
 

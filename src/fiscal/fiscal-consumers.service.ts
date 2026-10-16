@@ -106,4 +106,36 @@ export class FiscalConsumersService {
     });
     return { success: true, data };
   }
+
+  // ─────────── Configuración del Proveedor Tecnológico (Pegazo) ───────────
+
+  async getPtConfig(user: any) {
+    this.assertPlatform(user);
+    const data = await this.admin('/pt-config');
+    return { success: true, data };
+  }
+
+  async setPtConfig(user: any, dto: any) {
+    this.assertPlatform(user);
+    const data = await this.admin('/pt-config', {
+      method: 'PATCH',
+      body: JSON.stringify(dto || {}),
+    });
+    return { success: true, data };
+  }
+
+  async uploadPtCertificate(user: any, dto: any) {
+    this.assertPlatform(user);
+    if (!dto?.p12Base64 || !dto?.password)
+      throw new BadRequestException('Falta el archivo .p12 o su clave.');
+    const data = await this.admin('/pt-config/certificate', {
+      method: 'POST',
+      body: JSON.stringify({
+        p12Base64: dto.p12Base64,
+        password: dto.password,
+        expiresAt: dto.expiresAt || undefined,
+      }),
+    });
+    return { success: true, data };
+  }
 }
