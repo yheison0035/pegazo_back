@@ -462,6 +462,39 @@ export class UsersService {
     };
   }
 
+  // Release GLOBAL de la facturación/nómina electrónica: queda disponible cuando
+  // Pegazo (Proveedor Tecnológico) ya tiene su certificado cargado. Se consulta
+  // a la Fiscal API (/pt/info) con una pequeña caché para no pegarle en cada
+  // perfil. Así, al cargar el certificado en Super Platform, se habilita solo
+  // para los clientes que tengan la facturación activada por empresa.
+  private static ptReleaseCache: { value: boolean; at: number } = {
+    value: false,
+    at: 0,
+  };
+  private async einvoicingReleased(): Promise<boolean> {
+    const now = Date.now();
+    if (now - UsersService.ptReleaseCache.at < 5 * 60 * 1000)
+      return UsersService.ptReleaseCache.value;
+    try {
+      const base = (
+        process.env.FISCAL_API_URL ||
+        'https://pegazo-fiscal-api-production.up.railway.app'
+      ).replace(/\/$/, '');
+      const key = process.env.FISCAL_API_KEY;
+      if (!key) return false;
+      const res = await fetch(`${base}/v1/pt/info`, {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      if (!res.ok) return UsersService.ptReleaseCache.value;
+      const j = await res.json();
+      const value = !!j?.hasCertificate;
+      UsersService.ptReleaseCache = { value, at: now };
+      return value;
+    } catch {
+      return UsersService.ptReleaseCache.value;
+    }
+  }
+
   async getUserId(id: number, requester?: any) {
     const user = await this.prisma.user.findFirst({
       where: {
@@ -571,6 +604,16 @@ export class UsersService {
         where: { companyId: user.company.id, status: 'ACTIVE' },
       });
       (user.company as any).hasAccountant = accCount > 0;
+    }
+
+    // Release global de la facturación electrónica (certificado del PT cargado).
+    // Solo se consulta si la empresa la tiene activada (evita llamadas de más).
+    const cc = user.company as any;
+    if (cc) {
+      cc.einvoicingReleased =
+        cc.electronicInvoicingEnabled || cc.fiscalCompanyId
+          ? await this.einvoicingReleased()
+          : false;
     }
 
     if (requester?.id === user.id) {
