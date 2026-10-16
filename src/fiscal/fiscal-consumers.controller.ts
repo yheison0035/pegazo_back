@@ -21,6 +21,23 @@ import { FiscalConsumersService } from './fiscal-consumers.service';
 export class FiscalConsumersController {
   constructor(private readonly service: FiscalConsumersService) {}
 
+  // Configuración del Proveedor Tecnológico (Pegazo). Van ANTES de las rutas
+  // con :id para que "pt-config" no se interprete como un id.
+  @Get('pt-config')
+  getPtConfig(@Req() req) {
+    return this.service.getPtConfig(req.user);
+  }
+
+  @Patch('pt-config')
+  setPtConfig(@Body() dto: any, @Req() req) {
+    return this.service.setPtConfig(req.user, dto);
+  }
+
+  @Post('pt-config/certificate')
+  uploadPtCertificate(@Body() dto: any, @Req() req) {
+    return this.service.uploadPtCertificate(req.user, dto);
+  }
+
   @Get()
   list(@Req() req) {
     return this.service.list(req.user);
