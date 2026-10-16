@@ -16,6 +16,7 @@ import { AppointmentsService } from './appointments.service';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { PublicBookingDto } from './dto/public-booking.dto';
 import { Public } from '@/auth/decorators/public.decorator';
 import { Roles } from '@/auth/roles.decorator';
 
@@ -40,6 +41,13 @@ export class AppointmentsController {
   @Get('booking-config/:slug')
   getBookingConfig(@Param('slug') slug: string) {
     return this.service.getBookingConfig(slug);
+  }
+
+  // Reserva de punta a punta desde la página pública (el cliente la crea solo).
+  @Public()
+  @Post('booking/:slug')
+  publicBook(@Param('slug') slug: string, @Body() dto: PublicBookingDto) {
+    return this.service.publicBook(slug, dto);
   }
 
   // Agenda de hoy + mañana (modal de inicio y recordatorios). Debe declararse
