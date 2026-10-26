@@ -11,9 +11,16 @@ import { PrismaService } from './prisma.service';
 type CorsCallback = (err: Error | null, allow?: boolean) => void;
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Desactivamos el body parser por defecto (límite ~100kb) para poner uno con
+  // un límite amplio: la carga masiva de inventario por Excel puede enviar miles
+  // de productos en un solo JSON (antes fallaba con "request entity too large").
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
 
   const isProd = process.env.NODE_ENV === 'production';
+
+  // Body parser con límite amplio (ningún webhook depende del raw body).
+  app.use(express.json({ limit: '25mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
   // Cabeceras de seguridad HTTP
   app.use(helmet());
