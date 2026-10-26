@@ -8,7 +8,7 @@ import { PrismaService } from '@/prisma.service';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
 import { hasRole } from '@/common/role-check.util';
-import { InventoryVariant, Role } from '@prisma/client';
+import { InventoryVariant, Role, Status } from '@prisma/client';
 import { CloudinaryService } from '@/cloudinary/cloudinary.service';
 import { VariantsService } from './variants/variants.service';
 import { getAccessibleLocalIds } from '@/common/access-locals.util';
@@ -922,6 +922,11 @@ export class InventoryService {
     dto: {
       items: Array<{
         row?: number;
+        // Si viene `id` (producto) o `sku` (variante), la fila ACTUALIZA ese
+        // producto/variante en vez de crear uno nuevo. Sin id/sku = crear.
+        id?: number | string;
+        sku?: string;
+        status?: string; // ACTIVO | INACTIVO (para "sacar de inventario")
         name?: string;
         salePrice?: number | string;
         purchasePrice?: number | string;
@@ -1047,12 +1052,110 @@ export class InventoryService {
 
     const errors: Array<{ row: number; name: string; message: string }> = [];
     let created = 0;
+    let updated = 0;
 
     for (let i = 0; i < items.length; i++) {
       const it = items[i] || {};
       const rowNum = Number(it.row) || i + 2; // fila de Excel (encabezado = 1)
       const name = clean(it.name);
       try {
+        // ─── ACTUALIZAR: la fila trae ID (producto) o SKU (variante) ───
+        const sku = clean(it.sku);
+        const prodId = Number(it.id) || 0;
+        if (sku || prodId) {
+          // Variante por SKU (único) o producto por ID, siempre de la empresa.
+          let variant: { id: number; invId: number } | null = null;
+          let productId = 0;
+          if (sku) {
+            const v = await this.prisma.inventoryVariant.findFirst({
+              where: { sku, inventory: { companyId: user.companyId } },
+              select: { id: true, inventoryId: true },
+            });
+            if (v) {
+              variant = { id: v.id, invId: v.inventoryId };
+              productId = v.inventoryId;
+            }
+          }
+          if (!productId && prodId) {
+            const p = await this.prisma.inventory.findFirst({
+              where: { id: prodId, companyId: user.companyId },
+              select: { id: true },
+            });
+            if (p) productId = p.id;
+          }
+          if (!productId) {
+            errors.push({
+              row: rowNum,
+              name,
+              message: 'No se encontró el producto (ID/SKU) para actualizar',
+            });
+            continue;
+          }
+
+          // Referencias por NOMBRE: solo se cambian si la columna trae valor.
+          const uLocalId = clean(it.localName)
+            ? await resolveLocal(it.localName)
+            : undefined;
+          const uCatId = clean(it.categoryName)
+            ? await resolveCategory(it.categoryName!, uLocalId ?? null)
+            : undefined;
+          const uBrandId = clean(it.brandName)
+            ? await resolveBrand(it.brandName!)
+            : undefined;
+          const uProvId = clean(it.providerName)
+            ? await resolveProvider(it.providerName!)
+            : undefined;
+
+          const statusVal = clean(it.status).toUpperCase();
+          const pData: any = { updatedBy: { connect: { id: user.id } } };
+          if (name) pData.name = name;
+          if (it.salePrice !== undefined && clean(it.salePrice) !== '')
+            pData.salePrice = num(it.salePrice);
+          if (it.purchasePrice !== undefined && clean(it.purchasePrice) !== '')
+            pData.purchasePrice = num(it.purchasePrice);
+          if (it.barcode !== undefined)
+            pData.barcode = clean(it.barcode) || null;
+          if (it.minStock !== undefined && clean(it.minStock) !== '')
+            pData.minStock = num(it.minStock);
+          if (clean(it.unit)) pData.unit = clean(it.unit).toUpperCase();
+          if (it.description !== undefined)
+            pData.description = clean(it.description) || null;
+          if (statusVal === 'ACTIVO' || statusVal === 'INACTIVO')
+            pData.status = statusVal;
+          if (uLocalId !== undefined)
+            pData.local = uLocalId
+              ? { connect: { id: uLocalId } }
+              : { disconnect: true };
+          if (uCatId !== undefined)
+            pData.category = uCatId
+              ? { connect: { id: uCatId } }
+              : { disconnect: true };
+          if (uBrandId !== undefined)
+            pData.brand = uBrandId
+              ? { connect: { id: uBrandId } }
+              : { disconnect: true };
+          if (uProvId !== undefined)
+            pData.provider = uProvId
+              ? { connect: { id: uProvId } }
+              : { disconnect: true };
+
+          await this.prisma.$transaction(async (tx) => {
+            await tx.inventory.update({
+              where: { id: productId },
+              data: pData,
+            });
+            if (variant && it.stock !== undefined && clean(it.stock) !== '') {
+              await tx.inventoryVariant.update({
+                where: { id: variant.id },
+                data: { stock: num(it.stock) },
+              });
+            }
+          });
+          updated++;
+          continue;
+        }
+
+        // ─── CREAR: fila nueva (sin ID/SKU) ───
         if (!name) {
           errors.push({ row: rowNum, name: '', message: 'Falta el nombre' });
           continue;
@@ -1154,8 +1257,61 @@ export class InventoryService {
 
     return {
       success: true,
-      data: { total: items.length, created, failed: errors.length, errors },
+      data: {
+        total: items.length,
+        created,
+        updated,
+        failed: errors.length,
+        errors,
+      },
     };
+  }
+
+  // Exporta TODO el inventario de la empresa a filas planas (una por variante)
+  // para editar masivamente y reimportar. Incluye ID (producto) y SKU (variante)
+  // como llaves para que al reimportar se ACTUALICE en vez de duplicar.
+  async exportRows(user: any) {
+    const products = await this.prisma.inventory.findMany({
+      where: {
+        companyId: user.companyId,
+        status: { not: Status.ELIMINADO },
+      },
+      orderBy: { name: 'asc' },
+      include: {
+        category: { select: { name: true } },
+        brand: { select: { name: true } },
+        provider: { select: { name: true } },
+        local: { select: { name: true } },
+        variants: { orderBy: { sequence: 'asc' } },
+      },
+    });
+
+    const rows: any[] = [];
+    for (const p of products) {
+      const vs = p.variants.length ? p.variants : [null];
+      for (const v of vs) {
+        rows.push({
+          id: p.id,
+          sku: v?.sku || '',
+          name: p.name,
+          categoryName: p.category?.name || '',
+          brandName: p.brand?.name || '',
+          providerName: p.provider?.name || '',
+          localName: p.local?.name || '',
+          barcode: p.barcode || '',
+          color: v?.color || '',
+          size: v?.size || '',
+          purchasePrice: p.purchasePrice,
+          salePrice: p.salePrice,
+          stock: v?.stock ?? 0,
+          minStock: p.minStock,
+          unit: p.unit,
+          status: p.status,
+          description: p.description || '',
+        });
+      }
+    }
+    return { success: true, data: rows };
   }
 
   async update(id: number, dto: UpdateInventoryDto, user: any) {

@@ -76,6 +76,14 @@ export class InventoryController {
     return this.inventoryService.menuAvailability(req.user);
   }
 
+  // Exporta todo el inventario a filas planas (para editar y reimportar). Debe
+  // ir ANTES de :id para que "export" no se interprete como un id.
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA')
+  @Get('export')
+  exportInventory(@Req() req) {
+    return this.inventoryService.exportRows(req.user);
+  }
+
   @Roles(
     'SUPER_ADMIN',
     'ADMIN', 'RECEPCIONISTA',
