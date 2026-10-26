@@ -472,6 +472,48 @@ export class InventoryService {
       };
     }
 
+    // Filtro por CATEGORÍA (por nombre, igual que local/proveedor).
+    if (query.categoryId) {
+      where.category = {
+        is: { name: { contains: query.categoryId, mode: 'insensitive' } },
+      };
+    }
+
+    // Filtro por CANTIDAD (stock TOTAL = suma de variantes activas). Como el
+    // total no vive en una columna, se agrupa el stock por producto y se filtran
+    // los IDs que cumplen. Soporta operadores: 5, =5, <=5, >=10, <3, >0.
+    if (query.stock !== undefined && String(query.stock).trim() !== '') {
+      const raw = String(query.stock).trim();
+      const m = raw.match(/^(<=|>=|<|>|=)?\s*(-?\d+(?:[.,]\d+)?)$/);
+      if (m) {
+        const op = m[1] || '=';
+        const n = Number(m[2].replace(',', '.'));
+        const grouped = await this.prisma.inventoryVariant.groupBy({
+          by: ['inventoryId'],
+          where: { isActive: true, inventory: where },
+          _sum: { stock: true },
+        });
+        const cmp = (s: number) => {
+          switch (op) {
+            case '<=':
+              return s <= n;
+            case '>=':
+              return s >= n;
+            case '<':
+              return s < n;
+            case '>':
+              return s > n;
+            default:
+              return s === n;
+          }
+        };
+        const ids = grouped
+          .filter((g) => cmp(Number(g._sum.stock) || 0))
+          .map((g) => g.inventoryId);
+        where.id = { in: ids.length ? ids : [-1] };
+      }
+    }
+
     if (query.oldPrice) {
       const oldPrice = Number(query.oldPrice);
       if (!Number.isNaN(oldPrice)) {
