@@ -283,6 +283,9 @@ export class SalesService {
       // Y ocultar los PLAN_SEPARE (apartados activos): no son ventas realizadas
       // hasta que se entregan (ahí pasan a PAGADA y aparecen aquí). Para LISTAR
       // los apartados se consulta con ?paymentStatus=PLAN_SEPARE.
+      // El FIADO (crédito) SÍ es una venta realizada: el producto se entrega y
+      // sale de stock al venderse; solo que su pago queda pendiente. Por eso
+      // aparece aquí (con estado Crédito) y además en Cartera hasta que se salda.
       where.NOT = [
         ...(where.NOT || []),
         { source: 'ECOMMERCE', paymentStatus: 'EN_VALIDACION' },
