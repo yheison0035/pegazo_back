@@ -926,6 +926,10 @@ export class InventoryService {
         // producto/variante en vez de crear uno nuevo. Sin id/sku = crear.
         id?: number | string;
         sku?: string;
+        // Si la columna "Eliminar" trae SÍ/SI/X/1/TRUE (con ID o SKU), la fila
+        // BORRA ese producto del inventario (no lo actualiza). El historial de
+        // ventas se conserva (la variante queda desligada, no se borra la venta).
+        delete?: boolean | string;
         status?: string; // ACTIVO | INACTIVO (para "sacar de inventario")
         name?: string;
         salePrice?: number | string;
@@ -1050,9 +1054,22 @@ export class InventoryService {
       return p.id;
     };
 
+    // "Eliminar" = SÍ/SI/X/1/TRUE/VERDADERO (tolerante a tildes y espacios).
+    const isDeleteFlag = (v: any) => {
+      const s = String(v ?? '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '');
+      return ['si', 'x', '1', 'true', 'verdadero', 'eliminar', 'borrar'].includes(
+        s,
+      );
+    };
+
     const errors: Array<{ row: number; name: string; message: string }> = [];
     let created = 0;
     let updated = 0;
+    let deleted = 0;
 
     for (let i = 0; i < items.length; i++) {
       const it = items[i] || {};
@@ -1089,6 +1106,17 @@ export class InventoryService {
               name,
               message: 'No se encontró el producto (ID/SKU) para actualizar',
             });
+            continue;
+          }
+
+          // ─── ELIMINAR: columna "Eliminar" = SÍ (con ID/SKU) ───
+          // Borra el producto del inventario. Las variantes y sus imágenes se
+          // eliminan en cascada; las ventas pasadas se conservan (el item de
+          // venta queda sin variante asociada, no se borra la venta). No se
+          // llama a Cloudinary por fila para no frenar la carga masiva.
+          if (isDeleteFlag(it.delete)) {
+            await this.prisma.inventory.delete({ where: { id: productId } });
+            deleted++;
             continue;
           }
 
@@ -1261,6 +1289,7 @@ export class InventoryService {
         total: items.length,
         created,
         updated,
+        deleted,
         failed: errors.length,
         errors,
       },
