@@ -113,6 +113,9 @@ export class AppointmentsService {
       'ODONTOLOGIA',
       'LAVADO_VEHICULOS',
       'CANCHAS_SINTETICAS',
+      'GIMNASIO',
+      'TALLER_MECANICO',
+      'VETERINARIA',
     ];
     const usesAppointments = typeModules
       ? typeModules.includes('appointments')

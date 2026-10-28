@@ -104,8 +104,8 @@ export class CompaniesService {
     // Prefijo de la URL pública según el tipo: servicios → /booking (citas),
     // comida → /menu, demás productos → /catalog.
     const t = String(company?.type || '').toUpperCase();
-    const APPT = ['SERVICIOS', 'BARBERIA', 'ODONTOLOGIA', 'LAVADO_VEHICULOS', 'CANCHAS_SINTETICAS'];
-    const FOOD = ['RESTAURANTE', 'COMIDA_RAPIDA', 'CAFETERIA', 'BAR', 'PIZZERIA'];
+    const APPT = ['SERVICIOS', 'BARBERIA', 'ODONTOLOGIA', 'LAVADO_VEHICULOS', 'CANCHAS_SINTETICAS', 'GIMNASIO', 'TALLER_MECANICO', 'VETERINARIA'];
+    const FOOD = ['RESTAURANTE', 'COMIDA_RAPIDA', 'CAFETERIA', 'BAR', 'PIZZERIA', 'ASADERO'];
     const publicPath = APPT.includes(t)
       ? 'booking'
       : FOOD.includes(t)

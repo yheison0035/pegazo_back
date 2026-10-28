@@ -147,6 +147,21 @@ enum BusinessType {
   CANCHAS_SINTETICAS
   GUARDA_CASCOS
   PARQUEADERO
+  // Verticales completadas 28/10/2026 (antes solo etiqueta en la landing)
+  ASADERO
+  BAR
+  FERRETERIA
+  GIMNASIO
+  LAVANDERIA
+  LICORERA
+  PANADERIA
+  PAPELERIA
+  PESCADERIA
+  PETSHOP
+  PIZZERIA
+  TALLER_MECANICO
+  TECNOLOGIA
+  VETERINARIA
 }
 
 enum DiscountType {

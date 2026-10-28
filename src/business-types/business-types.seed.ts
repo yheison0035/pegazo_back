@@ -39,6 +39,7 @@ export const BUSINESS_TYPE_LABELS: Record<string, string> = {
   TALLER_MECANICO: 'Taller mecánico',
   TECNOLOGIA: 'Tecnología',
   VETERINARIA: 'Veterinaria',
+  ASADERO: 'Asadero / Pollería',
 };
 
 const RETAIL = [
@@ -140,6 +141,48 @@ export const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
   PARQUEADERO: [
     'locals', 'users', 'parking', 'customers', 'memberships', 'categories',
     'inventory', 'providers', 'purchases', 'impuestos', 'loyalty',
+    'delivered_sales', 'cash', 'expenses', 'payables', 'statistics',
+  ],
+
+  // ---- Verticales completadas 28/10/2026 (antes solo etiqueta) ----
+  // Panadería: retail con proveedores, marcas, insumos/recetas (producción básica)
+  // y venta por unidad o por peso (pan por libra).
+  PANADERIA: [...RETAIL, 'supplies', 'loyalty'],
+  // Pescadería: perecedero por peso (como carnicería).
+  PESCADERIA: PERECEDERO,
+  LICORERA: RETAIL,
+  PAPELERIA: RETAIL,
+  PETSHOP: [...RETAIL, 'loyalty'],
+  FERRETERIA: [...RETAIL, 'quotes'],
+  // Tecnología / celulares: retail con cotizaciones y devoluciones (garantía).
+  TECNOLOGIA: [...RETAIL, 'quotes'],
+  // Comida: salón + cocina. Asadero vende por porción/peso (perfil de producto).
+  ASADERO: COMIDA,
+  BAR: COMIDA,
+  PIZZERIA: COMIDA,
+  // Servicios con agenda: entrenador / mecánico / veterinario.
+  GIMNASIO: [
+    'locals', 'users', 'categories', 'brands', 'providers', 'inventory',
+    'purchases', 'customers', 'cartera', 'impuestos', 'loyalty', 'memberships',
+    'services', 'appointments', 'sales', 'delivered_sales', 'cash', 'expenses',
+    'payables', 'employee-charges', 'statistics',
+  ],
+  TALLER_MECANICO: [
+    'locals', 'users', 'categories', 'brands', 'providers', 'inventory',
+    'purchases', 'customers', 'cartera', 'impuestos', 'quotes', 'services',
+    'appointments', 'sales', 'delivered_sales', 'cash', 'expenses', 'payables',
+    'employee-charges', 'statistics',
+  ],
+  VETERINARIA: [
+    'locals', 'users', 'categories', 'brands', 'providers', 'inventory',
+    'purchases', 'customers', 'cartera', 'impuestos', 'loyalty', 'services',
+    'appointments', 'quotes', 'clinical', 'sales', 'delivered_sales', 'cash',
+    'expenses', 'payables', 'employee-charges', 'statistics',
+  ],
+  // Lavandería: órdenes como servicios + venta de productos, sin agenda.
+  LAVANDERIA: [
+    'locals', 'users', 'categories', 'providers', 'inventory', 'purchases',
+    'customers', 'cartera', 'impuestos', 'loyalty', 'services', 'sales',
     'delivered_sales', 'cash', 'expenses', 'payables', 'statistics',
   ],
 };
