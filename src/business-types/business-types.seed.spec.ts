@@ -30,12 +30,10 @@ describe('Tipos de negocio: enum ↔ semilla', () => {
     expect(BUSINESS_TYPE_MODULES.GUARDA_CASCOS).toContain('storage');
   });
 
-  it('DOCUMENTA: tipos que hoy son solo etiqueta (sin enum ni módulos en código)', () => {
-    // Si se configura o se retira alguno, esta lista cambia y el test lo avisa.
+  it('NINGÚN tipo es solo etiqueta: todo lo que tiene nombre tiene módulos y está en el enum', () => {
     const soloEtiqueta = Object.keys(BUSINESS_TYPE_LABELS).filter((t) => !BUSINESS_TYPE_MODULES[t]).sort();
-    expect(soloEtiqueta).toEqual([
-      'BAR', 'FERRETERIA', 'GIMNASIO', 'LAVANDERIA', 'LICORERA', 'PANADERIA', 'PAPELERIA',
-      'PESCADERIA', 'PETSHOP', 'PIZZERIA', 'TALLER_MECANICO', 'TECNOLOGIA', 'VETERINARIA',
-    ]);
+    expect(soloEtiqueta).toEqual([]);
+    const fueraDelEnum = Object.keys(BUSINESS_TYPE_LABELS).filter((t) => !enumTypes.includes(t)).sort();
+    expect(fueraDelEnum).toEqual([]);
   });
 });
