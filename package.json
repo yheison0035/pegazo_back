@@ -19,7 +19,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force --skip-generate && npm run prisma:seed"
+    "db:reset": "prisma migrate reset --force --skip-generate && npm run prisma:seed",
+    "test:ci": "jest --ci"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -85,13 +86,48 @@
     ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/$1"
+    },
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "diagnostics": {
+            "ignoreCodes": [
+              151002
+            ]
+          },
+          "tsconfig": {
+            "module": "commonjs",
+            "moduleResolution": "node",
+            "target": "ES2023",
+            "types": [
+              "jest",
+              "node",
+              "multer"
+            ],
+            "esModuleInterop": true,
+            "experimentalDecorators": true,
+            "emitDecoratorMetadata": true,
+            "skipLibCheck": true,
+            "baseUrl": ".",
+            "paths": {
+              "@/*": [
+                "./src/*"
+              ]
+            }
+          }
+        }
+      ]
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.(t|j)s",
+      "!**/*.spec.ts",
+      "!**/dto/**",
+      "!main.ts"
     ],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "coverageDirectory": "../coverage"
   }
 }
