@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "types": ["node", "multer"],
+    "types": ["node", "multer", "jest"],
 
     "target": "ES2023",
     "module": "NodeNext",
