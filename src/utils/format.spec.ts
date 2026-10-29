@@ -28,7 +28,8 @@ describe('minutesToColombiaHour (minutos → 12h)', () => {
   ])('%i → %s', (min, txt) => expect(minutesToColombiaHour(min)).toBe(txt));
 
   it('ida y vuelta conserva el valor en toda la jornada (cada 30 min)', () => {
-    for (let m = 0; m < 1440; m += 30) expect(timeToMinutes(minutesToColombiaHour(m))).toBe(m);
+    for (let m = 0; m < 1440; m += 30)
+      expect(timeToMinutes(minutesToColombiaHour(m))).toBe(m);
   });
 });
 
