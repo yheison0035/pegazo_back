@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { PlanLimitsService } from '@/common/plan-limits.service';
 import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import { usesAppointments } from '@/common/effective-modules.util';
 
 const TZ = 'America/Bogota';
 const CONSUMIDOR_FINAL = '222222222222';
@@ -424,11 +425,21 @@ export class StatisticsService {
     // Config de la empresa para adaptar los bloques por vertical.
     const company = await this.prisma.company.findUnique({
       where: { id: companyId },
-      select: { type: true, responsableIVA: true },
+      select: { type: true, responsableIVA: true, enabledModules: true },
     });
-    const isServices = ['SERVICIOS', 'ODONTOLOGIA'].includes(
-      company?.type as any,
-    );
+    // "Próximas citas" aplica a cualquier negocio con agenda (barbería, lavado,
+    // gimnasio, veterinaria…), con la misma prioridad de módulos que el menú.
+    const typeCfg = company?.type
+      ? await this.prisma.businessTypeConfig.findUnique({
+          where: { type: company.type },
+          select: { modules: true, active: true },
+        })
+      : null;
+    const isServices = usesAppointments({
+      enabledModules: company?.enabledModules,
+      typeModules: typeCfg?.active ? typeCfg.modules : null,
+      type: company?.type,
+    });
     const notCanceled = {
       notIn: ['CANCELADA', 'RECHAZADA', 'DEVUELTA'] as any,
     };
