@@ -124,3 +124,67 @@ describe('AccountingService.buildEntries', () => {
     expect(lineOf(byType(entries, 'VENTA')[0], '1110')).toMatchObject({ debit: 10000 });
   });
 });
+
+describe('AccountingService.buildEntries — retenciones e impuestos pagados (Fase 2)', () => {
+  const D = (s: string) => new Date(s);
+  const base: any = {
+    ledgerAccount: { findMany: jest.fn().mockResolvedValue(PUC_SIMPLIFICADO.map((a: any) => ({ ...a }))), createMany: jest.fn() },
+    sale: { findMany: jest.fn().mockResolvedValue([]) },
+    salePayment: { findMany: jest.fn().mockResolvedValue([]) },
+    expense: { findMany: jest.fn() },
+    membershipPayment: { findMany: jest.fn().mockResolvedValue([]) },
+    return: { findMany: jest.fn().mockResolvedValue([]) },
+    asset: { findMany: jest.fn().mockResolvedValue([]) },
+    purchase: { findMany: jest.fn() },
+    journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
+  };
+  let svc: AccountingService;
+  beforeEach(async () => {
+    const mod = await Test.createTestingModule({ providers: [AccountingService, { provide: PrismaService, useValue: base }] }).compile();
+    svc = mod.get(AccountingService);
+    jest.spyOn(svc as any, 'range').mockReturnValue({ start: D('2026-01-01'), end: D('2027-01-01') });
+  });
+  const entries = async () => (await (svc as any).buildEntries(1, {})).entries as any[];
+  const lineOf = (e: any, code: string) => e.lines.find((l: any) => l.code === code);
+  const balanced = (e: any) => e.lines.reduce((a: number, l: any) => a + l.debit - l.credit, 0) === 0;
+
+  it('compra con retefuente e ICA: proveedor recibe menos y quedan por pagar a la DIAN', async () => {
+    base.purchase.findMany.mockResolvedValue([{ code: 'C-9', subtotal: '1000000', taxTotal: '190000', total: 1190000, retefuente: 25000, reteica: 4140, receivedAt: D('2026-05-02'), provider: { name: 'P' } }]);
+    base.expense.findMany.mockResolvedValue([]);
+    const [c] = (await entries()).filter((e) => e.type === 'COMPRA');
+    expect(balanced(c)).toBe(true);
+    expect(lineOf(c, '2205')).toMatchObject({ credit: 1190000 - 25000 - 4140 });
+    expect(lineOf(c, '2365')).toMatchObject({ credit: 25000 });
+    expect(lineOf(c, '2412')).toMatchObject({ credit: 4140 });
+  });
+
+  it('gasto con retención: sale menos dinero y la retención queda por pagar', async () => {
+    base.purchase.findMany.mockResolvedValue([]);
+    base.expense.findMany.mockResolvedValue([{ concept: 'Honorarios', amount: 1000000, expenseDate: D('2026-05-03'), type: 'OTROS', paymentMethod: 'TRANSFERENCIA', retefuente: 100000, reteica: 0 }]);
+    const [g] = (await entries()).filter((e) => e.type === 'GASTO');
+    expect(balanced(g)).toBe(true);
+    expect(lineOf(g, '5105')).toMatchObject({ debit: 1000000 });
+    expect(lineOf(g, '1110')).toMatchObject({ credit: 900000 });
+    expect(lineOf(g, '2365')).toMatchObject({ credit: 100000 });
+  });
+
+  it('gasto tipo IMPUESTOS paga el pasivo (IVA / retefuente / ICA) según el concepto; si no se reconoce, es gasto', async () => {
+    base.purchase.findMany.mockResolvedValue([]);
+    base.expense.findMany.mockResolvedValue([
+      { concept: 'Pago IVA bimestre 2', amount: 300000, expenseDate: D('2026-05-10'), type: 'IMPUESTOS', paymentMethod: 'TRANSFERENCIA', retefuente: 0, reteica: 0 },
+      { concept: 'Retención en la fuente abril', amount: 50000, expenseDate: D('2026-05-11'), type: 'IMPUESTOS', paymentMethod: 'EFECTIVO', retefuente: 0, reteica: 0 },
+      { concept: 'ICA Medellín', amount: 20000, expenseDate: D('2026-05-12'), type: 'IMPUESTOS', paymentMethod: 'EFECTIVO', retefuente: 0, reteica: 0 },
+      { concept: 'Predial', amount: 80000, expenseDate: D('2026-05-13'), type: 'IMPUESTOS', paymentMethod: 'EFECTIVO', retefuente: 0, reteica: 0 },
+    ]);
+    const es = await entries();
+    const pagos = es.filter((e) => e.type === 'PAGO_IMPUESTO');
+    expect(pagos).toHaveLength(3);
+    expect(lineOf(pagos[0], '2408')).toMatchObject({ debit: 300000 });
+    expect(lineOf(pagos[1], '2365')).toMatchObject({ debit: 50000 });
+    expect(lineOf(pagos[2], '2412')).toMatchObject({ debit: 20000 });
+    const predial = es.find((e) => e.description.includes('Predial'));
+    expect(predial.type).toBe('GASTO');
+    expect(lineOf(predial, '5105')).toMatchObject({ debit: 80000 });
+    for (const e of es) expect(balanced(e)).toBe(true);
+  });
+});

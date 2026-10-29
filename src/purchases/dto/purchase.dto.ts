@@ -35,6 +35,17 @@ export class CreatePurchaseDto {
   @IsString()
   notes?: string;
 
+  // Retenciones practicadas al tercero (opcionales).
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  retefuente?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  reteica?: number;
+
   @IsArray()
   @ArrayNotEmpty()
   @ValidateNested({ each: true })

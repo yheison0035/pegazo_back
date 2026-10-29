@@ -1,3 +1,4 @@
+import { rentaBalance } from './renta.util';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
 import { FiscalService } from '@/fiscal/fiscal.service';
@@ -79,6 +80,15 @@ export class TaxService {
       evaluation = res?.data || null;
     }
 
+    // Retenciones a favor y anticipo del año (magnitudes editables) → saldo.
+    const ty = await this.prisma.companyTaxYear.findFirst({
+      where: { companyId: user.companyId, year },
+      select: { retencionesAFavor: true, anticipoRenta: true },
+    });
+    const retencionesAFavor = ty?.retencionesAFavor ?? 0;
+    const anticipoRenta = ty?.anticipoRenta ?? 0;
+    const saldo = rentaBalance(evaluation?.impuesto ?? null, retencionesAFavor, anticipoRenta);
+
     return {
       success: true,
       data: {
@@ -86,6 +96,10 @@ export class TaxService {
         company: { nit: c?.nit || null, name: c?.businessName || c?.name || null },
         personType,
         regime,
+        retencionesAFavor,
+        anticipoRenta,
+        saldoAPagarEstimado: saldo.saldoAPagar,
+        saldoAFavorEstimado: saldo.saldoAFavor,
         consolidado: {
           ingresos,
           costos,
@@ -179,6 +193,8 @@ export class TaxService {
         consumosTarjeta: row?.consumosTarjeta || 0,
         compras: row?.compras || 0,
         consignaciones: row?.consignaciones || 0,
+        retencionesAFavor: row?.retencionesAFavor || 0,
+        anticipoRenta: row?.anticipoRenta || 0,
       },
     };
   }
@@ -191,12 +207,16 @@ export class TaxService {
     const compras = n(dto.compras) ?? 0;
     const consignaciones = n(dto.consignaciones) ?? 0;
     const ingresosBrutosOverride = n(dto.ingresosBrutosOverride);
+    const retencionesAFavor = n(dto.retencionesAFavor) ?? 0;
+    const anticipoRenta = n(dto.anticipoRenta) ?? 0;
     const data = {
       patrimonioBruto,
       consumosTarjeta,
       compras,
       consignaciones,
       ingresosBrutosOverride,
+      retencionesAFavor,
+      anticipoRenta,
     };
     const row = await this.prisma.companyTaxYear.upsert({
       where: { companyId_year: { companyId: user.companyId, year } },

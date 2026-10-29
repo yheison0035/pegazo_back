@@ -144,6 +144,8 @@ export class ProvidersService {
         department: dto.department,
         address: dto.address,
         productType: dto.productType,
+        docType: dto.docType,
+        docNumber: dto.docNumber,
         status: dto.status ?? Status.ACTIVO,
 
         companyId: user.companyId,
@@ -197,6 +199,8 @@ export class ProvidersService {
         ...(dto.productType !== undefined && {
           productType: dto.productType,
         }),
+        ...(dto.docType !== undefined && { docType: dto.docType }),
+        ...(dto.docNumber !== undefined && { docNumber: dto.docNumber }),
         ...(dto.status !== undefined && { status: dto.status }),
       },
     });
