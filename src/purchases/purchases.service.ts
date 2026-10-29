@@ -6,6 +6,15 @@ import {
 import { PrismaService } from '@/prisma.service';
 import { CreatePurchaseDto } from './dto/purchase.dto';
 
+// Lo que se le debe al proveedor por una compra: total (base + IVA) menos las
+// retenciones practicadas (que se le pagan a la DIAN, no a él).
+export function payableAmountFor(p: { total?: any; retefuente?: any; reteica?: any }): number {
+  const total = Math.round(Number(p?.total) || 0);
+  const ret = Math.max(0, Math.round(Number(p?.retefuente) || 0));
+  const ica = Math.max(0, Math.round(Number(p?.reteica) || 0));
+  return Math.max(0, total - ret - ica);
+}
+
 @Injectable()
 export class PurchasesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -155,7 +164,7 @@ export class PurchasesService {
   async receive(user: any, id: number) {
     const purchase = await this.prisma.purchase.findFirst({
       where: { id, companyId: user.companyId },
-      include: { items: true },
+      include: { items: true, provider: { select: { name: true } } },
     });
     if (!purchase) throw new NotFoundException('Compra no encontrada');
     if (purchase.status === 'RECIBIDA') {
@@ -187,6 +196,28 @@ export class PurchasesService {
         where: { id },
         data: { status: 'RECIBIDA', receivedAt: new Date() },
       });
+
+      // Cadena conectada: al recibir, nace su CUENTA POR PAGAR (tipo PEDIDOS)
+      // por lo que de verdad se le debe al proveedor (total menos retenciones).
+      // Al pagarla desde Cuentas por pagar, el gasto resultante (tipo PEDIDOS)
+      // baja "Proveedores" en los libros: sin pasos manuales ni doble conteo.
+      const porPagar = payableAmountFor(purchase);
+      if (porPagar > 0) {
+        await tx.payable.create({
+          data: {
+            companyId: user.companyId,
+            localId: purchase.localId,
+            concept: `Compra ${purchase.code}`,
+            paidTo: (purchase as any).provider?.name ?? null,
+            type: 'PEDIDOS' as any,
+            amount: porPagar,
+            dueDate: null,
+            notes: `Generada automáticamente al recibir la compra ${purchase.code}.`,
+            createdById: user.id ?? null,
+            createdByName: user.name ?? null,
+          },
+        });
+      }
     });
 
     return this.findOne(user, id);
