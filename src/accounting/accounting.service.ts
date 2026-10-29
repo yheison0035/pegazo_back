@@ -15,6 +15,10 @@ const ACC = {
   DEVOLUCIONES: '4175',
   GASTOS: '5105',
   DEP_GASTO: '5160',
+  // Compras / inventario / costo (Fase 1 contabilidad, 29/10/2026)
+  INVENTARIO: '1435',
+  PROVEEDORES: '2205',
+  COSTO_VENTAS: '6135',
 };
 
 // Método de pago (enum) → cuenta de dinero donde entra/sale.
@@ -22,6 +26,14 @@ function moneyAccountFor(method: string): string {
   if (method === 'EFECTIVO') return ACC.CAJA;
   if (method === 'CREDITO') return ACC.CLIENTES;
   // BANCOLOMBIA, TRANSFERENCIA, DATAFONO, ADDI → banco.
+  return ACC.BANCOS;
+}
+
+// Medio de pago de un GASTO/pago → cuenta: efectivo=Caja, banco/datáfono=Bancos,
+// a crédito = queda debiendo al proveedor (2205).
+function expenseMoneyAccountFor(method?: string | null): string {
+  if (!method || method === 'EFECTIVO') return ACC.CAJA;
+  if (method === 'CREDITO') return ACC.PROVEEDORES;
   return ACC.BANCOS;
 }
 
@@ -117,7 +129,7 @@ export class AccountingService {
       credit: Math.round(credit),
     });
 
-    const [sales, salePayments, expenses, memberships, returns, assets] =
+    const [sales, salePayments, expenses, memberships, returns, assets, purchases] =
       await Promise.all([
         this.prisma.sale.findMany({
           where: {
@@ -135,6 +147,19 @@ export class AccountingService {
             paymentMethod: true,
             paymentStatus: true,
             customer: { select: { name: true } },
+            // Para el costo de ventas: cantidad × costo registrado del producto
+            // (solo productos con control de stock; los servicios no tienen costo).
+            items: {
+              select: {
+                quantity: true,
+                serviceId: true,
+                variant: {
+                  select: {
+                    inventory: { select: { purchasePrice: true, trackStock: true } },
+                  },
+                },
+              },
+            },
           },
           orderBy: { saleDate: 'asc' },
         }),
@@ -158,7 +183,13 @@ export class AccountingService {
             status: { not: 'ELIMINADO' as any },
             expenseDate: { gte: r.start, lt: r.end },
           },
-          select: { concept: true, amount: true, expenseDate: true },
+          select: {
+            concept: true,
+            amount: true,
+            expenseDate: true,
+            type: true,
+            paymentMethod: true,
+          },
           orderBy: { expenseDate: 'asc' },
         }),
         this.prisma.membershipPayment.findMany({
@@ -181,6 +212,24 @@ export class AccountingService {
         }),
         this.prisma.asset.findMany({
           where: { companyId, usefulLifeMonths: { not: null } },
+        }),
+        // Compras RECIBIDAS: entran al inventario (base) con su IVA descontable y
+        // quedan por pagar al proveedor. Se contabilizan en la fecha de recibo.
+        this.prisma.purchase.findMany({
+          where: {
+            companyId,
+            status: 'RECIBIDA' as any,
+            receivedAt: { gte: r.start, lt: r.end },
+          },
+          select: {
+            code: true,
+            subtotal: true,
+            taxTotal: true,
+            total: true,
+            receivedAt: true,
+            provider: { select: { name: true } },
+          },
+          orderBy: { receivedAt: 'asc' },
         }),
       ]);
 
@@ -208,6 +257,46 @@ export class AccountingService {
         description: `Venta ${s.code || ''}${s.customer?.name ? ' · ' + s.customer.name : ''}`.trim(),
         lines: saleLines,
       });
+
+      // Costo de la mercancía vendida: sale del inventario al costo registrado
+      // del producto (cantidad × precio de compra). Servicios y elaborados sin
+      // control de stock no generan costo aquí.
+      let cost = 0;
+      for (const it of (s as any).items || []) {
+        if (it.serviceId) continue;
+        const inv = it.variant?.inventory;
+        if (!inv || inv.trackStock === false) continue;
+        cost += (Number(it.quantity) || 0) * (Number(inv.purchasePrice) || 0);
+      }
+      cost = Math.round(cost);
+      if (cost > 0) {
+        entries.push({
+          date: day(s.saleDate),
+          type: 'COSTO',
+          ref: s.code || 'Venta',
+          description: `Costo de venta ${s.code || ''}`.trim(),
+          lines: [line(ACC.COSTO_VENTAS, cost, 0), line(ACC.INVENTARIO, 0, cost)],
+        });
+      }
+    }
+
+    // Compras recibidas: inventario (base) + IVA descontable (débito a 2408, que
+    // neutraliza el IVA generado) contra proveedores por el total.
+    for (const c of purchases) {
+      const total = Math.round(Number(c.total) || 0);
+      if (total <= 0) continue;
+      const iva = Math.max(0, Math.min(total, Math.round(Number(c.taxTotal) || 0)));
+      const base = total - iva;
+      const lines = [line(ACC.INVENTARIO, base, 0)];
+      if (iva > 0) lines.push(line(ACC.IVA, iva, 0));
+      lines.push(line(ACC.PROVEEDORES, 0, total));
+      entries.push({
+        date: day(c.receivedAt as Date),
+        type: 'COMPRA',
+        ref: c.code || 'Compra',
+        description: `Compra ${c.code || ''}${c.provider?.name ? ' · ' + c.provider.name : ''}`.trim(),
+        lines,
+      });
     }
 
     // Cobros de fiado (abonos): entra dinero, baja la cartera (clientes).
@@ -226,16 +315,23 @@ export class AccountingService {
       });
     }
 
-    // Gastos: se cargan al gasto y salen de caja.
+    // Gastos: salen de caja o bancos según cómo se pagaron. Los pagos a
+    // proveedores por mercancía (tipo PEDIDOS, incluidas las cuentas por pagar
+    // pagadas) NO son gasto: bajan lo que se le debe al proveedor (2205); el
+    // costo real entra por el costo de ventas. Así no se cuenta doble.
     for (const e of expenses) {
       const amt = Math.round(e.amount || 0);
       if (amt <= 0) continue;
+      const money = expenseMoneyAccountFor((e as any).paymentMethod);
+      const esPagoProveedor = (e as any).type === 'PEDIDOS';
       entries.push({
         date: day(e.expenseDate),
-        type: 'GASTO',
-        ref: 'Gasto',
-        description: e.concept || 'Gasto',
-        lines: [line(ACC.GASTOS, amt, 0), line(ACC.CAJA, 0, amt)],
+        type: esPagoProveedor ? 'PAGO_PROVEEDOR' : 'GASTO',
+        ref: esPagoProveedor ? 'Pago a proveedor' : 'Gasto',
+        description: (esPagoProveedor ? 'Pago a proveedor · ' : '') + (e.concept || 'Gasto'),
+        lines: esPagoProveedor
+          ? [line(ACC.PROVEEDORES, amt, 0), line(money, 0, amt)]
+          : [line(ACC.GASTOS, amt, 0), line(money, 0, amt)],
       });
     }
 
@@ -438,7 +534,7 @@ export class AccountingService {
         startDate: range.startStr,
         endDate: range.endStr,
         income,
-        iva: acc(ACC.IVA, 'IVA por pagar'),
+        iva: acc(ACC.IVA, 'IVA por pagar (generado − descontable)'),
         retefuente: acc(ACC.RETEFUENTE, 'Retención en la fuente por pagar'),
         ica: acc(ACC.ICA, 'ICA por pagar'),
       },
