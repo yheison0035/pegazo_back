@@ -15,6 +15,7 @@ import { getAccessibleLocalIds } from '@/common/access-locals.util';
 import { minutesToColombiaHour, timeToMinutes } from '@/utils/format';
 import { AuditService } from '@/audit/audit.service';
 import { PushService } from '@/push/push.service';
+import { NotificationsService } from '@/notifications/notifications.service';
 
 // Colombia es UTC-5 fijo (sin horario de verano).
 const COLOMBIA_OFFSET_MIN = 300;
@@ -34,6 +35,7 @@ export class AppointmentsService {
     private audit: AuditService,
     private planLimits: PlanLimitsService,
     private push: PushService,
+    private notifications: NotificationsService,
   ) {}
 
   // Instante UTC real de inicio de una cita. `date` se guarda como medianoche
@@ -570,9 +572,22 @@ export class AppointmentsService {
       service?.name,
       `${fecha} ${appt.startTime || ''}`.trim(),
     ].filter(Boolean);
+    const title = '✂️ Nueva cita asignada';
+    const body = partes.join(' · ') || 'Tienes una nueva cita.';
+    // Campana (in-app) SOLO al barbero asignado: así la ve aunque no tenga el
+    // push del navegador activado. Es suya y de solo lectura.
+    await this.notifications
+      .create(companyId, appt.barberId, {
+        type: 'APPOINTMENT_ASSIGNED',
+        title,
+        body,
+        url: '/dashboard/appointments',
+        data: { appointmentId: appt.id },
+      })
+      .catch(() => null);
     await this.push.sendToUser(appt.barberId, {
-      title: '✂️ Nueva cita asignada',
-      body: partes.join(' · ') || 'Tienes una nueva cita.',
+      title,
+      body,
       url: '/dashboard/appointments',
       tag: `appt-${appt.id}`,
     });
