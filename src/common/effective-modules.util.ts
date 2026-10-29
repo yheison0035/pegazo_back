@@ -17,6 +17,8 @@ export function resolveEffectiveModules(input: {
 }
 
 // ¿Maneja agenda de citas? (servicios, barbería, odontología, lavado, gimnasio…)
-export function usesAppointments(input: Parameters<typeof resolveEffectiveModules>[0]) {
+export function usesAppointments(
+  input: Parameters<typeof resolveEffectiveModules>[0],
+) {
   return resolveEffectiveModules(input).includes('appointments');
 }

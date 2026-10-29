@@ -11,7 +11,9 @@ describe('AccountingService.buildEntries', () => {
   const D = (s: string) => new Date(s);
   const prisma: any = {
     ledgerAccount: {
-      findMany: jest.fn().mockResolvedValue(PUC_SIMPLIFICADO.map((a: any) => ({ ...a }))),
+      findMany: jest
+        .fn()
+        .mockResolvedValue(PUC_SIMPLIFICADO.map((a: any) => ({ ...a }))),
       createMany: jest.fn(),
     },
     sale: { findMany: jest.fn() },
@@ -27,41 +29,90 @@ describe('AccountingService.buildEntries', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    prisma.ledgerAccount.findMany.mockResolvedValue(PUC_SIMPLIFICADO.map((a: any) => ({ ...a })));
+    prisma.ledgerAccount.findMany.mockResolvedValue(
+      PUC_SIMPLIFICADO.map((a: any) => ({ ...a })),
+    );
     const mod = await Test.createTestingModule({
-      providers: [AccountingService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        AccountingService,
+        { provide: PrismaService, useValue: prisma },
+      ],
     }).compile();
     svc = mod.get(AccountingService);
     jest.spyOn(svc as any, 'range').mockReturnValue({
-      startStr: '2026-01-01', endStr: '2026-12-31',
-      start: D('2026-01-01'), end: D('2027-01-01'),
-      startMinus1: D('2025-12-31'), endInclusive: D('2026-12-31'),
+      startStr: '2026-01-01',
+      endStr: '2026-12-31',
+      start: D('2026-01-01'),
+      end: D('2027-01-01'),
+      startMinus1: D('2025-12-31'),
+      endInclusive: D('2026-12-31'),
     });
     prisma.sale.findMany.mockResolvedValue([
       {
-        code: 'V-1', saleDate: D('2026-03-10'), totalAmount: 119000, taxTotal: 19000,
-        paymentMethod: 'EFECTIVO', paymentStatus: 'PAGADA', customer: { name: 'Ana' },
+        code: 'V-1',
+        saleDate: D('2026-03-10'),
+        totalAmount: 119000,
+        taxTotal: 19000,
+        paymentMethod: 'EFECTIVO',
+        paymentStatus: 'PAGADA',
+        customer: { name: 'Ana' },
         items: [
-          { quantity: 2, serviceId: null, variant: { inventory: { purchasePrice: 30000, trackStock: true } } },
+          {
+            quantity: 2,
+            serviceId: null,
+            variant: { inventory: { purchasePrice: 30000, trackStock: true } },
+          },
           { quantity: 1, serviceId: 7, variant: null }, // servicio: sin costo
-          { quantity: 3, serviceId: null, variant: { inventory: { purchasePrice: 5000, trackStock: false } } }, // elaborado: sin costo
+          {
+            quantity: 3,
+            serviceId: null,
+            variant: { inventory: { purchasePrice: 5000, trackStock: false } },
+          }, // elaborado: sin costo
         ],
       },
     ]);
     prisma.expense.findMany.mockResolvedValue([
-      { concept: 'Arriendo', amount: 20000, expenseDate: D('2026-03-01'), type: 'ARRIENDO', paymentMethod: 'EFECTIVO' },
-      { concept: 'Pago proveedor X', amount: 50000, expenseDate: D('2026-03-15'), type: 'PEDIDOS', paymentMethod: 'TRANSFERENCIA' },
-      { concept: 'Internet', amount: 9000, expenseDate: D('2026-03-20'), type: 'PLAN_INTERNET', paymentMethod: 'DATAFONO' },
+      {
+        concept: 'Arriendo',
+        amount: 20000,
+        expenseDate: D('2026-03-01'),
+        type: 'ARRIENDO',
+        paymentMethod: 'EFECTIVO',
+      },
+      {
+        concept: 'Pago proveedor X',
+        amount: 50000,
+        expenseDate: D('2026-03-15'),
+        type: 'PEDIDOS',
+        paymentMethod: 'TRANSFERENCIA',
+      },
+      {
+        concept: 'Internet',
+        amount: 9000,
+        expenseDate: D('2026-03-20'),
+        type: 'PLAN_INTERNET',
+        paymentMethod: 'DATAFONO',
+      },
     ]);
     prisma.purchase.findMany.mockResolvedValue([
-      { code: 'C-1', subtotal: '100000', taxTotal: '19000', total: 119000, receivedAt: D('2026-03-05'), provider: { name: 'Distrimax' } },
+      {
+        code: 'C-1',
+        subtotal: '100000',
+        taxTotal: '19000',
+        total: 119000,
+        receivedAt: D('2026-03-05'),
+        provider: { name: 'Distrimax' },
+      },
     ]);
   });
 
   // buildEntries devuelve { entries, map, range }; aquí solo importan los asientos.
-  const build = async (): Promise<any[]> => (await (svc as any).buildEntries(1, {})).entries;
-  const byType = (entries: any[], t: string) => entries.filter((e) => e.type === t);
-  const lineOf = (e: any, code: string) => e.lines.find((l: any) => l.code === code);
+  const build = async (): Promise<any[]> =>
+    (await (svc as any).buildEntries(1, {})).entries;
+  const byType = (entries: any[], t: string) =>
+    entries.filter((e) => e.type === t);
+  const lineOf = (e: any, code: string) =>
+    e.lines.find((l: any) => l.code === code);
 
   it('todos los asientos cuadran (débitos = créditos)', async () => {
     const entries = await build();
@@ -109,26 +160,57 @@ describe('AccountingService.buildEntries', () => {
     expect(lineOf(p, '1110')).toMatchObject({ credit: 50000 });
     expect(p.lines.find((l: any) => l.code === '5105')).toBeUndefined();
     // El IVA en libros queda NETO: 19.000 generado − 19.000 descontable = 0
-    const iva = entries.flatMap((e) => e.lines).filter((l: any) => l.code === '2408');
-    expect(iva.reduce((a: number, l: any) => a + l.credit - l.debit, 0)).toBe(0);
+    const iva = entries
+      .flatMap((e) => e.lines)
+      .filter((l: any) => l.code === '2408');
+    expect(iva.reduce((a: number, l: any) => a + l.credit - l.debit, 0)).toBe(
+      0,
+    );
   });
 
   it('compra sin IVA y venta sin ítems no rompen', async () => {
-    prisma.purchase.findMany.mockResolvedValue([{ code: 'C-2', subtotal: null, taxTotal: '0', total: 40000, receivedAt: D('2026-04-01'), provider: null }]);
-    prisma.sale.findMany.mockResolvedValue([{ code: 'V-2', saleDate: D('2026-04-02'), totalAmount: 10000, taxTotal: 0, paymentMethod: 'TRANSFERENCIA', paymentStatus: 'PAGADA', customer: null, items: [] }]);
+    prisma.purchase.findMany.mockResolvedValue([
+      {
+        code: 'C-2',
+        subtotal: null,
+        taxTotal: '0',
+        total: 40000,
+        receivedAt: D('2026-04-01'),
+        provider: null,
+      },
+    ]);
+    prisma.sale.findMany.mockResolvedValue([
+      {
+        code: 'V-2',
+        saleDate: D('2026-04-02'),
+        totalAmount: 10000,
+        taxTotal: 0,
+        paymentMethod: 'TRANSFERENCIA',
+        paymentStatus: 'PAGADA',
+        customer: null,
+        items: [],
+      },
+    ]);
     const entries = await build();
     const [c] = byType(entries, 'COMPRA');
     expect(lineOf(c, '1435')).toMatchObject({ debit: 40000 });
     expect(c.lines.find((l: any) => l.code === '2408')).toBeUndefined();
     expect(byType(entries, 'COSTO')).toHaveLength(0);
-    expect(lineOf(byType(entries, 'VENTA')[0], '1110')).toMatchObject({ debit: 10000 });
+    expect(lineOf(byType(entries, 'VENTA')[0], '1110')).toMatchObject({
+      debit: 10000,
+    });
   });
 });
 
 describe('AccountingService.buildEntries — retenciones e impuestos pagados (Fase 2)', () => {
   const D = (s: string) => new Date(s);
   const base: any = {
-    ledgerAccount: { findMany: jest.fn().mockResolvedValue(PUC_SIMPLIFICADO.map((a: any) => ({ ...a }))), createMany: jest.fn() },
+    ledgerAccount: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue(PUC_SIMPLIFICADO.map((a: any) => ({ ...a }))),
+      createMany: jest.fn(),
+    },
     sale: { findMany: jest.fn().mockResolvedValue([]) },
     salePayment: { findMany: jest.fn().mockResolvedValue([]) },
     expense: { findMany: jest.fn() },
@@ -140,16 +222,37 @@ describe('AccountingService.buildEntries — retenciones e impuestos pagados (Fa
   };
   let svc: AccountingService;
   beforeEach(async () => {
-    const mod = await Test.createTestingModule({ providers: [AccountingService, { provide: PrismaService, useValue: base }] }).compile();
+    const mod = await Test.createTestingModule({
+      providers: [
+        AccountingService,
+        { provide: PrismaService, useValue: base },
+      ],
+    }).compile();
     svc = mod.get(AccountingService);
-    jest.spyOn(svc as any, 'range').mockReturnValue({ start: D('2026-01-01'), end: D('2027-01-01') });
+    jest
+      .spyOn(svc as any, 'range')
+      .mockReturnValue({ start: D('2026-01-01'), end: D('2027-01-01') });
   });
-  const entries = async () => (await (svc as any).buildEntries(1, {})).entries as any[];
-  const lineOf = (e: any, code: string) => e.lines.find((l: any) => l.code === code);
-  const balanced = (e: any) => e.lines.reduce((a: number, l: any) => a + l.debit - l.credit, 0) === 0;
+  const entries = async () =>
+    (await (svc as any).buildEntries(1, {})).entries as any[];
+  const lineOf = (e: any, code: string) =>
+    e.lines.find((l: any) => l.code === code);
+  const balanced = (e: any) =>
+    e.lines.reduce((a: number, l: any) => a + l.debit - l.credit, 0) === 0;
 
   it('compra con retefuente e ICA: proveedor recibe menos y quedan por pagar a la DIAN', async () => {
-    base.purchase.findMany.mockResolvedValue([{ code: 'C-9', subtotal: '1000000', taxTotal: '190000', total: 1190000, retefuente: 25000, reteica: 4140, receivedAt: D('2026-05-02'), provider: { name: 'P' } }]);
+    base.purchase.findMany.mockResolvedValue([
+      {
+        code: 'C-9',
+        subtotal: '1000000',
+        taxTotal: '190000',
+        total: 1190000,
+        retefuente: 25000,
+        reteica: 4140,
+        receivedAt: D('2026-05-02'),
+        provider: { name: 'P' },
+      },
+    ]);
     base.expense.findMany.mockResolvedValue([]);
     const [c] = (await entries()).filter((e) => e.type === 'COMPRA');
     expect(balanced(c)).toBe(true);
@@ -160,7 +263,17 @@ describe('AccountingService.buildEntries — retenciones e impuestos pagados (Fa
 
   it('gasto con retención: sale menos dinero y la retención queda por pagar', async () => {
     base.purchase.findMany.mockResolvedValue([]);
-    base.expense.findMany.mockResolvedValue([{ concept: 'Honorarios', amount: 1000000, expenseDate: D('2026-05-03'), type: 'OTROS', paymentMethod: 'TRANSFERENCIA', retefuente: 100000, reteica: 0 }]);
+    base.expense.findMany.mockResolvedValue([
+      {
+        concept: 'Honorarios',
+        amount: 1000000,
+        expenseDate: D('2026-05-03'),
+        type: 'OTROS',
+        paymentMethod: 'TRANSFERENCIA',
+        retefuente: 100000,
+        reteica: 0,
+      },
+    ]);
     const [g] = (await entries()).filter((e) => e.type === 'GASTO');
     expect(balanced(g)).toBe(true);
     expect(lineOf(g, '5105')).toMatchObject({ debit: 1000000 });
@@ -171,10 +284,42 @@ describe('AccountingService.buildEntries — retenciones e impuestos pagados (Fa
   it('gasto tipo IMPUESTOS paga el pasivo (IVA / retefuente / ICA) según el concepto; si no se reconoce, es gasto', async () => {
     base.purchase.findMany.mockResolvedValue([]);
     base.expense.findMany.mockResolvedValue([
-      { concept: 'Pago IVA bimestre 2', amount: 300000, expenseDate: D('2026-05-10'), type: 'IMPUESTOS', paymentMethod: 'TRANSFERENCIA', retefuente: 0, reteica: 0 },
-      { concept: 'Retención en la fuente abril', amount: 50000, expenseDate: D('2026-05-11'), type: 'IMPUESTOS', paymentMethod: 'EFECTIVO', retefuente: 0, reteica: 0 },
-      { concept: 'ICA Medellín', amount: 20000, expenseDate: D('2026-05-12'), type: 'IMPUESTOS', paymentMethod: 'EFECTIVO', retefuente: 0, reteica: 0 },
-      { concept: 'Predial', amount: 80000, expenseDate: D('2026-05-13'), type: 'IMPUESTOS', paymentMethod: 'EFECTIVO', retefuente: 0, reteica: 0 },
+      {
+        concept: 'Pago IVA bimestre 2',
+        amount: 300000,
+        expenseDate: D('2026-05-10'),
+        type: 'IMPUESTOS',
+        paymentMethod: 'TRANSFERENCIA',
+        retefuente: 0,
+        reteica: 0,
+      },
+      {
+        concept: 'Retención en la fuente abril',
+        amount: 50000,
+        expenseDate: D('2026-05-11'),
+        type: 'IMPUESTOS',
+        paymentMethod: 'EFECTIVO',
+        retefuente: 0,
+        reteica: 0,
+      },
+      {
+        concept: 'ICA Medellín',
+        amount: 20000,
+        expenseDate: D('2026-05-12'),
+        type: 'IMPUESTOS',
+        paymentMethod: 'EFECTIVO',
+        retefuente: 0,
+        reteica: 0,
+      },
+      {
+        concept: 'Predial',
+        amount: 80000,
+        expenseDate: D('2026-05-13'),
+        type: 'IMPUESTOS',
+        paymentMethod: 'EFECTIVO',
+        retefuente: 0,
+        reteica: 0,
+      },
     ]);
     const es = await entries();
     const pagos = es.filter((e) => e.type === 'PAGO_IMPUESTO');

@@ -3,7 +3,10 @@
 // realmente corriendo en producción (verificación de despliegues).
 export function pickCommitSha(env: Record<string, string | undefined> = {}) {
   const raw =
-    env.RAILWAY_GIT_COMMIT_SHA || env.GIT_COMMIT_SHA || env.SOURCE_VERSION || '';
+    env.RAILWAY_GIT_COMMIT_SHA ||
+    env.GIT_COMMIT_SHA ||
+    env.SOURCE_VERSION ||
+    '';
   const sha = String(raw).trim();
   return { sha: sha || 'unknown', short: sha ? sha.slice(0, 7) : 'unknown' };
 }

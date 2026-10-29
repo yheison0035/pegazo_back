@@ -62,7 +62,9 @@ describe('AppointmentsService.notifyBarberNewAppointment', () => {
 
   it('si la campana falla, el push igual sale (no rompe la creación de la cita)', async () => {
     notifications.create.mockRejectedValueOnce(new Error('db'));
-    await expect((svc as any).notifyBarberNewAppointment(appt, 90)).resolves.toBeUndefined();
+    await expect(
+      (svc as any).notifyBarberNewAppointment(appt, 90),
+    ).resolves.toBeUndefined();
     expect(push.sendToUser).toHaveBeenCalledTimes(1);
   });
 });

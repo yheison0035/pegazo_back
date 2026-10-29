@@ -11,7 +11,8 @@ export class VersionController {
   get() {
     return {
       ...pickCommitSha(process.env),
-      env: process.env.RAILWAY_ENVIRONMENT_NAME || process.env.NODE_ENV || 'local',
+      env:
+        process.env.RAILWAY_ENVIRONMENT_NAME || process.env.NODE_ENV || 'local',
     };
   }
 }
