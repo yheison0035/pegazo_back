@@ -352,6 +352,23 @@ export class AccountantService {
     await this.assertLink(accountantId, companyId);
     return this.manualEntries.create(companyId, dto, accountantId);
   }
+  async companyEntryUpdate(
+    accountantId: number,
+    companyId: number,
+    id: number,
+    dto: any,
+  ) {
+    await this.assertLink(accountantId, companyId);
+    return this.manualEntries.update(companyId, id, dto);
+  }
+  async companyLedgerAccountsImport(
+    accountantId: number,
+    companyId: number,
+    rows: any[],
+  ) {
+    await this.assertLink(accountantId, companyId);
+    return this.ledgerAccounts.bulkImport(this.ctx(companyId), rows);
+  }
   async companyEntryDelete(accountantId: number, companyId: number, id: number) {
     await this.assertLink(accountantId, companyId);
     return this.manualEntries.remove(companyId, id);

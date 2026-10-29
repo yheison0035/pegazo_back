@@ -32,6 +32,13 @@ export class LedgerAccountsController {
     return this.service.create(req.user, dto);
   }
 
+  // Importar plan de cuentas desde Excel/CSV (filas: codigo, nombre, grupo,
+  // naturaleza). Crea las nuevas y actualiza el nombre de las existentes.
+  @Post('import')
+  bulkImport(@Req() req, @Body('rows') rows: any[]) {
+    return this.service.bulkImport(req.user, rows);
+  }
+
   @Patch(':id')
   update(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() dto) {
     return this.service.update(req.user, id, dto);

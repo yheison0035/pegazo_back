@@ -4,6 +4,8 @@ import { PrismaService } from '@/prisma.service';
 // Contabilidad · Fase A — Activos fijos.
 // La depreciación y el valor en libros se CALCULAN al vuelo (línea recta), para
 // que reflejen la fecha actual sin tener que almacenar filas por mes.
+export const MAX_ASSET_IMPORT_ROWS = 2000;
+
 @Injectable()
 export class AssetsService {
   constructor(private prisma: PrismaService) {}
@@ -167,6 +169,34 @@ export class AssetsService {
       data: { ...data, companyId: user.companyId },
     });
     return { success: true, data: this.withDepreciation(asset) };
+  }
+
+  // Importación en lote (Excel/CSV): cada fila es un activo con los mismos
+  // campos del formulario. Reporta errores por fila sin abortar el resto.
+  async bulkImport(user: any, rows: any[]) {
+    if (!Array.isArray(rows) || rows.length === 0)
+      throw new BadRequestException('El archivo no tiene filas.');
+    if (rows.length > MAX_ASSET_IMPORT_ROWS)
+      throw new BadRequestException(
+        `Máximo ${MAX_ASSET_IMPORT_ROWS} filas por importación.`,
+      );
+    let created = 0;
+    const errors: { row: number; message: string }[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      const rowNo = i + 2;
+      try {
+        const data = this.normalize(rows[i] || {});
+        if (Number.isNaN(data.acquisitionDate.getTime()))
+          throw new BadRequestException('La fecha de compra no es válida.');
+        await this.prisma.asset.create({
+          data: { ...data, companyId: user.companyId },
+        });
+        created++;
+      } catch (e: any) {
+        errors.push({ row: rowNo, message: e.message || 'Fila inválida.' });
+      }
+    }
+    return { success: true, data: { total: rows.length, created, errors } };
   }
 
   async update(user: any, id: number, dto: any) {
