@@ -33,6 +33,15 @@ export class CreateProviderDto {
   @IsString()
   productType?: string;
 
+  // Identificación tributaria (NIT, CC, CE…) para soportes y exógena.
+  @IsOptional()
+  @IsString()
+  docType?: string;
+
+  @IsOptional()
+  @IsString()
+  docNumber?: string;
+
   @IsOptional()
   @IsEnum(Status)
   status?: Status;

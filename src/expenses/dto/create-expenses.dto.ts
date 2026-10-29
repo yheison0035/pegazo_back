@@ -5,6 +5,7 @@ import {
   IsString,
   IsDateString,
   IsInt,
+  Min,
 } from 'class-validator';
 import { ExpenseType, PaymentMethod, Status } from '@prisma/client';
 
@@ -36,6 +37,17 @@ export class CreateExpenseDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  // Retenciones practicadas al tercero (opcionales).
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  retefuente?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  reteica?: number;
 
   @IsDateString()
   expenseDate: string;

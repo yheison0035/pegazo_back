@@ -85,6 +85,8 @@ export class PurchasesService {
         total,
         subtotal,
         taxTotal,
+        retefuente: Number(dto.retefuente) || 0,
+        reteica: Number(dto.reteica) || 0,
         items: { create: itemsData },
       },
       include: { items: true },

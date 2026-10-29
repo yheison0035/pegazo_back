@@ -664,6 +664,9 @@ model Provider {
   department  String?
   address     String?
   productType String?
+  // Identificación tributaria (NIT/CC…) para soportes y exógena.
+  docType     String?
+  docNumber   String?
   status      Status  @default(ACTIVO)
 
   companyId Int
@@ -1087,6 +1090,10 @@ model CompanyTaxYear {
   consumosTarjeta       Int      @default(0)
   compras               Int      @default(0)
   consignaciones        Int      @default(0)
+  // Lo que le retuvieron al negocio y el anticipo pagado: se descuentan del
+  // impuesto de renta estimado (saldo a pagar / a favor).
+  retencionesAFavor     Int      @default(0)
+  anticipoRenta         Int      @default(0)
   createdAt             DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -1226,6 +1233,9 @@ model Expense {
   type          ExpenseType
   amount        Float
   paymentMethod PaymentMethod?
+  // Retenciones practicadas al tercero (retefuente / ICA) en este pago.
+  retefuente    Float          @default(0)
+  reteica       Float          @default(0)
   paidTo        String?
   notes         String?
   status        Status         @default(ACTIVO)
@@ -2082,6 +2092,9 @@ model Purchase {
   total      Float          @default(0) // total a pagar (base + IVA)
   subtotal   Decimal?       @db.Decimal(14, 2) // base gravable (sin IVA)
   taxTotal   Decimal        @default(0) @db.Decimal(14, 2) // IVA descontable
+  // Retenciones que el negocio PRACTICA al proveedor (quedan por pagar a la DIAN).
+  retefuente Float          @default(0)
+  reteica    Float          @default(0)
   notes      String?
   receivedAt DateTime?
 

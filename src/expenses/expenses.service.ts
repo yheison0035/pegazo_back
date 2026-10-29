@@ -244,6 +244,8 @@ export class ExpensesService {
         expenseCategoryId,
         amount: dto.amount,
         paymentMethod: dto.paymentMethod,
+        retefuente: Number(dto.retefuente) || 0,
+        reteica: Number(dto.reteica) || 0,
         paidTo: dto.paidTo,
         notes: dto.notes,
         expenseDate: new Date(dto.expenseDate),
@@ -312,6 +314,8 @@ export class ExpensesService {
           type: catData.type,
         }),
         ...(dto.expenseDate && { expenseDate: new Date(dto.expenseDate) }),
+        ...(dto.retefuente !== undefined && { retefuente: Number(dto.retefuente) || 0 }),
+        ...(dto.reteica !== undefined && { reteica: Number(dto.reteica) || 0 }),
       },
     });
 

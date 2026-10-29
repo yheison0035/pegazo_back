@@ -37,6 +37,16 @@ function expenseMoneyAccountFor(method?: string | null): string {
   return ACC.BANCOS;
 }
 
+// Un gasto de tipo IMPUESTOS paga un pasivo tributario: el concepto dice cuál.
+// Si no se reconoce, se trata como gasto normal (null).
+export function taxLiabilityFor(concept?: string | null): string | null {
+  const c = String(concept || '').toLowerCase();
+  if (/\biva\b/.test(c)) return ACC.IVA;
+  if (/retefuente|retenci[oó]n en la fuente|\brte\b|\brtefte\b/.test(c)) return ACC.RETEFUENTE;
+  if (/\bica\b|industria y comercio|reteica/.test(c)) return ACC.ICA;
+  return null;
+}
+
 @Injectable()
 export class AccountingService {
   constructor(private prisma: PrismaService) {}
@@ -189,6 +199,8 @@ export class AccountingService {
             expenseDate: true,
             type: true,
             paymentMethod: true,
+            retefuente: true,
+            reteica: true,
           },
           orderBy: { expenseDate: 'asc' },
         }),
@@ -227,6 +239,8 @@ export class AccountingService {
             taxTotal: true,
             total: true,
             receivedAt: true,
+            retefuente: true,
+            reteica: true,
             provider: { select: { name: true } },
           },
           orderBy: { receivedAt: 'asc' },
@@ -287,9 +301,15 @@ export class AccountingService {
       if (total <= 0) continue;
       const iva = Math.max(0, Math.min(total, Math.round(Number(c.taxTotal) || 0)));
       const base = total - iva;
+      // Retenciones practicadas al proveedor: se le debe menos a él y queda por
+      // pagar a la DIAN (2365 retefuente / 2412 ICA).
+      const ret = Math.max(0, Math.round(Number((c as any).retefuente) || 0));
+      const ica = Math.max(0, Math.round(Number((c as any).reteica) || 0));
       const lines = [line(ACC.INVENTARIO, base, 0)];
       if (iva > 0) lines.push(line(ACC.IVA, iva, 0));
-      lines.push(line(ACC.PROVEEDORES, 0, total));
+      lines.push(line(ACC.PROVEEDORES, 0, Math.max(0, total - ret - ica)));
+      if (ret > 0) lines.push(line(ACC.RETEFUENTE, 0, ret));
+      if (ica > 0) lines.push(line(ACC.ICA, 0, ica));
       entries.push({
         date: day(c.receivedAt as Date),
         type: 'COMPRA',
@@ -324,14 +344,21 @@ export class AccountingService {
       if (amt <= 0) continue;
       const money = expenseMoneyAccountFor((e as any).paymentMethod);
       const esPagoProveedor = (e as any).type === 'PEDIDOS';
+      // Pago de impuestos (tipo IMPUESTOS): no es gasto, baja el pasivo que se
+      // debía (IVA 2408 / retefuente 2365 / ICA 2412 según el concepto).
+      const taxAcc = (e as any).type === 'IMPUESTOS' ? taxLiabilityFor(e.concept) : null;
+      const ret = Math.max(0, Math.round(Number((e as any).retefuente) || 0));
+      const ica = Math.max(0, Math.round(Number((e as any).reteica) || 0));
+      const debitAcc = taxAcc || (esPagoProveedor ? ACC.PROVEEDORES : ACC.GASTOS);
+      const lines = [line(debitAcc, amt, 0), line(money, 0, Math.max(0, amt - ret - ica))];
+      if (ret > 0) lines.push(line(ACC.RETEFUENTE, 0, ret));
+      if (ica > 0) lines.push(line(ACC.ICA, 0, ica));
       entries.push({
         date: day(e.expenseDate),
-        type: esPagoProveedor ? 'PAGO_PROVEEDOR' : 'GASTO',
-        ref: esPagoProveedor ? 'Pago a proveedor' : 'Gasto',
-        description: (esPagoProveedor ? 'Pago a proveedor · ' : '') + (e.concept || 'Gasto'),
-        lines: esPagoProveedor
-          ? [line(ACC.PROVEEDORES, amt, 0), line(money, 0, amt)]
-          : [line(ACC.GASTOS, amt, 0), line(money, 0, amt)],
+        type: taxAcc ? 'PAGO_IMPUESTO' : esPagoProveedor ? 'PAGO_PROVEEDOR' : 'GASTO',
+        ref: taxAcc ? 'Pago de impuesto' : esPagoProveedor ? 'Pago a proveedor' : 'Gasto',
+        description: (taxAcc ? 'Pago de impuesto · ' : esPagoProveedor ? 'Pago a proveedor · ' : '') + (e.concept || 'Gasto'),
+        lines,
       });
     }
 
