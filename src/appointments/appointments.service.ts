@@ -384,6 +384,8 @@ export class AppointmentsService {
           barber: true,
           customer: true,
           local: true,
+          // Ventas enlazadas (para mostrar "Cobrada" en la agenda).
+          sales: { select: { id: true, code: true } },
         },
         skip,
         take: limit,
@@ -418,7 +420,7 @@ export class AppointmentsService {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
       include: {
-        service: true,
+        service: { include: { serviceLocals: true } }, // precio por sede (cobrar cita)
         barber: true,
         customer: true,
         local: true,

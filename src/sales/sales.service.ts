@@ -15,6 +15,7 @@ import {
   Status,
   ShippingStatus,
   Prisma,
+  AppointmentStatus,
 } from '@prisma/client';
 import { StockService } from '@/inventory/stock.service';
 import { PlanLimitsService } from '@/common/plan-limits.service';
@@ -1287,6 +1288,7 @@ export class SalesService {
           customerId: dto.customerId,
           localId: dto.localId,
           userId: dto.userId,
+          ...(dto.appointmentId ? { appointmentId: dto.appointmentId } : {}),
           items: { create: itemsData },
         },
         include: {
@@ -1335,6 +1337,29 @@ export class SalesService {
             },
           });
         }
+      }
+
+      // Cobro de una cita (agenda → POS): la cita debe ser de la empresa y no
+      // estar cancelada/no asistida. Al cobrar pasa a COMPLETADA (la venta ya
+      // quedó enlazada por appointmentId). Si falla, se revierte toda la venta.
+      if (dto.appointmentId) {
+        const appt = await tx.appointment.findFirst({
+          where: { id: dto.appointmentId, companyId: user.companyId },
+          select: { id: true, status: true },
+        });
+        if (!appt) throw new NotFoundException('Cita no encontrada');
+        if (
+          appt.status === AppointmentStatus.CANCELADA ||
+          appt.status === AppointmentStatus.NO_ASISTIO
+        ) {
+          throw new BadRequestException(
+            'La cita está cancelada o marcada como no asistida: no se puede cobrar.',
+          );
+        }
+        await tx.appointment.update({
+          where: { id: appt.id },
+          data: { status: AppointmentStatus.COMPLETADA },
+        });
       }
 
       // Plan separe: el pago que entrega el cliente al crear el apartado se

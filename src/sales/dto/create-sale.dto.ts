@@ -71,6 +71,12 @@ export class CreateSaleDto {
   @IsInt()
   customerId?: number;
 
+  // Cita que se está cobrando (agenda → POS). La venta queda enlazada a la cita
+  // y la cita pasa a COMPLETADA al registrar el cobro.
+  @IsOptional()
+  @IsInt()
+  appointmentId?: number;
+
   @IsInt()
   localId: number;
 
