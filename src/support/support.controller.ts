@@ -27,6 +27,9 @@ export class SupportController {
   ) {}
 
   // Sube un adjunto del chat (cliente o soporte) a Cloudinary y devuelve su URL.
+  // Chat del negocio: SOLO dueño y administrador (en todos los tipos de negocio).
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @Post('upload')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -52,11 +55,17 @@ export class SupportController {
   }
 
   // ----- Negocio (cualquier usuario autenticado de una empresa) -----
+  // Chat del negocio: SOLO dueño y administrador (en todos los tipos de negocio).
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @Get()
   clientThread(@Req() req) {
     return this.service.clientThread(req.user);
   }
 
+  // Chat del negocio: SOLO dueño y administrador (en todos los tipos de negocio).
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @Post()
   clientSend(
     @Req() req,
@@ -66,6 +75,9 @@ export class SupportController {
     return this.service.clientSend(req.user, body, imageUrl);
   }
 
+  // Chat del negocio: SOLO dueño y administrador (en todos los tipos de negocio).
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @Get('unread-count')
   clientUnread(@Req() req) {
     return this.service.clientUnread(req.user);
