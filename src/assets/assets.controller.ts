@@ -39,6 +39,12 @@ export class AssetsController {
     return this.service.create(req.user, dto);
   }
 
+  // Importar activos desde Excel/CSV (una fila = un activo).
+  @Post('import')
+  bulkImport(@Req() req, @Body('rows') rows: any[]) {
+    return this.service.bulkImport(req.user, rows);
+  }
+
   @Patch(':id')
   update(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() dto) {
     return this.service.update(req.user, id, dto);

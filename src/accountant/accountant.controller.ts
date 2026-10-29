@@ -194,6 +194,29 @@ export class AccountantController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ACCOUNTANT')
+  @Patch('companies/:companyId/entries/:entryId')
+  cEntryUpdate(
+    @Req() req,
+    @Param('companyId', ParseIntPipe) companyId: number,
+    @Param('entryId', ParseIntPipe) entryId: number,
+    @Body() dto,
+  ) {
+    return this.service.companyEntryUpdate(req.user.id, companyId, entryId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
+  @Post('companies/:companyId/ledger-accounts/import')
+  cLedgerAccountsImport(
+    @Req() req,
+    @Param('companyId', ParseIntPipe) companyId: number,
+    @Body('rows') rows: any[],
+  ) {
+    return this.service.companyLedgerAccountsImport(req.user.id, companyId, rows);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ACCOUNTANT')
   @Delete('companies/:companyId/entries/:entryId')
   cEntryDelete(
     @Req() req,
