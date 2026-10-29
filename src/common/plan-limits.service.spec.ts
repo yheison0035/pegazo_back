@@ -33,14 +33,20 @@ describe('PlanLimitsService.assertModule', () => {
   });
 
   it('dashboard/settings son CORE: pasan sin consultar el plan', async () => {
-    prisma.company.findUnique.mockResolvedValue({ plan: 'DESPEGUE', enabledModules: [] });
+    prisma.company.findUnique.mockResolvedValue({
+      plan: 'DESPEGUE',
+      enabledModules: [],
+    });
     await expect(svc.assertModule(1, 'settings')).resolves.toBeUndefined();
     await expect(svc.assertModule(1, 'dashboard')).resolves.toBeUndefined();
     expect(plans.planAllowsModule).not.toHaveBeenCalled();
   });
 
   it('control MANUAL por empresa manda sobre el plan', async () => {
-    prisma.company.findUnique.mockResolvedValue({ plan: 'ORBITA', enabledModules: ['sales'] });
+    prisma.company.findUnique.mockResolvedValue({
+      plan: 'ORBITA',
+      enabledModules: ['sales'],
+    });
     await expect(svc.assertModule(1, 'sales')).resolves.toBeUndefined();
     await expect(svc.assertModule(1, 'cartera')).rejects.toMatchObject({
       response: { error: 'MODULE_DISABLED', module: 'cartera' },
@@ -49,12 +55,18 @@ describe('PlanLimitsService.assertModule', () => {
   });
 
   it('sin control manual decide el plan: permite o bloquea con PLAN_FEATURE', async () => {
-    prisma.company.findUnique.mockResolvedValue({ plan: 'DESPEGUE', enabledModules: [] });
+    prisma.company.findUnique.mockResolvedValue({
+      plan: 'DESPEGUE',
+      enabledModules: [],
+    });
     plans.planAllowsModule.mockReturnValueOnce(true);
     await expect(svc.assertModule(1, 'cartera')).resolves.toBeUndefined();
     plans.planAllowsModule.mockReturnValueOnce(false);
     const err = await svc.assertModule(1, 'cartera').catch((e) => e);
     expect(err).toBeInstanceOf(ForbiddenException);
-    expect(err.getResponse()).toMatchObject({ error: 'PLAN_FEATURE', requiredPlan: 'IMPULSO' });
+    expect(err.getResponse()).toMatchObject({
+      error: 'PLAN_FEATURE',
+      requiredPlan: 'IMPULSO',
+    });
   });
 });
