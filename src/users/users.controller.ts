@@ -152,6 +152,19 @@ export class UsersController {
     return this.usersService.updateUser(id, user, req.user);
   }
 
+  // Cambiar SOLO la foto de un usuario (desde la tabla, sin abrir el editor).
+  // Recibe la URL ya subida (o null para quitarla). No toca ningún otro campo.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Patch('/:id/avatar')
+  setUserAvatar(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('avatar') avatar: string | null,
+    @Req() req,
+  ) {
+    return this.usersService.setUserAvatarUrl(id, avatar ?? null, req.user);
+  }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'ADMIN')
   @Delete('/:id')

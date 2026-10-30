@@ -743,6 +743,23 @@ export class UsersService {
     return { success: true, data: updated };
   }
 
+  // Actualiza SOLO el avatar de un usuario de la misma empresa (desde la tabla).
+  // No toca ningún otro campo. `avatar` null = quitar la foto.
+  async setUserAvatarUrl(id: number, avatar: string | null, user?: any) {
+    const found = await this.prisma.user.findFirst({
+      where: { id, companyId: user.companyId },
+      select: { id: true },
+    });
+    if (!found) throw new NotFoundException('Usuario no encontrado');
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { avatar: avatar || null },
+    });
+
+    return { success: true, data: updated };
+  }
+
   // Autoservicio: cualquier usuario autenticado edita SUS propios datos
   // personales (incluida la contraseña). Nunca puede cambiar su rol, correo,
   // estado, local ni empresa: esos campos se ignoran aunque lleguen en el body.
