@@ -743,6 +743,15 @@ export class UsersService {
     return { success: true, data: updated };
   }
 
+  // Sube una imagen (foto de usuario) a Cloudinary y devuelve su URL, SIN
+  // tocar ningún usuario. Sirve para el formulario de crear/editar usuario,
+  // donde la foto se asocia luego al guardar. Accesible a admins de empresa.
+  async uploadUserImage(file: Express.Multer.File) {
+    if (!file) throw new NotFoundException('No se recibió la imagen');
+    const upload = await this.cloudinaryService.uploadImage(file, 'avatars');
+    return { success: true, data: { url: upload.url } };
+  }
+
   // Actualiza SOLO el avatar de un usuario de la misma empresa (desde la tabla).
   // No toca ningún otro campo. `avatar` null = quitar la foto.
   async setUserAvatarUrl(id: number, avatar: string | null, user?: any) {
