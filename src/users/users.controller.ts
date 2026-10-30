@@ -152,6 +152,16 @@ export class UsersController {
     return this.usersService.updateUser(id, user, req.user);
   }
 
+  // Sube una imagen de usuario y devuelve su URL (sin asociarla todavía).
+  // La usa el formulario de crear/editar usuario. Admins de empresa.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Post('image-upload')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadUserImage(@UploadedFile() file: Express.Multer.File) {
+    return this.usersService.uploadUserImage(file);
+  }
+
   // Cambiar SOLO la foto de un usuario (desde la tabla, sin abrir el editor).
   // Recibe la URL ya subida (o null para quitarla). No toca ningún otro campo.
   @UseGuards(JwtAuthGuard, RolesGuard)
