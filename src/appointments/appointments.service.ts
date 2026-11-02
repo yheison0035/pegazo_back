@@ -17,6 +17,7 @@ import { AuditService } from '@/audit/audit.service';
 import { PushService } from '@/push/push.service';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { MailService } from '@/mail/mail.service';
+import { RealtimeService } from '@/realtime/realtime.service';
 
 // Colombia es UTC-5 fijo (sin horario de verano).
 const COLOMBIA_OFFSET_MIN = 300;
@@ -38,6 +39,7 @@ export class AppointmentsService {
     private push: PushService,
     private notifications: NotificationsService,
     private mail: MailService,
+    private realtime: RealtimeService,
   ) {}
 
   // Instante UTC real de inicio de una cita. `date` se guarda como medianoche
@@ -303,6 +305,11 @@ export class AppointmentsService {
         'Ese horario ya no está disponible. Elige otro.',
       );
     }
+
+    // Tiempo real: la reserva online es pública (sin sesión), así que el
+    // interceptor global NO emite. Lo emitimos a mano para que el calendario y
+    // la tabla del panel se actualicen al instante, como el inventario.
+    this.realtime.emit(company.id, 'appointments', 'create');
 
     // Confirmación por correo (best-effort: la reserva no falla si el correo no
     // está configurado o el envío falla).
