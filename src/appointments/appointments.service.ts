@@ -289,8 +289,10 @@ export class AppointmentsService {
               customerId: customer.id,
               localId: dto.localId,
               companyId: company.id,
-              status: AppointmentStatus.PENDIENTE,
-              clientConfirmed: false,
+              // Confirmación AUTOMÁTICA: la reserva online queda confirmada sin
+              // intervención del negocio (el cliente recibe registro + confirmación).
+              status: AppointmentStatus.CONFIRMADA,
+              clientConfirmed: true,
             },
             select: { id: true, date: true, startTime: true },
           });
@@ -311,9 +313,27 @@ export class AppointmentsService {
     // la tabla del panel se actualicen al instante, como el inventario.
     this.realtime.emit(company.id, 'appointments', 'create');
 
-    // Confirmación por correo (best-effort: la reserva no falla si el correo no
-    // está configurado o el envío falla).
-    void this.sendAppointmentMail(created.id, 'confirm').catch(() => null);
+    // Avisa al PROFESIONAL asignado su nueva cita (push + campana). Él solo la
+    // visualiza; no confirma (la confirmación es automática).
+    void this.notifyBarberNewAppointment(
+      {
+        id: created.id,
+        barberId: dto.barberId,
+        serviceId: dto.serviceId,
+        customerId: customer.id,
+        date: created.date,
+        startTime: created.startTime,
+      },
+      company.id,
+    ).catch(() => null);
+
+    // Correos al cliente (best-effort): 1) registro exitoso y 2) confirmación
+    // automática de la cita. La reserva no falla si el correo no está
+    // configurado o el envío falla.
+    void (async () => {
+      await this.sendAppointmentMail(created.id, 'confirm').catch(() => null);
+      await this.sendAppointmentMail(created.id, 'confirmed').catch(() => null);
+    })();
 
     return {
       success: true,
@@ -615,12 +635,16 @@ export class AppointmentsService {
     const startMinutes = timeToMinutes(dto.startTime);
     const endMinutes = startMinutes + service.duration;
 
-    // El conflicto de horario se busca solo dentro de la misma empresa.
+    // El conflicto de horario se busca solo dentro de la misma empresa. Las
+    // citas canceladas / no asistió NO ocupan: su horario vuelve a estar libre.
     const appointments = await this.prisma.appointment.findMany({
       where: {
         barberId: dto.barberId,
         date: new Date(dto.date),
         companyId: user.companyId,
+        status: {
+          notIn: [AppointmentStatus.CANCELADA, AppointmentStatus.NO_ASISTIO],
+        },
       },
       include: {
         service: true,
@@ -768,6 +792,10 @@ export class AppointmentsService {
         NOT: {
           id,
         },
+        // Las canceladas / no asistió no ocupan el horario.
+        status: {
+          notIn: [AppointmentStatus.CANCELADA, AppointmentStatus.NO_ASISTIO],
+        },
       },
       include: {
         service: true,
@@ -841,12 +869,18 @@ export class AppointmentsService {
   // para anunciarla y el botón de confirmar.
   async recentPending(user: any) {
     const since = new Date(Date.now() - 15 * 60 * 1000);
+    const isBarber = ['BARBERO', 'PROFESIONAL'].includes(user.role);
     const localIds = await getAccessibleLocalIds(this.prisma, user);
     const rows = await this.prisma.appointment.findMany({
       where: {
         companyId: user.companyId,
-        status: AppointmentStatus.PENDIENTE,
+        // Incluye las recién confirmadas (la confirmación online es automática).
+        status: {
+          notIn: [AppointmentStatus.CANCELADA, AppointmentStatus.NO_ASISTIO],
+        },
         createdAt: { gte: since },
+        // El profesional solo recibe SUS citas (a su nombre); solo visualiza.
+        ...(isBarber ? { barberId: user.id } : {}),
         ...(localIds ? { localId: { in: localIds } } : {}),
       },
       orderBy: { createdAt: 'desc' },

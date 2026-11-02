@@ -69,8 +69,9 @@ export class AppointmentsController {
     return this.service.getMonth(req.user, query);
   }
 
-  // Citas recientes por confirmar (para el aviso por voz del panel). Antes de :id.
-  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'COORDINADOR')
+  // Citas recientes para el aviso por voz del panel (y del profesional, que ve
+  // solo las suyas). Antes de :id.
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'COORDINADOR', 'BARBERO', 'PROFESIONAL')
   @Get('recent-pending')
   recentPending(@Req() req) {
     return this.service.recentPending(req.user);
