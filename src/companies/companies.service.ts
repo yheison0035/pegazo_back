@@ -61,6 +61,8 @@ export class CompaniesService {
         loyaltyMaxDays: true,
         openHour: true,
         closeHour: true,
+        // Horario por día (si lo configuró) vive en bookingConfig.weekHours.
+        bookingConfig: true,
         // Correo propio del negocio (sin la contraseña).
         mailHost: true,
         mailPort: true,
@@ -79,7 +81,8 @@ export class CompaniesService {
       withPass?.mailUser &&
       withPass?.mailPassword
     );
-    return { success: true, data: { ...company, mailConfigured } };
+    const weekHours = (company?.bookingConfig as any)?.weekHours || null;
+    return { success: true, data: { ...company, weekHours, mailConfigured } };
   }
 
   // ---- Página pública de citas (/booking/:slug) ----
@@ -567,12 +570,54 @@ export class CompaniesService {
   // Horario de atención (para disponibilidad de citas).
   async updateHours(
     user: any,
-    dto: { openHour?: number; closeHour?: number },
+    dto: {
+      openHour?: number;
+      closeHour?: number;
+      // Horario por DÍA de la semana (clave 0=Dom..6=Sáb). Cada día:
+      // { open, close, closed }. El negocio puede manejar horarios distintos.
+      weekHours?: Record<string, { open?: number; close?: number; closed?: boolean }>;
+    },
   ) {
-    const clamp = (h: number) => Math.min(23, Math.max(0, Math.floor(h)));
+    const clamp = (h: number) => Math.min(23, Math.max(0, Math.floor(Number(h))));
     const data: any = {};
-    if (dto.openHour != null) data.openHour = clamp(Number(dto.openHour));
-    if (dto.closeHour != null) data.closeHour = clamp(Number(dto.closeHour));
+
+    if (dto.openHour != null) data.openHour = clamp(dto.openHour);
+    if (dto.closeHour != null) data.closeHour = clamp(dto.closeHour);
+
+    // Horario por día: se sanea y se guarda en bookingConfig.weekHours (merge
+    // para no pisar el resto de la config de la página de citas).
+    if (dto.weekHours && typeof dto.weekHours === 'object') {
+      const clean: Record<string, { open: number; close: number; closed: boolean }> = {};
+      const opens: number[] = [];
+      const closes: number[] = [];
+      for (let d = 0; d <= 6; d++) {
+        const src = dto.weekHours[String(d)];
+        if (!src) continue;
+        const closed = !!src.closed;
+        let open = clamp(src.open ?? 9);
+        let close = clamp(src.close ?? 20);
+        if (close <= open) close = Math.min(23, open + 1);
+        clean[String(d)] = { open, close, closed };
+        if (!closed) {
+          opens.push(open);
+          closes.push(close);
+        }
+      }
+
+      const company = await this.prisma.company.findUnique({
+        where: { id: user.companyId },
+        select: { bookingConfig: true },
+      });
+      const cfg: any = { ...((company?.bookingConfig as any) || {}) };
+      cfg.weekHours = clean;
+      data.bookingConfig = cfg;
+
+      // Respaldo: open/close generales = rango de los días abiertos (lo usa
+      // cualquier parte que aún lea openHour/closeHour, p. ej. días sin configurar).
+      if (opens.length) data.openHour = Math.min(...opens);
+      if (closes.length) data.closeHour = Math.max(...closes);
+    }
+
     if (
       data.openHour != null &&
       data.closeHour != null &&
@@ -584,9 +629,16 @@ export class CompaniesService {
     const company = await this.prisma.company.update({
       where: { id: user.companyId },
       data,
-      select: { openHour: true, closeHour: true },
+      select: { openHour: true, closeHour: true, bookingConfig: true },
     });
-    return { success: true, data: company };
+    return {
+      success: true,
+      data: {
+        openHour: company.openHour,
+        closeHour: company.closeHour,
+        weekHours: (company.bookingConfig as any)?.weekHours || null,
+      },
+    };
   }
 
   // Sincroniza la fidelización con el historial de ventas: reproduce, cliente
