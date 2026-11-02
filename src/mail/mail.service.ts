@@ -697,6 +697,125 @@ export class MailService {
     return { ok: true, via: usingOwn ? 'smtp-empresa' : 'smtp-global' };
   }
 
+  // Correo de CITA al CLIENTE: confirmación al reservar o recordatorio (3, 2 o
+  // 1 día antes). Dinámico para cualquier tipo de negocio (barbería, odontología,
+  // lavado, etc.): usa el nombre del negocio, el servicio, el profesional, la
+  // sede, la fecha y la hora. Incluye un botón de WhatsApp directo para
+  // comunicarse con el negocio ("¿Desea comunicarse con <negocio>?"). Email-safe.
+  async sendAppointmentEmail(opts: {
+    to: string;
+    companyName: string;
+    smtp?: SmtpConfig;
+    brandColor?: string | null;
+    logo?: string | null;
+    whatsappPhone?: string | null; // solo dígitos
+    customerName?: string | null;
+    serviceName: string;
+    professionalName: string;
+    localName?: string | null;
+    dateLabel: string; // "lunes, 3 de noviembre de 2026"
+    timeLabel: string; // "10:00 a. m."
+    kind: 'confirm' | 'reminder';
+    daysLeft?: number; // solo para kind='reminder' (3, 2 o 1)
+    supportEmail?: string | null;
+    supportPhone?: string | null;
+  }): Promise<{ ok: boolean; via: string }> {
+    const {
+      to,
+      companyName,
+      smtp,
+      whatsappPhone,
+      customerName,
+      serviceName,
+      professionalName,
+      localName,
+      dateLabel,
+      timeLabel,
+      kind,
+      daysLeft,
+    } = opts;
+    const accent = this.safeColor(opts.brandColor) || '#111827';
+    const name = this.safeName(companyName);
+
+    const isReminder = kind === 'reminder';
+    const badge = isReminder
+      ? daysLeft === 1
+        ? 'Tu cita es mañana'
+        : `Faltan ${daysLeft} días`
+      : 'Cita confirmada';
+    const subject = isReminder
+      ? `Recordatorio: tu cita en ${name} ${
+          daysLeft === 1 ? 'es mañana' : `es en ${daysLeft} días`
+        }`
+      : `Tu cita en ${name} quedó registrada`;
+    const title = isReminder ? 'Recordatorio de tu cita' : '¡Cita registrada!';
+    const intro = isReminder
+      ? `Hola${customerName ? ` ${this.escapeHtml(customerName)}` : ''}, te recordamos tu próxima cita en <b>${name}</b>.`
+      : `Hola${customerName ? ` ${this.escapeHtml(customerName)}` : ''}, tu cita en <b>${name}</b> quedó registrada. Aquí están los detalles:`;
+
+    const row = (label: string, value: string) =>
+      `<tr>
+        <td style="padding:8px 0;font-size:13px;color:#6b7280;width:40%;">${this.escapeHtml(label)}</td>
+        <td style="padding:8px 0;font-size:14px;color:#111827;font-weight:600;">${this.escapeHtml(value)}</td>
+      </tr>`;
+    const detailsTable = `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 4px;border-top:1px solid #eef0f3;border-bottom:1px solid #eef0f3;">
+        ${row('Servicio', serviceName)}
+        ${row('Profesional', professionalName)}
+        ${localName ? row('Sede', localName) : ''}
+        ${row('Fecha', dateLabel)}
+        ${row('Hora', timeLabel)}
+      </table>`;
+
+    // Botón de WhatsApp directo al negocio.
+    const waBlock = whatsappPhone
+      ? `<div style="margin-top:24px;text-align:center;">
+           <p style="margin:0 0 4px;font-size:14px;color:#374151;">¿Desea comunicarse con ${name}?</p>
+           ${this.emailButton(
+             `https://wa.me/${whatsappPhone}`,
+             'Escribir por WhatsApp',
+             '#25D366',
+           )}
+         </div>`
+      : '';
+
+    const body = `
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#374151;">${intro}</p>
+      ${detailsTable}
+      <p style="margin:16px 0 0;font-size:13px;color:#6b7280;line-height:1.5;">Si no puedes asistir, por favor avísanos con tiempo.</p>
+      ${waBlock}`;
+
+    const html = this.emailShell({
+      accent,
+      companyName: name,
+      logo: opts.logo,
+      preheader: isReminder ? badge : `${serviceName} · ${dateLabel} ${timeLabel}`,
+      title,
+      subtitle: `${serviceName} · ${dateLabel}`,
+      badge,
+      body,
+      supportEmail: opts.supportEmail,
+      supportPhone: opts.supportPhone || (whatsappPhone ?? null),
+    });
+
+    if (!smtp?.host && this.resendEnabled()) {
+      await this.sendViaResend({ to, subject, html, fromName: name });
+      return { ok: true, via: 'resend' };
+    }
+    if (!smtp?.host && this.brevoEnabled()) {
+      await this.sendViaBrevo({ to, subject, html, fromName: name });
+      return { ok: true, via: 'brevo' };
+    }
+    const resolved = this.resolveTransporter(smtp);
+    if (!resolved) {
+      throw new Error('No hay correo configurado para enviar la cita.');
+    }
+    const usingOwn = !!smtp?.host;
+    const from = usingOwn ? resolved.from : `"${name}" <${resolved.from}>`;
+    await resolved.tx.sendMail({ from, to, subject, html });
+    return { ok: true, via: usingOwn ? 'smtp-empresa' : 'smtp-global' };
+  }
+
   // Correo de CONFIRMACIÓN de compra con TODOS los datos (items, totales,
   // entrega, dirección). Marca de la empresa. Email-safe.
   async sendOrderConfirmation(opts: {
