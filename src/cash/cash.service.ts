@@ -6,8 +6,12 @@ import {
 import { PrismaService } from '@/prisma.service';
 import { OpenCashDto, CashMovementDto, CloseCashDto } from './dto/cash.dto';
 
-// Suma ingresos/egresos y calcula el esperado en caja.
-function computeTotals(register: any) {
+// Suma ingresos (ventas en efectivo) y gastos en efectivo del día, y calcula el
+// esperado en caja. Los INGRESOS entran por las ventas; las SALIDAS son los
+// gastos en efectivo registrados en el módulo Gastos durante el turno. `egresos`
+// se mantiene por compatibilidad (movimientos manuales antiguos); las cajas
+// nuevas ya no los usan.
+function computeTotals(register: any, gastos = 0) {
   const movements = register.movements || [];
   const ingresos = movements
     .filter((m: any) => m.type === 'INGRESO')
@@ -15,8 +19,8 @@ function computeTotals(register: any) {
   const egresos = movements
     .filter((m: any) => m.type === 'EGRESO')
     .reduce((s: number, m: any) => s + m.amount, 0);
-  const expected = (register.openingAmount || 0) + ingresos - egresos;
-  return { ingresos, egresos, expected };
+  const expected = (register.openingAmount || 0) + ingresos - egresos - gastos;
+  return { ingresos, egresos, gastos, expected };
 }
 
 @Injectable()
@@ -54,9 +58,10 @@ export class CashService {
       },
     });
 
+    const gastos = await this.sumCashExpenses(base);
     return {
       success: true,
-      data: { ...register, totals: computeTotals(register) },
+      data: { ...register, totals: computeTotals(register, gastos) },
     };
   }
 
@@ -95,11 +100,38 @@ export class CashService {
       include: { movements: true },
     });
 
+    const gastos = await this.sumCashExpenses(register);
     return {
       success: true,
       message: 'Caja abierta',
-      data: { ...full, totals: computeTotals(full) },
+      data: { ...full, totals: computeTotals(full, gastos) },
     };
+  }
+
+  // Suma los GASTOS en EFECTIVO registrados durante la vida de la caja (del
+  // inicio del día en que se abrió hasta su cierre, o hasta ahora si sigue
+  // abierta), en la misma sede. Son las SALIDAS de efectivo del cajón: se
+  // descuentan del esperado para que el arqueo cuadre. Se cuentan por la fecha
+  // de registro (createdAt) y se excluyen los gastos eliminados.
+  private async sumCashExpenses(register: {
+    localId: number;
+    openedAt: Date;
+    closedAt: Date | null;
+  }): Promise<number> {
+    const createdAt: any = {
+      gte: this.colombiaDayStart(new Date(register.openedAt)),
+    };
+    if (register.closedAt) createdAt.lt = register.closedAt;
+    const agg = await this.prisma.expense.aggregate({
+      where: {
+        localId: register.localId,
+        paymentMethod: 'EFECTIVO' as any,
+        status: { not: 'ELIMINADO' as any },
+        createdAt,
+      },
+      _sum: { amount: true },
+    });
+    return Number(agg._sum.amount || 0);
   }
 
   // Inicio del día (zona Colombia UTC-5) de una fecha, expresado en UTC.
@@ -245,7 +277,8 @@ export class CashService {
       include: { movements: true },
     });
 
-    const { expected } = computeTotals(fresh);
+    const gastos = await this.sumCashExpenses(register);
+    const { expected } = computeTotals(fresh, gastos);
     const difference = (dto.countedAmount ?? 0) - expected;
 
     const updated = await this.prisma.cashRegister.update({
@@ -265,7 +298,7 @@ export class CashService {
     return {
       success: true,
       message: 'Caja cerrada',
-      data: { ...updated, totals: computeTotals(updated) },
+      data: { ...updated, totals: computeTotals(updated, gastos) },
     };
   }
 
@@ -303,10 +336,11 @@ export class CashService {
       },
       include: { movements: true },
     });
+    const gastos = await this.sumCashExpenses(updated);
     return {
       success: true,
       message: 'Caja reabierta',
-      data: { ...updated, totals: computeTotals(updated) },
+      data: { ...updated, totals: computeTotals(updated, gastos) },
     };
   }
 
@@ -327,10 +361,11 @@ export class CashService {
       data: { openingAmount: Number(openingAmount) || 0 },
       include: { movements: true },
     });
+    const gastos = await this.sumCashExpenses(updated);
     return {
       success: true,
       message: 'Base inicial actualizada',
-      data: { ...updated, totals: computeTotals(updated) },
+      data: { ...updated, totals: computeTotals(updated, gastos) },
     };
   }
 
@@ -396,9 +431,10 @@ export class CashService {
     });
     if (!register) throw new NotFoundException('Caja no encontrada');
 
+    const gastos = await this.sumCashExpenses(register);
     return {
       success: true,
-      data: { ...register, totals: computeTotals(register) },
+      data: { ...register, totals: computeTotals(register, gastos) },
     };
   }
 

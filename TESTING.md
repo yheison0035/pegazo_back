@@ -39,3 +39,14 @@ disponibilidad de citas. `AppointmentsService.resolveBusinessHours` es la fuente
   `resolveBusinessHours` directamente (fuente compartida).
 - `companies.hours.spec.ts` — `updateHours` sanea y guarda `weekHours` sin pisar
   el resto de `bookingConfig` y sincroniza `openHour`/`closeHour` de respaldo.
+
+## Caja: ingresos por ventas, salidas por gastos
+
+La caja ya no tiene movimientos manuales de efectivo. Los INGRESOS entran por las
+ventas en efectivo (reconciliación automática) y las SALIDAS son los GASTOS en
+efectivo del día registrados en el módulo Gastos. `CashService.sumCashExpenses`
+suma los gastos `EFECTIVO`, de la sede, no eliminados, dentro de la ventana de la
+caja (por `createdAt`), y `computeTotals` resta esos `gastos` del esperado
+(`base + ventas − gastos`). Spec: `cash.service.spec.ts` (el esperado resta los
+gastos; el filtro es EFECTIVO + sede + no eliminados; sin gastos el esperado es
+base + ventas).
