@@ -69,6 +69,13 @@ export class AppointmentsController {
     return this.service.getMonth(req.user, query);
   }
 
+  // Citas recientes por confirmar (para el aviso por voz del panel). Antes de :id.
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'COORDINADOR')
+  @Get('recent-pending')
+  recentPending(@Req() req) {
+    return this.service.recentPending(req.user);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number, @Req() req) {
     return this.service.findOne(id, req.user);
@@ -101,6 +108,25 @@ export class AppointmentsController {
     @Req() req,
   ) {
     return this.service.setClientConfirmed(id, body?.confirmed !== false, req.user);
+  }
+
+  // Confirmar una cita: pasa a CONFIRMADA y le avisa al cliente por correo.
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'COORDINADOR')
+  @Patch(':id/confirm')
+  confirm(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.service.confirmAppointment(id, req.user);
+  }
+
+  // Cambio rápido de estado (confirmar, cancelar, no asistió…) desde el
+  // calendario, sin abrir el editor. Body: { status }.
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'COORDINADOR')
+  @Patch(':id/status')
+  setStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('status') status: string,
+    @Req() req,
+  ) {
+    return this.service.setAppointmentStatus(id, status, req.user);
   }
 
   @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA')

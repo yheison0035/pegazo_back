@@ -715,7 +715,7 @@ export class MailService {
     localName?: string | null;
     dateLabel: string; // "lunes, 3 de noviembre de 2026"
     timeLabel: string; // "10:00 a. m."
-    kind: 'confirm' | 'reminder';
+    kind: 'confirm' | 'confirmed' | 'reminder';
     daysLeft?: number; // solo para kind='reminder' (3, 2 o 1)
     supportEmail?: string | null;
     supportPhone?: string | null;
@@ -738,20 +738,32 @@ export class MailService {
     const name = this.safeName(companyName);
 
     const isReminder = kind === 'reminder';
+    const isConfirmed = kind === 'confirmed';
     const badge = isReminder
       ? daysLeft === 1
         ? 'Tu cita es mañana'
         : `Faltan ${daysLeft} días`
-      : 'Cita confirmada';
+      : isConfirmed
+        ? '¡Cita confirmada!'
+        : 'Cita registrada';
     const subject = isReminder
       ? `Recordatorio: tu cita en ${name} ${
           daysLeft === 1 ? 'es mañana' : `es en ${daysLeft} días`
         }`
-      : `Tu cita en ${name} quedó registrada`;
-    const title = isReminder ? 'Recordatorio de tu cita' : '¡Cita registrada!';
+      : isConfirmed
+        ? `Tu cita en ${name} fue confirmada`
+        : `Tu cita en ${name} quedó registrada`;
+    const title = isReminder
+      ? 'Recordatorio de tu cita'
+      : isConfirmed
+        ? '¡Tu cita fue confirmada!'
+        : '¡Cita registrada!';
+    const greet = `Hola${customerName ? ` ${this.escapeHtml(customerName)}` : ''}`;
     const intro = isReminder
-      ? `Hola${customerName ? ` ${this.escapeHtml(customerName)}` : ''}, te recordamos tu próxima cita en <b>${name}</b>.`
-      : `Hola${customerName ? ` ${this.escapeHtml(customerName)}` : ''}, tu cita en <b>${name}</b> quedó registrada. Aquí están los detalles:`;
+      ? `${greet}, te recordamos tu próxima cita en <b>${name}</b>.`
+      : isConfirmed
+        ? `${greet}, <b>${name}</b> confirmó tu cita. ¡Te esperamos!`
+        : `${greet}, tu cita en <b>${name}</b> quedó registrada. Aquí están los detalles:`;
 
     const row = (label: string, value: string) =>
       `<tr>
@@ -809,6 +821,81 @@ export class MailService {
     const resolved = this.resolveTransporter(smtp);
     if (!resolved) {
       throw new Error('No hay correo configurado para enviar la cita.');
+    }
+    const usingOwn = !!smtp?.host;
+    const from = usingOwn ? resolved.from : `"${name}" <${resolved.from}>`;
+    await resolved.tx.sendMail({ from, to, subject, html });
+    return { ok: true, via: usingOwn ? 'smtp-empresa' : 'smtp-global' };
+  }
+
+  // Correo de AGRADECIMIENTO tras la visita (cuando se cobra la cita): da las
+  // gracias e invita a agendar la próxima cita con un botón a la página pública
+  // de reservas. Dinámico para cualquier tipo de negocio. Email-safe.
+  async sendAppointmentThankYou(opts: {
+    to: string;
+    companyName: string;
+    smtp?: SmtpConfig;
+    brandColor?: string | null;
+    logo?: string | null;
+    customerName?: string | null;
+    serviceName?: string | null;
+    bookingUrl?: string | null;
+    whatsappPhone?: string | null;
+    supportEmail?: string | null;
+    supportPhone?: string | null;
+  }): Promise<{ ok: boolean; via: string }> {
+    const { to, smtp, bookingUrl, whatsappPhone } = opts;
+    const accent = this.safeColor(opts.brandColor) || '#111827';
+    const name = this.safeName(opts.companyName);
+    const greet = `Hola${opts.customerName ? ` ${this.escapeHtml(opts.customerName)}` : ''}`;
+    const subject = `Gracias por tu visita a ${name}`;
+
+    const body = `
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#374151;">${greet}, ¡gracias por visitar <b>${name}</b>${
+        opts.serviceName
+          ? ` para tu <b>${this.escapeHtml(opts.serviceName)}</b>`
+          : ''
+      }!</p>
+      <p style="margin:0 0 4px;font-size:15px;line-height:1.6;color:#374151;">¿Deseas agendar tu próxima cita? Hazlo en un minuto:</p>
+      ${
+        bookingUrl
+          ? this.emailButton(bookingUrl, 'Agendar mi próxima cita', accent)
+          : ''
+      }
+      ${
+        whatsappPhone
+          ? `<div style="margin-top:18px;text-align:center;"><p style="margin:0 0 4px;font-size:13px;color:#6b7280;">¿Prefieres escribirnos?</p>${this.emailButton(
+              `https://wa.me/${whatsappPhone}`,
+              'Escribir por WhatsApp',
+              '#25D366',
+            )}</div>`
+          : ''
+      }`;
+
+    const html = this.emailShell({
+      accent,
+      companyName: name,
+      logo: opts.logo,
+      preheader: `Gracias por tu visita · agenda tu próxima cita`,
+      title: '¡Gracias por tu visita!',
+      subtitle: opts.serviceName || null,
+      badge: 'Vuelve pronto',
+      body,
+      supportEmail: opts.supportEmail,
+      supportPhone: opts.supportPhone || (whatsappPhone ?? null),
+    });
+
+    if (!smtp?.host && this.resendEnabled()) {
+      await this.sendViaResend({ to, subject, html, fromName: name });
+      return { ok: true, via: 'resend' };
+    }
+    if (!smtp?.host && this.brevoEnabled()) {
+      await this.sendViaBrevo({ to, subject, html, fromName: name });
+      return { ok: true, via: 'brevo' };
+    }
+    const resolved = this.resolveTransporter(smtp);
+    if (!resolved) {
+      throw new Error('No hay correo configurado para enviar el agradecimiento.');
     }
     const usingOwn = !!smtp?.host;
     const from = usingOwn ? resolved.from : `"${name}" <${resolved.from}>`;

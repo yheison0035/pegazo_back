@@ -1106,7 +1106,7 @@ export class SalesService {
     // se pierda. El Consumidor Final no acumula.
     const loyaltyPct = await this.loyaltyDiscountForSale(user.companyId, dto);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // Plan separe (apartado): la venta se registra con paymentStatus
       // PLAN_SEPARE, NO descuenta stock ni entra a caja como venta completa. El
       // dinero entra por ABONOS (SalePayment) y el stock se descuenta al
@@ -1425,6 +1425,71 @@ export class SalesService {
 
       return { success: true, data: sale };
     });
+
+    // Tras COBRAR una cita: correo de agradecimiento al cliente con botón para
+    // agendar su próxima cita (best-effort, no afecta la venta).
+    if (dto.appointmentId) {
+      void this.sendAppointmentThankYou(dto.appointmentId, user.companyId).catch(
+        () => null,
+      );
+    }
+
+    return result;
+  }
+
+  // Agradece la visita al cliente de una cita cobrada e invita a reservar de
+  // nuevo. Dinámico para cualquier negocio; usa el SMTP de la empresa o el global.
+  private async sendAppointmentThankYou(appointmentId: number, companyId: number) {
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, companyId },
+      select: {
+        service: { select: { name: true } },
+        customer: { select: { name: true, email: true } },
+      },
+    });
+    if (!appt?.customer?.email) return;
+
+    const company: any = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      omit: { mailPassword: false },
+    });
+    if (!company) return;
+
+    const smtp = company.mailHost
+      ? {
+          host: company.mailHost,
+          port: company.mailPort,
+          user: company.mailUser,
+          pass: company.mailPassword,
+          fromEmail: company.mailFromEmail,
+          fromName: company.mailFromName || company.name,
+        }
+      : undefined;
+    const override: any = company.bookingConfig || {};
+    const whatsappPhone = String(override.whatsapp || company.phone || '').replace(
+      /\D/g,
+      '',
+    );
+    const bookingUrl = company.slug
+      ? `https://pegazo.co/booking/${company.slug}`
+      : null;
+
+    try {
+      await this.mail.sendAppointmentThankYou({
+        to: appt.customer.email,
+        companyName: company.mailFromName || company.websiteName || company.name,
+        smtp,
+        brandColor: company.primaryColor,
+        logo: company.logo || null,
+        customerName: appt.customer.name || null,
+        serviceName: appt.service?.name || null,
+        bookingUrl,
+        whatsappPhone: whatsappPhone || null,
+        supportEmail: company.mailFromEmail || null,
+      });
+    } catch {
+      /* el correo no debe afectar el cobro */
+    }
   }
 
   async update(id: number, dto: UpdateSaleDto, user: any) {
