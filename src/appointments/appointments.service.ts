@@ -331,7 +331,7 @@ export class AppointmentsService {
   // SMTP de la empresa si lo tiene, o el global. Dinámico para cualquier negocio.
   private async sendAppointmentMail(
     appointmentId: number,
-    kind: 'confirm' | 'reminder',
+    kind: 'confirm' | 'confirmed' | 'reminder',
     daysLeft?: number,
   ): Promise<boolean> {
     const appt = await this.prisma.appointment.findUnique({
@@ -836,6 +836,100 @@ export class AppointmentsService {
   }
 
   // Marca (o desmarca) que la cita fue confirmada con el cliente.
+  // Citas RECIENTES por confirmar (últimos 15 min, estado PENDIENTE) de la
+  // empresa. Para el aviso por voz del panel (nueva reserva). Incluye los datos
+  // para anunciarla y el botón de confirmar.
+  async recentPending(user: any) {
+    const since = new Date(Date.now() - 15 * 60 * 1000);
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const rows = await this.prisma.appointment.findMany({
+      where: {
+        companyId: user.companyId,
+        status: AppointmentStatus.PENDIENTE,
+        createdAt: { gte: since },
+        ...(localIds ? { localId: { in: localIds } } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        date: true,
+        startTime: true,
+        createdAt: true,
+        clientConfirmed: true,
+        customer: { select: { name: true } },
+        service: { select: { name: true } },
+        barber: { select: { name: true } },
+      },
+    });
+    return { success: true, data: rows };
+  }
+
+  // Confirma una cita (estado CONFIRMADA) y AVISA al cliente por correo que su
+  // cita fue confirmada. Pensado para el botón "Confirmar" del aviso de nueva
+  // cita.
+  async confirmAppointment(id: number, user: any) {
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id, companyId: user.companyId },
+      select: { id: true, status: true },
+    });
+    if (!appt) throw new NotFoundException('Cita no encontrada');
+
+    await this.prisma.appointment.update({
+      where: { id },
+      data: {
+        status: AppointmentStatus.CONFIRMADA,
+        clientConfirmed: true,
+      },
+    });
+
+    await this.audit.log({
+      entity: 'appointment',
+      entityId: id,
+      action: 'UPDATE',
+      user,
+      changes: { status: AppointmentStatus.CONFIRMADA, clientConfirmed: true },
+    });
+
+    // Avísale al cliente por correo que su cita quedó confirmada (best-effort).
+    void this.sendAppointmentMail(id, 'confirmed').catch(() => null);
+
+    return { success: true, data: { id, status: AppointmentStatus.CONFIRMADA } };
+  }
+
+  // Cambia el estado de una cita de forma RÁPIDA (select del calendario), sin
+  // abrir el editor. Si pasa a CONFIRMADA, avisa al cliente por correo.
+  async setAppointmentStatus(id: number, statusRaw: string, user: any) {
+    const status = String(statusRaw || '').toUpperCase() as AppointmentStatus;
+    if (!Object.values(AppointmentStatus).includes(status)) {
+      throw new BadRequestException('Estado inválido');
+    }
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id, companyId: user.companyId },
+      select: { id: true, status: true },
+    });
+    if (!appt) throw new NotFoundException('Cita no encontrada');
+
+    const data: any = { status };
+    // Confirmar con el cliente queda implícito al marcar CONFIRMADA.
+    if (status === AppointmentStatus.CONFIRMADA) data.clientConfirmed = true;
+
+    await this.prisma.appointment.update({ where: { id }, data });
+    await this.audit.log({
+      entity: 'appointment',
+      entityId: id,
+      action: 'UPDATE',
+      user,
+      changes: { status },
+    });
+
+    if (status === AppointmentStatus.CONFIRMADA) {
+      void this.sendAppointmentMail(id, 'confirmed').catch(() => null);
+    }
+
+    return { success: true, data: { id, status } };
+  }
+
   async setClientConfirmed(id: number, confirmed: boolean, user: any) {
     const appt = await this.prisma.appointment.findFirst({
       where: { id, companyId: user.companyId },
