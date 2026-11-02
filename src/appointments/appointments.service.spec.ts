@@ -5,6 +5,8 @@ import { AuditService } from '@/audit/audit.service';
 import { PlanLimitsService } from '@/common/plan-limits.service';
 import { PushService } from '@/push/push.service';
 import { NotificationsService } from '@/notifications/notifications.service';
+import { MailService } from '@/mail/mail.service';
+import { RealtimeService } from '@/realtime/realtime.service';
 
 // "Nueva cita asignada": debe llegar al barbero asignado por la CAMPANA (in-app)
 // y por push; a nadie más. Regla: el barbero solo ve lo suyo.
@@ -27,6 +29,8 @@ describe('AppointmentsService.notifyBarberNewAppointment', () => {
         { provide: PlanLimitsService, useValue: { assertModule: jest.fn() } },
         { provide: PushService, useValue: push },
         { provide: NotificationsService, useValue: notifications },
+        { provide: MailService, useValue: { sendAppointmentEmail: jest.fn() } },
+        { provide: RealtimeService, useValue: { emit: jest.fn() } },
       ],
     }).compile();
     svc = mod.get(AppointmentsService);
