@@ -16,6 +16,7 @@ import { minutesToColombiaHour, timeToMinutes } from '@/utils/format';
 import { AuditService } from '@/audit/audit.service';
 import { PushService } from '@/push/push.service';
 import { NotificationsService } from '@/notifications/notifications.service';
+import { MailService } from '@/mail/mail.service';
 
 // Colombia es UTC-5 fijo (sin horario de verano).
 const COLOMBIA_OFFSET_MIN = 300;
@@ -36,6 +37,7 @@ export class AppointmentsService {
     private planLimits: PlanLimitsService,
     private push: PushService,
     private notifications: NotificationsService,
+    private mail: MailService,
   ) {}
 
   // Instante UTC real de inicio de una cita. `date` se guarda como medianoche
@@ -211,63 +213,100 @@ export class AppointmentsService {
         `El profesional no atiende ese día (${rest.reason}). Elige otra fecha.`,
       );
 
-    // Conflicto de horario (mismo profesional, misma empresa).
-    const startMinutes = timeToMinutes(dto.startTime);
-    const endMinutes = startMinutes + service.duration;
-    const sameDay = await this.prisma.appointment.findMany({
-      where: {
-        barberId: dto.barberId,
-        date: new Date(dto.date),
-        companyId: company.id,
-        status: { not: AppointmentStatus.CANCELADA },
-      },
-      include: { service: true },
-    });
-    const conflict = sameDay.some((a) => {
-      const aStart = timeToMinutes(a.startTime);
-      const aEnd = aStart + a.service.duration;
-      return startMinutes < aEnd && endMinutes > aStart;
-    });
-    if (conflict)
-      throw new BadRequestException(
-        'Ese horario ya no está disponible. Elige otro.',
-      );
+    const email = String(dto.customerEmail || '').trim().toLowerCase();
 
-    // Cliente: buscar por celular o crear uno nuevo.
+    // Cliente: buscar por celular; crear si no existe. Se guarda/actualiza el
+    // correo para poder enviarle confirmación y recordatorios.
     let customer = await this.prisma.customer.findFirst({
       where: { companyId: company.id, phone },
-      select: { id: true },
+      select: { id: true, email: true },
     });
     if (!customer) {
       customer = await this.prisma.customer.create({
         data: {
           name: name.toUpperCase(),
           phone,
+          email,
           companyId: company.id,
           type_document: 'CC',
         },
-        select: { id: true },
+        select: { id: true, email: true },
+      });
+    } else if (email && customer.email !== email) {
+      await this.prisma.customer.update({
+        where: { id: customer.id },
+        data: { email },
       });
     }
 
-    const created = await this.prisma.appointment.create({
-      data: {
-        date: new Date(dto.date),
-        startTime: dto.startTime,
-        startMinutes,
-        notes: ['Reserva online', dto.notes?.trim()]
-          .filter(Boolean)
-          .join(' · '),
-        serviceId: dto.serviceId,
-        barberId: dto.barberId,
-        customerId: customer.id,
-        localId: dto.localId,
-        companyId: company.id,
-        status: AppointmentStatus.PENDIENTE,
-        clientConfirmed: false,
-      },
-      select: { id: true, date: true, startTime: true },
-    });
+    const startMinutes = timeToMinutes(dto.startTime);
+    const endMinutes = startMinutes + service.duration;
+    const serviceDuration = service.duration;
+
+    // Creación ATÓMICA con verificación de solapamiento dentro de una
+    // transacción serializable: evita la doble reserva (dos clientes pidiendo
+    // la misma hora al mismo tiempo). Las canceladas no cuentan como ocupadas.
+    let created: { id: number; date: Date; startTime: string };
+    try {
+      created = await this.prisma.$transaction(
+        async (tx) => {
+          const sameDay = await tx.appointment.findMany({
+            where: {
+              barberId: dto.barberId,
+              date: new Date(dto.date),
+              companyId: company.id,
+              status: {
+                notIn: [
+                  AppointmentStatus.CANCELADA,
+                  AppointmentStatus.NO_ASISTIO,
+                ],
+              },
+            },
+            include: { service: { select: { duration: true } } },
+          });
+          const conflict = sameDay.some((a) => {
+            const aStart = timeToMinutes(a.startTime);
+            const aEnd = aStart + a.service.duration;
+            return startMinutes < aEnd && endMinutes > aStart;
+          });
+          if (conflict) {
+            throw new BadRequestException(
+              'Ese horario ya no está disponible. Elige otro.',
+            );
+          }
+          return tx.appointment.create({
+            data: {
+              date: new Date(dto.date),
+              startTime: dto.startTime,
+              startMinutes,
+              notes: ['Reserva online', dto.notes?.trim()]
+                .filter(Boolean)
+                .join(' · '),
+              serviceId: dto.serviceId,
+              barberId: dto.barberId,
+              customerId: customer.id,
+              localId: dto.localId,
+              companyId: company.id,
+              status: AppointmentStatus.PENDIENTE,
+              clientConfirmed: false,
+            },
+            select: { id: true, date: true, startTime: true },
+          });
+        },
+        { isolationLevel: 'Serializable' },
+      );
+    } catch (e: any) {
+      if (e instanceof BadRequestException) throw e;
+      // Fallo de serialización (P2034) por reserva simultánea: el horario se
+      // tomó justo ahora. Se pide elegir otro.
+      throw new BadRequestException(
+        'Ese horario ya no está disponible. Elige otro.',
+      );
+    }
+
+    // Confirmación por correo (best-effort: la reserva no falla si el correo no
+    // está configurado o el envío falla).
+    void this.sendAppointmentMail(created.id, 'confirm').catch(() => null);
 
     return {
       success: true,
@@ -275,8 +314,86 @@ export class AppointmentsService {
         id: created.id,
         date: created.date,
         startTime: created.startTime,
+        durationMinutes: serviceDuration,
       },
     };
+  }
+
+  // Formatea una cita a correo y lo envía (confirmación o recordatorio). Carga
+  // todo lo necesario (empresa, servicio, profesional, sede, cliente) y usa el
+  // SMTP de la empresa si lo tiene, o el global. Dinámico para cualquier negocio.
+  private async sendAppointmentMail(
+    appointmentId: number,
+    kind: 'confirm' | 'reminder',
+    daysLeft?: number,
+  ): Promise<boolean> {
+    const appt = await this.prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      include: {
+        service: { select: { name: true } },
+        barber: { select: { name: true } },
+        local: { select: { name: true } },
+        customer: { select: { name: true, email: true } },
+      },
+    });
+    if (!appt?.customer?.email) return false;
+
+    const company: any = await this.prisma.company.findUnique({
+      where: { id: appt.companyId },
+      omit: { mailPassword: false },
+    });
+    if (!company) return false;
+
+    const smtp = company.mailHost
+      ? {
+          host: company.mailHost,
+          port: company.mailPort,
+          user: company.mailUser,
+          pass: company.mailPassword,
+          fromEmail: company.mailFromEmail,
+          fromName: company.mailFromName || company.name,
+        }
+      : undefined;
+
+    const override: any = company.bookingConfig || {};
+    const whatsappPhone = String(
+      override.whatsapp || company.phone || '',
+    ).replace(/\D/g, '');
+
+    // Fecha/hora en calendario Colombia.
+    const dateLabel = new Date(appt.date).toLocaleDateString('es-CO', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    });
+
+    try {
+      await this.mail.sendAppointmentEmail({
+        to: appt.customer.email,
+        companyName: company.mailFromName || company.websiteName || company.name,
+        smtp,
+        brandColor: company.primaryColor,
+        logo: company.logo || null,
+        whatsappPhone: whatsappPhone || null,
+        customerName: appt.customer.name || null,
+        serviceName: appt.service?.name || 'Servicio',
+        professionalName: appt.barber?.name || 'Profesional',
+        localName: appt.local?.name || null,
+        dateLabel,
+        timeLabel: appt.startTime,
+        kind,
+        daysLeft,
+        supportEmail: company.mailFromEmail || null,
+      });
+      return true;
+    } catch (e: any) {
+      this.logger.warn(
+        `No se pudo enviar el correo de cita ${appointmentId}: ${e?.message}`,
+      );
+      return false;
+    }
   }
 
   async findAllPaginated(user: any, query: any) {
@@ -812,6 +929,48 @@ export class AppointmentsService {
     };
   }
 
+  // Recordatorios por CORREO al cliente: faltando 3, 2 y 1 día para su cita.
+  // Corre una vez al día (08:00 Colombia = 13:00 UTC). Como selecciona por el
+  // día exacto (+3/+2/+1), cada cita recibe un solo correo por cada marca sin
+  // depender de ninguna columna nueva en la base de datos.
+  async sendAppointmentDayReminders(): Promise<number> {
+    const startDay = this.colombiaTodayMidnightUtc();
+    let sent = 0;
+    for (const daysLeft of [1, 2, 3]) {
+      const dayStart = new Date(startDay.getTime() + daysLeft * 86400000);
+      const dayEnd = new Date(dayStart.getTime() + 86400000);
+      const appts = await this.prisma.appointment.findMany({
+        where: {
+          date: { gte: dayStart, lt: dayEnd },
+          status: {
+            in: [AppointmentStatus.PENDIENTE, AppointmentStatus.CONFIRMADA],
+          },
+          customer: { email: { not: null } },
+        },
+        select: { id: true },
+      });
+      for (const a of appts) {
+        const ok = await this.sendAppointmentMail(
+          a.id,
+          'reminder',
+          daysLeft,
+        ).catch(() => false);
+        if (ok) sent++;
+      }
+    }
+    return sent;
+  }
+
+  @Cron('0 13 * * *') // 13:00 UTC = 08:00 Colombia
+  async handleAppointmentRemindersCron() {
+    try {
+      const n = await this.sendAppointmentDayReminders();
+      if (n) this.logger.log(`Recordatorios de cita por correo enviados: ${n}`);
+    } catch (e: any) {
+      this.logger.error(`Recordatorios por correo fallaron: ${e?.message}`);
+    }
+  }
+
   // Cron global: mantiene los estados al día y envía los recordatorios de cita
   // al barbero (aunque nadie abra la app).
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -1180,7 +1339,11 @@ export class AppointmentsService {
     const appointments = await this.prisma.appointment.findMany({
       where: {
         barberId: Number(barberId),
-
+        // Las canceladas y las de "no asistió" NO ocupan la agenda: su hora
+        // vuelve a quedar libre para ofrecerla.
+        status: {
+          notIn: [AppointmentStatus.CANCELADA, AppointmentStatus.NO_ASISTIO],
+        },
         ...(appointmentId && {
           NOT: {
             id: Number(appointmentId),
