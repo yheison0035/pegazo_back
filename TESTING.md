@@ -25,3 +25,17 @@ const mod = await Test.createTestingModule({
 ```
 
 Importa con alias `@/...` (ya mapeado en Jest). Los `*.spec.ts` quedan fuera del build (`tsconfig.build.json`).
+
+## Horario de atención por día (citas)
+
+El horario del negocio se maneja por día de la semana y de él depende la
+disponibilidad de citas. `AppointmentsService.resolveBusinessHours` es la fuente
+única del horario efectivo por fecha (lee `bookingConfig.weekHours`, clave
+0=Dom..6=Sáb, y cae al rango general `openHour`/`closeHour`); la usan tanto
+`getAvailability` como `publicBook`. Specs:
+
+- `appointments.availability.spec.ts` — disponibilidad por día (día cerrado sin
+  franjas, respeta el horario propio del día, cae al rango general) y
+  `resolveBusinessHours` directamente (fuente compartida).
+- `companies.hours.spec.ts` — `updateHours` sanea y guarda `weekHours` sin pisar
+  el resto de `bookingConfig` y sincroniza `openHour`/`closeHour` de respaldo.
