@@ -327,13 +327,10 @@ export class AppointmentsService {
       company.id,
     ).catch(() => null);
 
-    // Correos al cliente (best-effort): 1) registro exitoso y 2) confirmación
-    // automática de la cita. La reserva no falla si el correo no está
-    // configurado o el envío falla.
-    void (async () => {
-      await this.sendAppointmentMail(created.id, 'confirm').catch(() => null);
-      await this.sendAppointmentMail(created.id, 'confirmed').catch(() => null);
-    })();
+    // UN SOLO correo al cliente: la confirmación de la cita (la reserva queda
+    // confirmada automáticamente). Best-effort: la reserva no falla si el correo
+    // no está configurado o el envío falla.
+    void this.sendAppointmentMail(created.id, 'confirmed').catch(() => null);
 
     return {
       success: true,
