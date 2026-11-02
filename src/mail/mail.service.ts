@@ -745,25 +745,25 @@ export class MailService {
         : `Faltan ${daysLeft} días`
       : isConfirmed
         ? '¡Cita confirmada!'
-        : 'Cita registrada';
+        : 'Registro exitoso';
     const subject = isReminder
       ? `Recordatorio: tu cita en ${name} ${
           daysLeft === 1 ? 'es mañana' : `es en ${daysLeft} días`
         }`
       : isConfirmed
         ? `Tu cita en ${name} fue confirmada`
-        : `Tu cita en ${name} quedó registrada`;
+        : `Registro exitoso de tu cita en ${name}`;
     const title = isReminder
       ? 'Recordatorio de tu cita'
       : isConfirmed
         ? '¡Tu cita fue confirmada!'
-        : '¡Cita registrada!';
+        : '¡Registro exitoso!';
     const greet = `Hola${customerName ? ` ${this.escapeHtml(customerName)}` : ''}`;
     const intro = isReminder
       ? `${greet}, te recordamos tu próxima cita en <b>${name}</b>.`
       : isConfirmed
         ? `${greet}, <b>${name}</b> confirmó tu cita. ¡Te esperamos!`
-        : `${greet}, tu cita en <b>${name}</b> quedó registrada. Aquí están los detalles:`;
+        : `${greet}, tu registro en <b>${name}</b> fue exitoso. Estos son los detalles de tu cita:`;
 
     const row = (label: string, value: string) =>
       `<tr>
