@@ -178,7 +178,13 @@ export class AppointmentsService {
     if (!clean) throw new NotFoundException('Negocio no encontrado.');
     const company = await this.prisma.company.findUnique({
       where: { slug: clean },
-      select: { id: true, publicPageEnabled: true },
+      select: {
+        id: true,
+        publicPageEnabled: true,
+        openHour: true,
+        closeHour: true,
+        bookingConfig: true,
+      },
     });
     if (!company) throw new NotFoundException('Negocio no encontrado.');
     if (company.publicPageEnabled === false)
@@ -213,6 +219,21 @@ export class AppointmentsService {
     if (rest.off)
       throw new BadRequestException(
         `El profesional no atiende ese día (${rest.reason}). Elige otra fecha.`,
+      );
+
+    // El horario de atención del negocio manda: aunque el cliente envíe una hora
+    // de un formulario viejo, no se acepta un día cerrado ni una hora fuera de
+    // rango. Misma fuente que la disponibilidad (resolveBusinessHours).
+    const hours = this.resolveBusinessHours(company, dto.date);
+    if (hours.closed)
+      throw new BadRequestException(
+        'El negocio no atiende ese día. Elige otra fecha.',
+      );
+    const reqStart = timeToMinutes(dto.startTime);
+    const reqEnd = reqStart + service.duration;
+    if (reqStart < hours.startHour * 60 || reqEnd > hours.endHour * 60)
+      throw new BadRequestException(
+        'Ese horario está fuera del horario de atención. Elige otro.',
       );
 
     const email = String(dto.customerEmail || '').trim().toLowerCase();
@@ -1383,6 +1404,29 @@ export class AppointmentsService {
 
   // ¿El profesional descansa ese día? (día de la semana recurrente o fecha
   // puntual de ausencia). Devuelve el motivo para mostrar un mensaje claro.
+  // Horario de atención efectivo del negocio para una fecha concreta. Fuente
+  // ÚNICA que usan tanto la disponibilidad como la reserva pública: respeta el
+  // horario por DÍA de la semana (bookingConfig.weekHours, clave 0=Dom..6=Sáb) y,
+  // si ese día no está configurado, cae al rango general openHour/closeHour.
+  resolveBusinessHours(
+    company: {
+      openHour?: number | null;
+      closeHour?: number | null;
+      bookingConfig?: any;
+    } | null,
+    date: string,
+  ): { closed: boolean; startHour: number; endHour: number } {
+    const weekday = new Date(
+      `${String(date).slice(0, 10)}T00:00:00Z`,
+    ).getUTCDay();
+    const weekHours: any = (company?.bookingConfig as any)?.weekHours || null;
+    const dayCfg = weekHours ? weekHours[String(weekday)] : null;
+    if (dayCfg?.closed) return { closed: true, startHour: 0, endHour: 0 };
+    const startHour = dayCfg?.open ?? company?.openHour ?? 9;
+    const endHour = dayCfg?.close ?? company?.closeHour ?? 20;
+    return { closed: false, startHour, endHour };
+  }
+
   async barberOff(
     barberId: number | string,
     dateStr: string,
@@ -1448,14 +1492,24 @@ export class AppointmentsService {
     const isToday = date === todayStr;
     const nowMinutes = colNow.getUTCHours() * 60 + colNow.getUTCMinutes();
 
-    // Horario de atención configurable de la empresa (por defecto 9–20).
+    // Horario de atención configurable de la empresa. Puede ser por DÍA de la
+    // semana (bookingConfig.weekHours, clave 0=Dom..6=Sáb) o, si no hay por-día,
+    // el rango general (openHour/closeHour, por defecto 9–20).
     const company = await this.prisma.company.findUnique({
       where: { id: service.companyId },
-      select: { openHour: true, closeHour: true },
+      select: { openHour: true, closeHour: true, bookingConfig: true },
     });
 
-    const startHour = company?.openHour ?? 9;
-    const endHour = company?.closeHour ?? 20;
+    const { closed, startHour, endHour } = this.resolveBusinessHours(
+      company,
+      date,
+    );
+
+    // Día marcado como cerrado: no hay horarios.
+    if (closed) {
+      return { off: true, reason: 'Cerrado ese día', slots: [] };
+    }
+
     const interval = 10;
 
     const slots: number[] = [];

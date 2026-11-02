@@ -192,7 +192,15 @@ export class CompanySettingsController {
   @Roles('SUPER_ADMIN', 'ADMIN')
   @Patch('hours')
   updateHours(
-    @Body() dto: { openHour?: number; closeHour?: number },
+    @Body()
+    dto: {
+      openHour?: number;
+      closeHour?: number;
+      weekHours?: Record<
+        string,
+        { open?: number; close?: number; closed?: boolean }
+      >;
+    },
     @Req() req,
   ) {
     return this.service.updateHours(req.user, dto);
