@@ -5,14 +5,18 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
 import { CreateReturnDto } from './dto/return.dto';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 
 @Injectable()
 export class ReturnsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async getScopedSale(saleId: number, companyId: number) {
+  private async getScopedSale(saleId: number, user: any) {
     const sale = await this.prisma.sale.findFirst({
-      where: { id: saleId, local: { is: { companyId } } },
+      where: { id: saleId, local: { is: { companyId: user.companyId } } },
       include: {
         items: {
           include: { variant: { include: { inventory: true } }, service: true },
@@ -22,13 +26,15 @@ export class ReturnsService {
       },
     });
     if (!sale) throw new NotFoundException('Venta no encontrada');
+    // Aislamiento por local: la venta debe ser de un local accesible.
+    await assertLocalAccess(this.prisma, user, sale.localId);
     return sale;
   }
 
   // Devuelve la venta con, por cada ítem, cuánto se vendió y cuánto ya se
   // devolvió (para armar el formulario de devolución).
   async getSaleForReturn(user: any, saleId: number) {
-    const sale = await this.getScopedSale(saleId, user.companyId);
+    const sale = await this.getScopedSale(saleId, user);
 
     const returned = await this.prisma.returnItem.groupBy({
       by: ['saleItemId'],
@@ -68,7 +74,7 @@ export class ReturnsService {
   }
 
   async create(user: any, dto: CreateReturnDto) {
-    const sale = await this.getScopedSale(dto.saleId, user.companyId);
+    const sale = await this.getScopedSale(dto.saleId, user);
 
     // Cuánto se ha devuelto ya por cada línea.
     const prev = await this.prisma.returnItem.groupBy({
@@ -184,6 +190,16 @@ export class ReturnsService {
     const where: any = { companyId: user.companyId };
     if (query.code) where.code = { contains: query.code, mode: 'insensitive' };
 
+    // Aislamiento por local.
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
+    if (query.localId && /^\d+$/.test(String(query.localId))) {
+      const req = Number(query.localId);
+      where.localId = localIds === null || localIds.includes(req) ? req : -1;
+    }
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.return.findMany({
         where,
@@ -216,6 +232,7 @@ export class ReturnsService {
       },
     });
     if (!ret) throw new NotFoundException('Devolución no encontrada');
+    await assertLocalAccess(this.prisma, user, ret.localId);
     return { success: true, data: ret };
   }
 }

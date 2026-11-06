@@ -28,10 +28,12 @@ describe('PurchasesService.receive', () => {
   };
   const prisma: any = {
     purchase: { findFirst: jest.fn() },
+    // assertLocalAccess (rol dueño) comprueba que el local sea de su empresa.
+    local: { findFirst: jest.fn().mockResolvedValue({ id: 2, companyId: 1 }) },
     $transaction: jest.fn((cb: any) => cb(tx)),
   };
   let svc: PurchasesService;
-  const user = { id: 9, name: 'Dueño', companyId: 1 };
+  const user = { id: 9, name: 'Dueño', companyId: 1, role: 'SUPER_ADMIN' };
   const base = {
     id: 3,
     code: 'COMPRA-1',

@@ -5,6 +5,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
 import { CreatePurchaseDto } from './dto/purchase.dto';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 
 // Lo que se le debe al proveedor por una compra: total (base + IVA) menos las
 // retenciones practicadas (que se le pagan a la DIAN, no a él).
@@ -19,15 +23,9 @@ export function payableAmountFor(p: { total?: any; retefuente?: any; reteica?: a
 export class PurchasesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async assertLocalInCompany(localId: number, companyId: number) {
-    const local = await this.prisma.local.findFirst({
-      where: { id: localId, companyId },
-    });
-    if (!local) throw new NotFoundException('Local no encontrado');
-  }
-
   async create(user: any, dto: CreatePurchaseDto) {
-    await this.assertLocalInCompany(dto.localId, user.companyId);
+    // La compra se registra en un local que el usuario pueda ver.
+    await assertLocalAccess(this.prisma, user, dto.localId);
 
     // Validar que todas las variantes existan y pertenezcan a la empresa.
     const variantIds = dto.items.map((i) => i.inventoryVariantId);
@@ -112,8 +110,15 @@ export class PurchasesService {
     const where: any = { companyId: user.companyId };
     if (query.status) where.status = query.status;
     if (query.code) where.code = { contains: query.code, mode: 'insensitive' };
+
+    // Aislamiento por local: solo las compras de los locales accesibles.
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
     if (query.localId && /^\d+$/.test(String(query.localId))) {
-      where.localId = Number(query.localId);
+      const req = Number(query.localId);
+      where.localId = localIds === null || localIds.includes(req) ? req : -1;
     }
 
     const [items, total] = await this.prisma.$transaction([
@@ -156,6 +161,7 @@ export class PurchasesService {
       },
     });
     if (!purchase) throw new NotFoundException('Compra no encontrada');
+    await assertLocalAccess(this.prisma, user, purchase.localId);
     return { success: true, data: purchase };
   }
 
@@ -167,6 +173,7 @@ export class PurchasesService {
       include: { items: true, provider: { select: { name: true } } },
     });
     if (!purchase) throw new NotFoundException('Compra no encontrada');
+    await assertLocalAccess(this.prisma, user, purchase.localId);
     if (purchase.status === 'RECIBIDA') {
       throw new BadRequestException('Esta compra ya fue recibida.');
     }
@@ -228,6 +235,7 @@ export class PurchasesService {
       where: { id, companyId: user.companyId },
     });
     if (!purchase) throw new NotFoundException('Compra no encontrada');
+    await assertLocalAccess(this.prisma, user, purchase.localId);
     if (purchase.status === 'RECIBIDA') {
       throw new BadRequestException(
         'No se puede cancelar una compra ya recibida.',
@@ -245,6 +253,7 @@ export class PurchasesService {
       where: { id, companyId: user.companyId },
     });
     if (!purchase) throw new NotFoundException('Compra no encontrada');
+    await assertLocalAccess(this.prisma, user, purchase.localId);
     if (purchase.status === 'RECIBIDA') {
       throw new BadRequestException(
         'No se puede eliminar una compra ya recibida.',

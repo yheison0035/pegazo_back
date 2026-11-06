@@ -6,6 +6,10 @@ import {
 import { PrismaService } from '@/prisma.service';
 import { SalesService } from '@/sales/sales.service';
 import { CreateQuoteDto, ConvertQuoteDto } from './dto/quote.dto';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 
 @Injectable()
 export class QuotesService {
@@ -14,15 +18,8 @@ export class QuotesService {
     private readonly salesService: SalesService,
   ) {}
 
-  private async assertLocalInCompany(localId: number, companyId: number) {
-    const local = await this.prisma.local.findFirst({
-      where: { id: localId, companyId },
-    });
-    if (!local) throw new NotFoundException('Local no encontrado');
-  }
-
   async create(user: any, dto: CreateQuoteDto) {
-    await this.assertLocalInCompany(dto.localId, user.companyId);
+    await assertLocalAccess(this.prisma, user, dto.localId);
 
     const itemsData = dto.items.map((it) => ({
       inventoryVariantId: it.inventoryVariantId ?? null,
@@ -61,6 +58,16 @@ export class QuotesService {
     if (query.status) where.status = query.status;
     if (query.code) where.code = { contains: query.code, mode: 'insensitive' };
 
+    // Aislamiento por local.
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
+    if (query.localId && /^\d+$/.test(String(query.localId))) {
+      const req = Number(query.localId);
+      where.localId = localIds === null || localIds.includes(req) ? req : -1;
+    }
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.quote.findMany({
         where,
@@ -94,6 +101,7 @@ export class QuotesService {
       },
     });
     if (!quote) throw new NotFoundException('Cotización no encontrada');
+    await assertLocalAccess(this.prisma, user, quote.localId);
     return { success: true, data: quote };
   }
 
@@ -102,6 +110,7 @@ export class QuotesService {
       where: { id, companyId: user.companyId },
     });
     if (!quote) throw new NotFoundException('Cotización no encontrada');
+    await assertLocalAccess(this.prisma, user, quote.localId);
     if (quote.status === 'CONVERTIDA') {
       throw new BadRequestException('La cotización ya fue convertida en venta.');
     }
@@ -117,6 +126,7 @@ export class QuotesService {
       include: { items: true },
     });
     if (!quote) throw new NotFoundException('Cotización no encontrada');
+    await assertLocalAccess(this.prisma, user, quote.localId);
     if (quote.status === 'CONVERTIDA') {
       throw new BadRequestException('La cotización ya fue convertida.');
     }
@@ -162,6 +172,7 @@ export class QuotesService {
       where: { id, companyId: user.companyId },
     });
     if (!quote) throw new NotFoundException('Cotización no encontrada');
+    await assertLocalAccess(this.prisma, user, quote.localId);
     if (quote.status === 'CONVERTIDA') {
       throw new BadRequestException(
         'No se puede eliminar una cotización ya convertida.',
