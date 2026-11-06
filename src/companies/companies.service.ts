@@ -205,7 +205,7 @@ export class CompaniesService {
 
     if (dto.skin !== undefined) {
       const skin = String(dto.skin || '').trim();
-      if (['dark', 'light', 'classic'].includes(skin)) cfg.skin = skin;
+      if (['dark', 'elegant', 'light', 'classic'].includes(skin)) cfg.skin = skin;
       else delete cfg.skin;
     }
     // Tema del catálogo/menú (página pública de productos).
