@@ -35,13 +35,15 @@ export class CompanySettingsController {
 
   // Página pública de citas (/booking/:slug): leer y editar su diseño (skin,
   // marca, portada). La categorización de servicios la gestiona la plataforma.
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  // Diseño de la página pública de citas: SOLO el dueño. Es la única parte
+  // compartida entre sedes, así que un administrador de sede no la edita.
+  @Roles('SUPER_ADMIN')
   @Get('booking-config')
   getBookingConfig(@Req() req) {
     return this.service.getBookingPageConfig(req.user);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('booking-config')
   updateBookingConfig(@Body() dto: any, @Req() req) {
     return this.service.updateBookingPageConfig(req.user, dto);
