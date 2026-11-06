@@ -435,6 +435,7 @@ model Company {
   returns             Return[]
   supplies            Supply[]
   bankDeposits        BankDeposit[]
+  localBankNotify     LocalBankNotify[]
   bankProcessedEmails BankProcessedEmail[]
 
   // Notificaciones de consignaciones a la cuenta del banco (SMS/correo reenviado).
@@ -472,10 +473,33 @@ model BankDeposit {
   companyId Int
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
+  // Sede a la que pertenece la consignación (según el token/cuenta que la recibió).
+  // Nullable: las consignaciones antiguas o las del token de empresa no tienen sede.
+  localId Int?
+  local   Local? @relation("LocalBankDeposits", fields: [localId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
 
   @@index([companyId])
+  @@index([localId])
   @@index([seen])
+}
+
+// Config de aviso de consignaciones POR LOCAL: cada sede tiene su propio token
+// (cuenta/SMS) para que sus consignaciones y notificaciones lleguen solo a ese
+// local. El token de empresa (Company.bankNotifyToken) se mantiene como respaldo.
+model LocalBankNotify {
+  id        Int      @id @default(autoincrement())
+  localId   Int      @unique
+  local     Local    @relation(fields: [localId], references: [id], onDelete: Cascade)
+  companyId Int
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 // Registro PERSISTENTE de correos del banco ya procesados por empresa. Sirve
@@ -718,6 +742,8 @@ model Local {
   quotes          Quote[]
   returns         Return[]
   supplies        Supply[]
+  bankDeposits    BankDeposit[]    @relation("LocalBankDeposits")
+  bankNotify      LocalBankNotify?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
