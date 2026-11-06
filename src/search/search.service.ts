@@ -119,15 +119,21 @@ export class SearchService {
   }
 
   private async searchCustomers(user: any, term: string) {
+    // Aislamiento por local: el cliente pertenece a su local de registro.
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const where: any = {
+      companyId: user.companyId,
+      OR: [
+        { name: { contains: term, mode: 'insensitive' } },
+        { phone: { contains: term, mode: 'insensitive' } },
+        { document: { contains: term, mode: 'insensitive' } },
+      ],
+    };
+    if (localIds !== null) {
+      where.localId = localIds.length === 0 ? -1 : { in: localIds };
+    }
     const items = await this.prisma.customer.findMany({
-      where: {
-        companyId: user.companyId,
-        OR: [
-          { name: { contains: term, mode: 'insensitive' } },
-          { phone: { contains: term, mode: 'insensitive' } },
-          { document: { contains: term, mode: 'insensitive' } },
-        ],
-      },
+      where,
       take: 8,
       orderBy: { name: 'asc' },
       select: {

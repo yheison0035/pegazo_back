@@ -395,6 +395,16 @@ export class AppointmentsService {
     });
     if (!company) return false;
 
+    // Nombre que ve el cliente en el correo: si la empresa tiene VARIAS sedes,
+    // se usa el nombre del LOCAL de la cita; si solo hay una, el de la empresa.
+    const localCount = await this.prisma.local.count({
+      where: { companyId: appt.companyId, status: { not: 'ELIMINADO' as any } },
+    });
+    const baseName =
+      company.mailFromName || company.websiteName || company.name;
+    const businessName =
+      localCount > 1 && appt.local?.name ? appt.local.name : baseName;
+
     const smtp = company.mailHost
       ? {
           host: company.mailHost,
@@ -402,7 +412,7 @@ export class AppointmentsService {
           user: company.mailUser,
           pass: company.mailPassword,
           fromEmail: company.mailFromEmail,
-          fromName: company.mailFromName || company.name,
+          fromName: businessName,
         }
       : undefined;
 
@@ -423,7 +433,7 @@ export class AppointmentsService {
     try {
       await this.mail.sendAppointmentEmail({
         to: appt.customer.email,
-        companyName: company.mailFromName || company.websiteName || company.name,
+        companyName: businessName,
         smtp,
         brandColor: company.primaryColor,
         logo: company.logo || null,
