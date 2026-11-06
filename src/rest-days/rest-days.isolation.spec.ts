@@ -34,4 +34,21 @@ describe('RestDaysService.overview · aislamiento por local', () => {
     const where = prisma.user.findMany.mock.calls[0][0].where;
     expect(where.localId).toBeUndefined();
   });
+
+  // professionals() alimenta la pantalla de Descansos: también debe aislarse.
+  it('professionals: un administrador solo ve los de su local', async () => {
+    const prisma: any = build();
+    const svc = await make(prisma);
+    await svc.professionals({ companyId: 1, id: 7, role: 'ADMIN', localId: 2 });
+    const where = prisma.user.findMany.mock.calls[0][0].where;
+    expect(where.localId).toEqual({ in: [2] });
+  });
+
+  it('professionals: el dueño ve a todos', async () => {
+    const prisma: any = build();
+    const svc = await make(prisma);
+    await svc.professionals({ companyId: 1, id: 1, role: 'SUPER_ADMIN' });
+    const where = prisma.user.findMany.mock.calls[0][0].where;
+    expect(where.localId).toBeUndefined();
+  });
 });

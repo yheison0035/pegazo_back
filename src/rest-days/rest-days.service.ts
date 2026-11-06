@@ -40,12 +40,19 @@ export class RestDaysService {
   // Lista de profesionales con agenda (para elegir en la pantalla de descansos).
   async professionals(user: any) {
     this.assertAdmin(user);
+    // Aislamiento por local: solo los profesionales de los locales accesibles
+    // (un administrador ve los de SU local; el dueño, todos).
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const where: any = {
+      companyId: user.companyId,
+      role: { in: PRO_ROLES },
+      status: 'ACTIVO' as any,
+    };
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
     const rows = await this.prisma.user.findMany({
-      where: {
-        companyId: user.companyId,
-        role: { in: PRO_ROLES },
-        status: 'ACTIVO' as any,
-      },
+      where,
       select: { id: true, name: true, avatar: true, restWeekdays: true },
       orderBy: { name: 'asc' },
     });

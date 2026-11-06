@@ -30,14 +30,18 @@ export class StorageController {
 
   @Roles(...OPERATE)
   @Get()
-  list(@Req() req) {
-    return this.service.listActive(req.user);
+  list(@Req() req, @Query('localId') localId?: string) {
+    return this.service.listActive(req.user, localId);
   }
 
   @Roles(...OPERATE)
   @Get('history')
-  history(@Req() req, @Query('limit') limit?: string) {
-    return this.service.history(req.user, Number(limit) || 30);
+  history(
+    @Req() req,
+    @Query('limit') limit?: string,
+    @Query('localId') localId?: string,
+  ) {
+    return this.service.history(req.user, Number(limit) || 30, localId);
   }
 
   @Roles(...OPERATE)
