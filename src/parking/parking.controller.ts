@@ -28,14 +28,18 @@ export class ParkingController {
 
   @Roles(...OPERATE)
   @Get()
-  listActive(@Req() req) {
-    return this.service.listActive(req.user);
+  listActive(@Req() req, @Query('localId') localId?: string) {
+    return this.service.listActive(req.user, localId);
   }
 
   @Roles(...OPERATE)
   @Get('history')
-  history(@Query('limit') limit: string, @Req() req) {
-    return this.service.history(req.user, Number(limit) || 30);
+  history(
+    @Query('limit') limit: string,
+    @Req() req,
+    @Query('localId') localId?: string,
+  ) {
+    return this.service.history(req.user, Number(limit) || 30, localId);
   }
 
   @Roles(...OPERATE)

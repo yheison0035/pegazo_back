@@ -200,12 +200,16 @@ export class ParkingService {
   }
 
   // ---- Operación ----
-  async listActive(user: any) {
+  async listActive(user: any, localId?: string) {
     const settings = (await this.getSettings(user)).data;
     const localIds = await getAccessibleLocalIds(this.prisma, user);
     const where: any = { companyId: user.companyId, status: 'DENTRO' };
     if (localIds !== null) {
       where.localId = localIds.length ? { in: localIds } : -1;
+    }
+    if (localId && /^\d+$/.test(String(localId))) {
+      const req = Number(localId);
+      where.localId = localIds === null || localIds.includes(req) ? req : -1;
     }
     const tickets = await this.prisma.parkingTicket.findMany({
       where,
@@ -237,11 +241,15 @@ export class ParkingService {
     };
   }
 
-  async history(user: any, limit = 30) {
+  async history(user: any, limit = 30, localId?: string) {
     const localIds = await getAccessibleLocalIds(this.prisma, user);
     const where: any = { companyId: user.companyId, status: 'ENTREGADO' };
     if (localIds !== null) {
       where.localId = localIds.length ? { in: localIds } : -1;
+    }
+    if (localId && /^\d+$/.test(String(localId))) {
+      const req = Number(localId);
+      where.localId = localIds === null || localIds.includes(req) ? req : -1;
     }
     const tickets = await this.prisma.parkingTicket.findMany({
       where,
