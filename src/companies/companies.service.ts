@@ -184,6 +184,9 @@ export class CompaniesService {
         musicUrl: cfg.musicUrl || '',
         introCta: cfg.intro?.cta || '',
         introPills: cfg.intro?.pills || '',
+        // Colores del skin elegante (negro / gris; el plateado es el acento).
+        elegantBlack: cfg.elegantBlack || '',
+        elegantGray: cfg.elegantGray || '',
       },
     };
   }
@@ -221,6 +224,17 @@ export class CompaniesService {
     setStr('heroImage');
     setStr('ravenImage');
     setStr('musicUrl');
+
+    // Colores del skin elegante: solo se aceptan HEX válidos (#rgb / #rrggbb).
+    const setHex = (k: string) => {
+      if (dto[k] !== undefined) {
+        const v = String(dto[k] ?? '').trim();
+        if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) cfg[k] = v;
+        else delete cfg[k];
+      }
+    };
+    setHex('elegantBlack');
+    setHex('elegantGray');
     if (dto.whatsapp !== undefined) {
       const w = String(dto.whatsapp || '').replace(/\D/g, '');
       if (w) cfg.whatsapp = w;
