@@ -882,6 +882,13 @@ export class UsersService {
     }
     where.companyId = user.companyId;
 
+    // Aislamiento por local: un rol de sede solo puede pedir los profesionales
+    // de un local accesible (no de otra sede, aunque pase otro localId).
+    const accessible = await getAccessibleLocalIds(this.prisma, user);
+    if (accessible !== null && !accessible.includes(localId)) {
+      return [];
+    }
+
     if (query.role) {
       const requested = query.role.toUpperCase();
       // El "profesional" que atiende puede estar guardado como PROFESIONAL
