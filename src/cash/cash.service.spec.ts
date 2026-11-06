@@ -6,7 +6,8 @@ import { PrismaService } from '@/prisma.service';
 // el esperado = base + ventas en efectivo − gastos en efectivo. Toca dinero, así
 // que se prueba el cálculo del arqueo y el filtro de gastos.
 describe('CashService · totales con gastos en efectivo', () => {
-  const user = { companyId: 1, id: 9 };
+  // Dueño: ve todas las cajas de su empresa (rol global).
+  const user = { companyId: 1, id: 9, role: 'SUPER_ADMIN' };
   const base = {
     id: 5,
     localId: 1,
@@ -76,5 +77,27 @@ describe('CashService · totales con gastos en efectivo', () => {
     const res = await svc.getCurrent(user, 1);
     expect((res.data as any).totals.gastos).toBe(0);
     expect((res.data as any).totals.expected).toBe(150000);
+  });
+});
+
+// Aislamiento por local: un rol de sede no puede ver la caja de OTRO local.
+describe('CashService · aislamiento por local', () => {
+  it('un rol de sede no accede a la caja de otro local (403)', async () => {
+    const prisma: any = {
+      // El usuario (CAJA) está asignado al local 2; su único local accesible es el 2.
+      local: { findFirst: jest.fn().mockResolvedValue({ id: 2, companyId: 1 }) },
+      cashRegister: { findFirst: jest.fn() },
+    };
+    const mod = await Test.createTestingModule({
+      providers: [CashService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    const svc = mod.get(CashService);
+
+    // Pide la caja del local 1 (no es el suyo) → prohibido, y ni siquiera
+    // consulta la caja.
+    await expect(
+      svc.getCurrent({ companyId: 1, id: 7, role: 'CAJA', localId: 2 }, 1),
+    ).rejects.toThrow('No tienes acceso a este local');
+    expect(prisma.cashRegister.findFirst).not.toHaveBeenCalled();
   });
 });
