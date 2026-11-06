@@ -1,4 +1,5 @@
 // src/common/access-locals.util.ts
+import { ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
 import { Role } from '@prisma/client';
 
@@ -60,4 +61,35 @@ export async function getAccessibleLocalIds(
 
   // Sin acceso
   return [];
+}
+
+// Verifica que el usuario pueda ACCEDER a un local concreto (para leer o mutar
+// un registro de ese local). Lanza 403 si no. Para los roles que ven todos los
+// locales (dueño/roles globales) solo exige que el local sea de SU empresa (evita
+// fugas entre empresas); para los demás, que esté entre sus locales accesibles.
+// Es la contraparte "de un registro" de applyLocalFilter (que es para listados).
+export async function assertLocalAccess(
+  prisma: PrismaService,
+  user: any,
+  localId: number | null | undefined,
+): Promise<void> {
+  if (!localId) {
+    throw new ForbiddenException('No tienes acceso a este local');
+  }
+  const ids = await getAccessibleLocalIds(prisma, user);
+
+  // Roles globales (null): el local debe pertenecer a su empresa.
+  if (ids === null) {
+    if (user.role === 'SUPER_PLATFORM_ADMIN') return;
+    const own = await prisma.local.findFirst({
+      where: { id: Number(localId), companyId: user.companyId },
+      select: { id: true },
+    });
+    if (!own) throw new ForbiddenException('No tienes acceso a este local');
+    return;
+  }
+
+  if (!ids.includes(Number(localId))) {
+    throw new ForbiddenException('No tienes acceso a este local');
+  }
 }

@@ -5,6 +5,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
 import { OpenCashDto, CashMovementDto, CloseCashDto } from './dto/cash.dto';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 
 // Suma ingresos (ventas en efectivo) y gastos en efectivo del día, y calcula el
 // esperado en caja. Los INGRESOS entran por las ventas; las SALIDAS son los
@@ -27,18 +31,11 @@ function computeTotals(register: any, gastos = 0) {
 export class CashService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async assertLocalInCompany(localId: number, companyId: number) {
-    const local = await this.prisma.local.findFirst({
-      where: { id: localId, companyId },
-    });
-    if (!local) throw new NotFoundException('Local no encontrado');
-    return local;
-  }
-
   // Caja abierta actual de un local (o null).
   async getCurrent(user: any, localId: number) {
     if (!localId) throw new BadRequestException('localId es obligatorio');
-    await this.assertLocalInCompany(localId, user.companyId);
+    // Solo el local que el usuario puede ver (el dueño, cualquiera de su empresa).
+    await assertLocalAccess(this.prisma, user, localId);
 
     const base = await this.prisma.cashRegister.findFirst({
       where: { localId, companyId: user.companyId, status: 'ABIERTA' },
@@ -66,7 +63,7 @@ export class CashService {
   }
 
   async open(user: any, dto: OpenCashDto) {
-    await this.assertLocalInCompany(dto.localId, user.companyId);
+    await assertLocalAccess(this.prisma, user, dto.localId);
 
     const existing = await this.prisma.cashRegister.findFirst({
       where: {
@@ -244,6 +241,7 @@ export class CashService {
       where: { id, companyId: user.companyId },
     });
     if (!register) throw new NotFoundException('Caja no encontrada');
+    await assertLocalAccess(this.prisma, user, register.localId);
     if (register.status !== 'ABIERTA') {
       throw new BadRequestException('La caja está cerrada');
     }
@@ -266,6 +264,7 @@ export class CashService {
       where: { id, companyId: user.companyId },
     });
     if (!register) throw new NotFoundException('Caja no encontrada');
+    await assertLocalAccess(this.prisma, user, register.localId);
     if (register.status !== 'ABIERTA') {
       throw new BadRequestException('La caja ya está cerrada');
     }
@@ -309,6 +308,7 @@ export class CashService {
       where: { id, companyId: user.companyId },
     });
     if (!register) throw new NotFoundException('Caja no encontrada');
+    await assertLocalAccess(this.prisma, user, register.localId);
     if (register.status === 'ABIERTA') {
       throw new BadRequestException('La caja ya está abierta.');
     }
@@ -351,6 +351,7 @@ export class CashService {
       where: { id, companyId: user.companyId },
     });
     if (!register) throw new NotFoundException('Caja no encontrada');
+    await assertLocalAccess(this.prisma, user, register.localId);
     if (register.status !== 'ABIERTA') {
       throw new BadRequestException(
         'Solo se puede editar la base de una caja abierta.',
@@ -378,6 +379,7 @@ export class CashService {
       where: { id, companyId: user.companyId },
     });
     if (!register) throw new NotFoundException('Caja no encontrada');
+    await assertLocalAccess(this.prisma, user, register.localId);
     await this.prisma.cashRegister.delete({ where: { id } });
     return { success: true, message: 'Caja eliminada' };
   }
@@ -389,8 +391,17 @@ export class CashService {
 
     const where: any = { companyId: user.companyId };
     if (query.status) where.status = query.status;
+
+    // Aislamiento por local: el usuario solo ve las cajas de sus locales
+    // accesibles (el dueño, todas las de su empresa).
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
     if (query.localId && /^\d+$/.test(String(query.localId))) {
-      where.localId = Number(query.localId);
+      const req = Number(query.localId);
+      // El local solicitado solo aplica si está permitido.
+      where.localId = localIds === null || localIds.includes(req) ? req : -1;
     }
 
     const [items, total] = await this.prisma.$transaction([
@@ -430,6 +441,7 @@ export class CashService {
       },
     });
     if (!register) throw new NotFoundException('Caja no encontrada');
+    await assertLocalAccess(this.prisma, user, register.localId);
 
     const gastos = await this.sumCashExpenses(register);
     return {
