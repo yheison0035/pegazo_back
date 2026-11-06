@@ -513,10 +513,10 @@ export class AccountingService {
 
   // Libro mayor: movimientos y saldo por cuenta.
   async ledger(user: any, query: any = {}) {
-    const { entries, map, range } = await this.buildEntries(
-      user.companyId,
-      query,
-    );
+    const { entries, map, range } = await this.buildEntries(user.companyId, {
+      ...query,
+      localId: await this.resolveReportLocal(user, query),
+    });
     const acc = this.aggregate(entries, map);
     const rows = Object.values(acc).map((a: any) => ({
       ...a,
