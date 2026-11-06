@@ -419,6 +419,41 @@ export class StatisticsService {
       .filter((r) => r.total > 0)
       .sort((a, b) => b.total - a.total);
 
+    // Ventas de HOY desglosadas por sede (para el dueño con varias sedes). Se
+    // listan TODAS las sedes accesibles, incluso las que hoy van en 0, para que
+    // el dueño vea cada local de un vistazo. Respeta el aislamiento por local.
+    const localsScope: any = accessible
+      ? { id: { in: accessible } }
+      : {};
+    const activeLocals = await this.prisma.local.findMany({
+      where: { companyId, status: { not: 'ELIMINADO' as any }, ...localsScope },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    const byLocalRows = await this.prisma.sale.groupBy({
+      by: ['localId'],
+      where: {
+        local: { companyId },
+        ...localFilter,
+        saleDate: { gte: start, lt: end },
+        paymentStatus: 'PAGADA' as any,
+      },
+      _sum: { totalAmount: true },
+      _count: { _all: true },
+    });
+    const byLocalMap = new Map(
+      byLocalRows.map((r) => [
+        r.localId,
+        { total: r._sum.totalAmount || 0, count: r._count._all },
+      ]),
+    );
+    const todayByLocal = activeLocals.map((l) => ({
+      localId: l.id,
+      name: l.name,
+      total: byLocalMap.get(l.id)?.total || 0,
+      count: byLocalMap.get(l.id)?.count || 0,
+    }));
+
     const [localsCount, productsCount, servicesCount, salesEver] =
       await Promise.all([
         this.prisma.local.count({ where: { companyId } }),
@@ -636,6 +671,8 @@ export class StatisticsService {
           count: todayAgg._count._all,
           byMethod: todayByMethod,
         },
+        // Ventas de hoy por sede (el widget del dueño solo aparece con >1 sede).
+        todayByLocal,
         setup: {
           locals: localsCount,
           products: productsCount,
@@ -1265,14 +1302,26 @@ export class StatisticsService {
       'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
     ];
     try {
-      // Cumpleaños de TODO el equipo de la empresa (sin filtrar por local): así
-      // todos ven a todos, incluido el DUEÑO/administradores (que suelen no
-      // tener un local asignado y antes quedaban fuera para los empleados).
+      // Cumpleaños SOLO del equipo del local accesible: un administrador o
+      // empleado no debe ver el equipo de otra sede. Siempre se incluye al
+      // DUEÑO (SUPER_ADMIN), que no tiene local asignado. El dueño (acceso a
+      // todas las sedes) sigue viendo a todo el equipo.
+      const accessible = await getAccessibleLocalIds(this.prisma, user);
+      const scope: any =
+        accessible === null
+          ? {}
+          : {
+              OR: [
+                { localId: { in: accessible } },
+                { role: 'SUPER_ADMIN' as any },
+              ],
+            };
       const teamRows = await this.prisma.user.findMany({
         where: {
           companyId: user.companyId,
           status: 'ACTIVO' as any,
           birthdate: { not: null },
+          ...scope,
         },
         select: { id: true, name: true, birthdate: true },
       });
