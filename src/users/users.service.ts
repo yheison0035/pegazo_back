@@ -703,6 +703,19 @@ export class UsersService {
       if (!local) throw new ForbiddenException('Local inválido');
     }
 
+    // Aislamiento por local: un rol de sede (ADMIN) solo crea personal en SU
+    // local; si no indica sede, se usa la suya.
+    if (user) {
+      const accessible = await getAccessibleLocalIds(this.prisma, user);
+      if (accessible !== null) {
+        const target = dto.localId ? Number(dto.localId) : user.localId;
+        if (!target || !accessible.includes(Number(target))) {
+          throw new ForbiddenException('Solo puedes crear personal en tu local.');
+        }
+        dto.localId = Number(target);
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
     const created = await this.prisma.user.create({
@@ -729,6 +742,34 @@ export class UsersService {
     });
 
     if (!found) throw new NotFoundException('Usuario no encontrado');
+
+    // Aislamiento por local: un rol de sede (ADMIN) solo edita personal de SU
+    // local, no puede moverlo a otra sede ni hacerlo administrador.
+    if (user) {
+      const accessible = await getAccessibleLocalIds(this.prisma, user);
+      if (accessible !== null) {
+        if (found.localId == null || !accessible.includes(found.localId)) {
+          throw new ForbiddenException('No tienes acceso a este usuario.');
+        }
+        if (
+          dto.localId !== undefined &&
+          dto.localId !== null &&
+          !accessible.includes(Number(dto.localId))
+        ) {
+          throw new ForbiddenException('No puedes mover el usuario a otra sede.');
+        }
+        const adminRoles: Role[] = [
+          Role.ADMIN,
+          Role.SUPER_ADMIN,
+          Role.SUPER_PLATFORM_ADMIN,
+        ];
+        if (dto.role && adminRoles.includes(dto.role as Role)) {
+          throw new ForbiddenException(
+            'No puedes asignar el rol de administrador.',
+          );
+        }
+      }
+    }
 
     const updated = await this.prisma.user.update({
       where: { id },
@@ -820,6 +861,17 @@ export class UsersService {
     });
 
     if (!found) throw new NotFoundException('Usuario no encontrado');
+
+    // Aislamiento por local: un rol de sede (ADMIN) solo elimina personal de SU
+    // local.
+    const accessibleDel = await getAccessibleLocalIds(this.prisma, user);
+    if (
+      accessibleDel !== null &&
+      (found.localId == null || !accessibleDel.includes(found.localId))
+    ) {
+      throw new ForbiddenException('No tienes acceso a este usuario.');
+    }
+
     if (found.status === Status.ELIMINADO)
       return { success: true, message: 'El usuario ya estaba eliminado' };
     if (found.id === user.id)
