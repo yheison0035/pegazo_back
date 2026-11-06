@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
 import { PUC_SIMPLIFICADO } from '@/ledger-accounts/ledger-accounts.seed';
+import { getAccessibleLocalIds } from '@/common/access-locals.util';
 
 // Códigos del PUC simplificado que usa el motor de asientos.
 const ACC = {
@@ -128,8 +129,31 @@ export class AccountingService {
   }
 
   // Construye los asientos (partida doble) derivados de la operación.
+  // Resuelve la sede efectiva para los reportes contables: el dueño ve todas o
+  // la que elija; un rol de sede queda SIEMPRE limitado a su local accesible.
+  private async resolveReportLocal(
+    user: any,
+    query: any,
+  ): Promise<number | null> {
+    const accessible = await getAccessibleLocalIds(this.prisma, user);
+    const req =
+      query.localId && /^\d+$/.test(String(query.localId))
+        ? Number(query.localId)
+        : null;
+    if (accessible === null) return req; // dueño/roles globales
+    if (req && accessible.includes(req)) return req;
+    if (accessible.length === 1) return accessible[0];
+    return accessible[0] ?? -1;
+  }
+
   private async buildEntries(companyId: number, query: any) {
     const r = this.range(query);
+    // Sede seleccionada (reportes por local): acota los documentos origen. Debe
+    // venir ya validada por el caller contra los locales accesibles del usuario.
+    const lid =
+      query.localId && /^\d+$/.test(String(query.localId))
+        ? Number(query.localId)
+        : null;
     const map = await this.accountsMap(companyId);
     const name = (code: string) => map[code]?.name || code;
     const line = (code: string, debit: number, credit: number) => ({
@@ -143,7 +167,7 @@ export class AccountingService {
       await Promise.all([
         this.prisma.sale.findMany({
           where: {
-            local: { companyId },
+            local: { companyId, ...(lid ? { id: lid } : {}) },
             saleDate: { gte: r.start, lt: r.end },
             // PLAN_SEPARE: apartado activo, no es ingreso contable hasta
             // entregarse (ahí pasa a PAGADA con fecha de entrega).
@@ -177,7 +201,10 @@ export class AccountingService {
           where: {
             companyId,
             paidAt: { gte: r.start, lt: r.end },
-            sale: { paymentMethod: 'CREDITO' as any },
+            sale: {
+              paymentMethod: 'CREDITO' as any,
+              ...(lid ? { localId: lid } : {}),
+            },
           },
           select: {
             amount: true,
@@ -189,7 +216,7 @@ export class AccountingService {
         }),
         this.prisma.expense.findMany({
           where: {
-            local: { companyId },
+            local: { companyId, ...(lid ? { id: lid } : {}) },
             status: { not: 'ELIMINADO' as any },
             expenseDate: { gte: r.start, lt: r.end },
           },
@@ -209,6 +236,7 @@ export class AccountingService {
             companyId,
             status: { not: 'ELIMINADO' as any },
             paidDate: { gte: r.start, lt: r.end },
+            ...(lid ? { membership: { is: { localId: lid } } } : {}),
           },
           select: { amount: true, paidDate: true },
           orderBy: { paidDate: 'asc' },
@@ -218,12 +246,17 @@ export class AccountingService {
             companyId,
             status: 'REGISTRADA' as any,
             createdAt: { gte: r.start, lt: r.end },
+            ...(lid ? { localId: lid } : {}),
           },
           select: { code: true, total: true, createdAt: true },
           orderBy: { createdAt: 'asc' },
         }),
         this.prisma.asset.findMany({
-          where: { companyId, usefulLifeMonths: { not: null } },
+          where: {
+            companyId,
+            usefulLifeMonths: { not: null },
+            ...(lid ? { localId: lid } : {}),
+          },
         }),
         // Compras RECIBIDAS: entran al inventario (base) con su IVA descontable y
         // quedan por pagar al proveedor. Se contabilizan en la fecha de recibo.
@@ -232,6 +265,7 @@ export class AccountingService {
             companyId,
             status: 'RECIBIDA' as any,
             receivedAt: { gte: r.start, lt: r.end },
+            ...(lid ? { localId: lid } : {}),
           },
           select: {
             code: true,
@@ -405,13 +439,16 @@ export class AccountingService {
       });
     }
 
-    // Asientos MANUALES (los registra el contador). Se suman a los derivados;
-    // para empresas "solo contabilidad" son la única fuente de los libros.
-    const manual = await this.prisma.journalEntry.findMany({
-      where: { companyId, date: { gte: r.start, lt: r.end } },
-      include: { lines: true },
-      orderBy: { date: 'asc' },
-    });
+    // Asientos MANUALES (los registra el contador). Son de la EMPRESA (no tienen
+    // local): al filtrar por una sede concreta se omiten, porque no se pueden
+    // atribuir a un local.
+    const manual = lid
+      ? []
+      : await this.prisma.journalEntry.findMany({
+          where: { companyId, date: { gte: r.start, lt: r.end } },
+          include: { lines: true },
+          orderBy: { date: 'asc' },
+        });
     for (const m of manual) {
       entries.push({
         date: day(m.date),
@@ -429,7 +466,10 @@ export class AccountingService {
 
   // Libro diario: asientos por fecha.
   async journal(user: any, query: any = {}) {
-    const { entries, range } = await this.buildEntries(user.companyId, query);
+    const { entries, range } = await this.buildEntries(user.companyId, {
+      ...query,
+      localId: await this.resolveReportLocal(user, query),
+    });
     let totalDebit = 0;
     let totalCredit = 0;
     for (const e of entries)
@@ -498,7 +538,10 @@ export class AccountingService {
     const code = String(query.account || '').trim();
     if (!code)
       return { success: true, data: { account: null, movements: [], totals: { debit: 0, credit: 0 } } };
-    const { entries, map, range } = await this.buildEntries(user.companyId, query);
+    const { entries, map, range } = await this.buildEntries(user.companyId, {
+      ...query,
+      localId: await this.resolveReportLocal(user, query),
+    });
     const acc = map[code] || { code, name: code, nature: 'DEBIT' };
     let bal = 0;
     let debit = 0;
@@ -539,7 +582,10 @@ export class AccountingService {
   // el movimiento de sus cuentas (lo que se generó/pagó) para preparar la
   // declaración. Se apoya en los asientos (derivados + manuales).
   async taxSummary(user: any, query: any = {}) {
-    const { entries, map, range } = await this.buildEntries(user.companyId, query);
+    const { entries, map, range } = await this.buildEntries(user.companyId, {
+      ...query,
+      localId: await this.resolveReportLocal(user, query),
+    });
     const agg = this.aggregate(entries, map);
     const acc = (code: string, label: string) => {
       const a = agg[code];
@@ -572,13 +618,18 @@ export class AccountingService {
   // balance general acumulado al corte (endDate). Todo derivado de la operación.
   async financials(user: any, query: any = {}) {
     const cid = user.companyId;
+    // Aislamiento por local: el dueño puede acotar los reportes a una sede
+    // (?localId); un rol de sede queda forzado a su local. Los asientos manuales
+    // (sin local) se omiten al acotar por sede.
+    const q = { ...query, localId: await this.resolveReportLocal(user, query) };
     // Movimientos del periodo (para P&L y flujo de caja).
-    const period = await this.buildEntries(cid, query);
+    const period = await this.buildEntries(cid, q);
     const pAgg = this.aggregate(period.entries, period.map);
     // Acumulado desde el inicio hasta el corte (para el balance general).
     const cum = await this.buildEntries(cid, {
       startDate: '2000-01-01',
       endDate: period.range.endStr,
+      localId: q.localId,
     });
     const cAgg = this.aggregate(cum.entries, cum.map);
 

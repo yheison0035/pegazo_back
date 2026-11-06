@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -25,8 +26,8 @@ export class MembershipsController {
 
   @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA')
   @Get()
-  list(@Req() req) {
-    return this.service.list(req.user);
+  list(@Req() req, @Query('localId') localId?: string) {
+    return this.service.list(req.user, localId);
   }
 
   @Roles('SUPER_ADMIN', 'ADMIN')

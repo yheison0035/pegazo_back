@@ -460,10 +460,21 @@ export class InventoryService {
     }
 
     if (query.localId) {
-      where.local = {
-        ...where.local,
-        name: { contains: query.localId, mode: 'insensitive' },
-      };
+      const v = String(query.localId).trim();
+      if (/^\d+$/.test(v)) {
+        // Desplegable del dueño: acota a esa sede (respetando el acceso).
+        const req = Number(v);
+        if (localIds === null || localIds.includes(req)) {
+          where.localId = req;
+        } else {
+          where.localId = -1;
+        }
+      } else {
+        where.local = {
+          ...where.local,
+          name: { contains: v, mode: 'insensitive' },
+        };
+      }
     }
 
     if (query.providerId) {

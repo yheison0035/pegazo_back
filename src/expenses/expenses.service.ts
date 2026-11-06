@@ -78,10 +78,20 @@ export class ExpensesService {
     }
 
     if (query.localId) {
-      where.local = {
-        name: { contains: query.localId, mode: 'insensitive' },
-        companyId: user.companyId,
-      };
+      const v = String(query.localId).trim();
+      if (/^\d+$/.test(v)) {
+        // Desplegable del dueño: acota a esa sede (respetando el acceso).
+        const req = Number(v);
+        where.AND = where.AND || [];
+        where.AND.push({
+          localId: localIds === null || localIds.includes(req) ? req : -1,
+        });
+      } else {
+        where.local = {
+          name: { contains: v, mode: 'insensitive' },
+          companyId: user.companyId,
+        };
+      }
     }
 
     if (query.providerId) {

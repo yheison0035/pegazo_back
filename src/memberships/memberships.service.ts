@@ -64,7 +64,7 @@ export class MembershipsService {
     return c.id;
   }
 
-  async list(user: any) {
+  async list(user: any, localId?: string) {
     const localIds = await getAccessibleLocalIds(this.prisma, user);
     const where: any = {
       companyId: user.companyId,
@@ -72,6 +72,11 @@ export class MembershipsService {
     };
     if (localIds !== null) {
       where.localId = localIds.length ? { in: localIds } : -1;
+    }
+    // Desplegable del dueño: acota a esa sede (respetando el acceso).
+    if (localId && /^\d+$/.test(String(localId))) {
+      const req = Number(localId);
+      where.localId = localIds === null || localIds.includes(req) ? req : -1;
     }
     const items = await this.prisma.membership.findMany({
       where,
