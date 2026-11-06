@@ -227,7 +227,7 @@ export class AppointmentsService {
     // El horario de atención del negocio manda: aunque el cliente envíe una hora
     // de un formulario viejo, no se acepta un día cerrado ni una hora fuera de
     // rango. Misma fuente que la disponibilidad (resolveBusinessHours).
-    const hours = this.resolveBusinessHours(company, dto.date);
+    const hours = this.resolveBusinessHours(company, dto.date, dto.localId);
     if (hours.closed)
       throw new BadRequestException(
         'El negocio no atiende ese día. Elige otra fecha.',
@@ -1446,15 +1446,23 @@ export class AppointmentsService {
       bookingConfig?: any;
     } | null,
     date: string,
+    localId?: number | null,
   ): { closed: boolean; startHour: number; endHour: number } {
     const weekday = new Date(
       `${String(date).slice(0, 10)}T00:00:00Z`,
     ).getUTCDay();
-    const weekHours: any = (company?.bookingConfig as any)?.weekHours || null;
+    const cfg: any = company?.bookingConfig || {};
+    // CADA LOCAL maneja su horario: se prefiere el de la sede; si no tiene, se
+    // usa el horario general de la empresa.
+    const localCfg =
+      localId != null ? cfg.localHours?.[String(localId)] : null;
+    const weekHours: any = localCfg?.weekHours || cfg.weekHours || null;
     const dayCfg = weekHours ? weekHours[String(weekday)] : null;
     if (dayCfg?.closed) return { closed: true, startHour: 0, endHour: 0 };
-    const startHour = dayCfg?.open ?? company?.openHour ?? 9;
-    const endHour = dayCfg?.close ?? company?.closeHour ?? 20;
+    const startHour =
+      dayCfg?.open ?? localCfg?.openHour ?? company?.openHour ?? 9;
+    const endHour =
+      dayCfg?.close ?? localCfg?.closeHour ?? company?.closeHour ?? 20;
     return { closed: false, startHour, endHour };
   }
 
@@ -1489,6 +1497,7 @@ export class AppointmentsService {
       barberId,
       date,
       serviceId,
+      localId, // sede: su horario manda (cada local el suyo)
       appointmentId, // opcional cuando se edita
     } = query;
 
@@ -1534,6 +1543,7 @@ export class AppointmentsService {
     const { closed, startHour, endHour } = this.resolveBusinessHours(
       company,
       date,
+      localId ? Number(localId) : null,
     );
 
     // Día marcado como cerrado: no hay horarios.
