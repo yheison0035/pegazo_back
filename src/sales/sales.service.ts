@@ -534,13 +534,26 @@ export class SalesService {
     const limit = Number(query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Los pedidos web pertenecen a la tienda online de TODA la empresa (viven
-    // en el local de ecommerce), no al local físico del usuario: se escopan por
-    // empresa para que cualquier miembro con permiso los gestione.
+    // Cada pedido web vive en el local de su tienda online (website.localId): se
+    // aísla por local como el resto. El dueño ve todos y puede acotar con
+    // ?localId; los roles de sede, solo los de su local.
     const where: any = {
       source: 'ECOMMERCE',
       local: { is: { companyId: user.companyId } },
     };
+
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    applyLocalFilter(where, user, localIds, 'sale');
+    if (query.localId && /^\d+$/.test(String(query.localId))) {
+      const req = Number(query.localId);
+      if (localIds === null || localIds.includes(req)) {
+        where.AND = where.AND || [];
+        where.AND.push({ localId: req });
+      } else {
+        where.AND = where.AND || [];
+        where.AND.push({ localId: -1 });
+      }
+    }
 
     if (query.code) {
       where.code = { contains: query.code, mode: 'insensitive' };
@@ -630,6 +643,7 @@ export class SalesService {
     });
 
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    await assertLocalAccess(this.prisma, user, order.localId);
 
     return { success: true, data: order };
   }
@@ -650,6 +664,7 @@ export class SalesService {
       include: { items: true },
     });
     if (!sale) throw new NotFoundException('Pedido no encontrado');
+    await assertLocalAccess(this.prisma, user, sale.localId);
     if (sale.saleStatus === 'CANCELADA') {
       return { success: true, message: 'El pedido ya estaba cancelado' };
     }
@@ -716,6 +731,7 @@ export class SalesService {
     });
 
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    await assertLocalAccess(this.prisma, user, order.localId);
 
     // Paso 1 (interno): confirmar el pedido y los datos con el cliente. No envía
     // correo al cliente (no ve este estado); solo habilita el resto del flujo.

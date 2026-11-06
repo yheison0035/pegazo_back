@@ -10,7 +10,10 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { Status } from '@prisma/client';
 import { AuditService } from '@/audit/audit.service';
 import { PlanLimitsService } from '@/common/plan-limits.service';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 import { applyLocalFilter } from '@/common/local-filter.util';
 import { loyaltyStatus } from '@/common/loyalty.util';
 
@@ -35,12 +38,31 @@ export class CustomersService {
     private planLimits: PlanLimitsService,
   ) {}
 
+  // Fragmento de `where` para aislar los clientes por local (el cliente guarda
+  // el local donde se registró). El dueño/roles globales ven todos; un rol de
+  // sede, solo los de su local. `reqLocalId` permite al dueño acotar por sede.
+  private async customerLocalWhere(user: any, reqLocalId?: any) {
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const req =
+      reqLocalId && /^\d+$/.test(String(reqLocalId))
+        ? Number(reqLocalId)
+        : undefined;
+    if (req) {
+      return {
+        localId: localIds === null || localIds.includes(req) ? req : -1,
+      };
+    }
+    if (localIds === null) return {};
+    return { localId: localIds.length ? { in: localIds } : -1 };
+  }
+
   async findAllPaginated(user: any, query: any) {
     const isAll = query.all === 'true' || query.all === true;
 
     const where: any = {
       status: { not: Status.ELIMINADO },
       companyId: user.companyId,
+      ...(await this.customerLocalWhere(user, query.localId)),
     };
 
     if (query.document) {
@@ -247,6 +269,7 @@ export class CustomersService {
         document: doc,
         companyId: user.companyId,
         status: { not: Status.ELIMINADO },
+        ...(await this.customerLocalWhere(user)),
       },
       include: { local: true },
     });
@@ -276,6 +299,7 @@ export class CustomersService {
       where: {
         id,
         companyId: user.companyId,
+        ...(await this.customerLocalWhere(user)),
       },
       include: { local: true },
     });
@@ -332,7 +356,11 @@ export class CustomersService {
 
   async getCustomerSummary(id: number, user: any) {
     const customer = await this.prisma.customer.findFirst({
-      where: { id, companyId: user.companyId },
+      where: {
+        id,
+        companyId: user.companyId,
+        ...(await this.customerLocalWhere(user)),
+      },
       include: { local: { select: { name: true } } },
     });
     if (!customer) throw new NotFoundException('Cliente no encontrado');
@@ -472,6 +500,7 @@ export class CustomersService {
     const where: any = {
       companyId: user.companyId,
       status: { not: Status.ELIMINADO },
+      ...(await this.customerLocalWhere(user, query.localId)),
       ...(completed
         ? { loyaltyCompleted: true }
         : { loyaltyCompleted: false, loyaltyStamps: { gt: 0 } }),
@@ -572,17 +601,13 @@ export class CustomersService {
     await this.planLimits.assertCanCreate(user.companyId, 'customers');
     this.assertDianFields(dto);
 
-    // El cliente es global por empresa, pero guardamos el "local de registro"
-    // (de dónde viene): el del contexto (factura/formulario) o, si no llega,
-    // el local del usuario que lo crea. Es solo informativo, no restringe.
-    let localId: number | null = dto.localId || user.localId || null;
+    // El cliente queda asociado al local donde se registra (aislamiento por
+    // local): el del contexto (factura/formulario) o el del usuario que lo crea.
+    const localId: number | null = dto.localId || user.localId || null;
 
+    // Si llega un local explícito, debe ser uno que el usuario pueda ver.
     if (localId) {
-      const local = await this.prisma.local.findFirst({
-        where: { id: localId, companyId: user.companyId },
-        select: { id: true },
-      });
-      localId = local ? local.id : null; // si no es de la empresa, se ignora
+      await assertLocalAccess(this.prisma, user, localId);
     }
 
     const { localId: _, birthday, segmentId, ...rest } = dto;
@@ -636,6 +661,15 @@ export class CustomersService {
 
     if (customer.companyId !== user.companyId) {
       throw new ForbiddenException('No tienes permiso');
+    }
+
+    // Aislamiento por local: un rol de sede solo edita clientes de su local.
+    const upLocalIds = await getAccessibleLocalIds(this.prisma, user);
+    if (
+      upLocalIds !== null &&
+      (customer.localId == null || !upLocalIds.includes(customer.localId))
+    ) {
+      throw new ForbiddenException('No tienes acceso a este cliente');
     }
 
     // Valida datos DIAN sobre el estado resultante (merge del cliente + cambios).
@@ -703,6 +737,15 @@ export class CustomersService {
 
     if (!customer) {
       throw new NotFoundException('Cliente no encontrado');
+    }
+
+    // Aislamiento por local: un rol de sede solo elimina clientes de su local.
+    const rmLocalIds = await getAccessibleLocalIds(this.prisma, user);
+    if (
+      rmLocalIds !== null &&
+      (customer.localId == null || !rmLocalIds.includes(customer.localId))
+    ) {
+      throw new ForbiddenException('No tienes acceso a este cliente');
     }
 
     await this.prisma.customer.update({
