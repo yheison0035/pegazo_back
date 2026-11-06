@@ -7,6 +7,7 @@ import {
 import { EmployeeChargeType, Role } from '@prisma/client';
 import { PrismaService } from '@/prisma.service';
 import { CreateEmployeeChargeDto } from './dto/create-employee-charge.dto';
+import { getAccessibleLocalIds } from '@/common/access-locals.util';
 
 // Roles que administran los cargos (el dueño/administrador del negocio).
 const OWNER_ROLES: Role[] = [Role.SUPER_ADMIN, Role.ADMIN];
@@ -19,13 +20,48 @@ export class EmployeeChargesService {
     return OWNER_ROLES.includes(user.role);
   }
 
+  // Aislamiento por local: los cargos son de empleados, que pertenecen a un
+  // local. EmployeeCharge no tiene localId propio, así que se acota por los
+  // empleados de los locales accesibles. Devuelve null si el usuario ve todo.
+  private async accessibleEmployeeIds(user: any): Promise<number[] | null> {
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    if (localIds === null) return null;
+    const emps = await this.prisma.user.findMany({
+      where: {
+        companyId: user.companyId,
+        localId: localIds.length ? { in: localIds } : -1,
+      },
+      select: { id: true },
+    });
+    return emps.map((e) => e.id);
+  }
+
+  // Verifica que un empleado concreto pertenezca a un local accesible.
+  private async assertEmployeeInScope(user: any, employeeId: number) {
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    if (localIds === null) return;
+    const emp = await this.prisma.user.findFirst({
+      where: { id: employeeId, companyId: user.companyId },
+      select: { localId: true },
+    });
+    if (!emp || emp.localId == null || !localIds.includes(emp.localId)) {
+      throw new ForbiddenException('No tienes acceso a este empleado');
+    }
+  }
+
   // Listado. El dueño ve todos (filtra por empleado/estado); el empleado solo
   // los suyos (solo lectura).
   async findAll(user: any, query: any = {}) {
     const where: any = { companyId: user.companyId };
 
     if (this.isOwner(user)) {
-      if (query.userId) where.userId = Number(query.userId);
+      const allowed = await this.accessibleEmployeeIds(user);
+      if (query.userId) {
+        const req = Number(query.userId);
+        where.userId = allowed === null || allowed.includes(req) ? req : -1;
+      } else if (allowed !== null) {
+        where.userId = { in: allowed };
+      }
     } else {
       // El empleado solo ve su propia cuenta.
       where.userId = user.id;
@@ -60,14 +96,18 @@ export class EmployeeChargesService {
 
   // Saldo del empleado (pendiente / pagado / descontado / total).
   async summary(user: any, query: any = {}) {
-    const userId = this.isOwner(user)
-      ? query.userId
-        ? Number(query.userId)
-        : undefined
-      : user.id;
-
     const where: any = { companyId: user.companyId };
-    if (userId) where.userId = userId;
+    if (this.isOwner(user)) {
+      const allowed = await this.accessibleEmployeeIds(user);
+      if (query.userId) {
+        const req = Number(query.userId);
+        where.userId = allowed === null || allowed.includes(req) ? req : -1;
+      } else if (allowed !== null) {
+        where.userId = { in: allowed };
+      }
+    } else {
+      where.userId = user.id;
+    }
 
     const charges = await this.prisma.employeeCharge.findMany({
       where,
@@ -125,6 +165,8 @@ export class EmployeeChargesService {
       select: { id: true },
     });
     if (!emp) throw new BadRequestException('Empleado no válido');
+    // El empleado debe ser de un local accesible.
+    await this.assertEmployeeInScope(user, Number(dto.userId));
 
     const { chargeCategoryId, type } = await this.resolveCategory(
       user.companyId,
@@ -153,6 +195,8 @@ export class EmployeeChargesService {
       where: { id, companyId: user.companyId },
     });
     if (!charge) throw new NotFoundException('Cargo no encontrado');
+    // No se opera un cargo de un empleado de otro local.
+    await this.assertEmployeeInScope(user, charge.userId);
     return charge;
   }
 

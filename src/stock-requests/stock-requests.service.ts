@@ -11,6 +11,7 @@ import { AuditService } from '@/audit/audit.service';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { CreateStockRequestDto } from './dto/create-stock-request.dto';
 import { DecideStockRequestDto } from './dto/reject-stock-request.dto';
+import { getAccessibleLocalIds } from '@/common/access-locals.util';
 
 // Roles que aprueban/rechazan (y que bajan stock directamente): dueño y admin.
 const APPROVER_ROLES = ['SUPER_ADMIN', 'ADMIN'];
@@ -46,8 +47,15 @@ export class StockRequestsService {
       );
     }
 
+    // Aislamiento por local: solo se solicita sobre productos de un local
+    // accesible (el inventario lleva el localId).
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const invWhere: any = { id: dto.inventoryId, companyId: user.companyId };
+    if (localIds !== null) {
+      invWhere.localId = localIds.length ? { in: localIds } : -1;
+    }
     const inventory = await this.prisma.inventory.findFirst({
-      where: { id: dto.inventoryId, companyId: user.companyId },
+      where: invWhere,
       select: {
         id: true,
         name: true,
@@ -135,6 +143,11 @@ export class StockRequestsService {
     }
     const where: any = { companyId: user.companyId };
     if (status) where.status = status;
+    // Aislamiento por local: solicitudes de productos de locales accesibles.
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    if (localIds !== null) {
+      where.inventory = { localId: localIds.length ? { in: localIds } : -1 };
+    }
     const data = await this.prisma.stockChangeRequest.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -151,9 +164,12 @@ export class StockRequestsService {
   // Conteo de pendientes (para el badge de la campana).
   async pendingCount(user: any) {
     if (!this.isApprover(user.role)) return { success: true, data: { count: 0 } };
-    const count = await this.prisma.stockChangeRequest.count({
-      where: { companyId: user.companyId, status: 'PENDING' },
-    });
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const where: any = { companyId: user.companyId, status: 'PENDING' };
+    if (localIds !== null) {
+      where.inventory = { localId: localIds.length ? { in: localIds } : -1 };
+    }
+    const count = await this.prisma.stockChangeRequest.count({ where });
     return { success: true, data: { count } };
   }
 
@@ -169,8 +185,14 @@ export class StockRequestsService {
   }
 
   private async load(user: any, id: number) {
+    const where: any = { id, companyId: user.companyId };
+    // Aislamiento por local: no se resuelve una solicitud de otro local.
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    if (localIds !== null) {
+      where.inventory = { localId: localIds.length ? { in: localIds } : -1 };
+    }
     const req = await this.prisma.stockChangeRequest.findFirst({
-      where: { id, companyId: user.companyId },
+      where,
       include: { inventory: { select: { id: true, name: true } } },
     });
     if (!req) throw new NotFoundException('Solicitud no encontrada');
