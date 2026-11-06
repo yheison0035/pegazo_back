@@ -1,10 +1,9 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 
 @Injectable()
 export class MesasService {
@@ -46,10 +45,7 @@ export class MesasService {
 
   async create(dto: any, user: any) {
     const localId = Number(dto.localId);
-    const local = await this.prisma.local.findFirst({
-      where: { id: localId, companyId: user.companyId },
-    });
-    if (!local) throw new ForbiddenException('Local no válido');
+    await assertLocalAccess(this.prisma, user, localId);
 
     const mesa = await this.prisma.mesa.create({
       data: { name: dto.name, localId, companyId: user.companyId },
@@ -62,6 +58,7 @@ export class MesasService {
       where: { id, companyId: user.companyId },
     });
     if (!mesa) throw new NotFoundException('Mesa no encontrada');
+    await assertLocalAccess(this.prisma, user, mesa.localId);
 
     const updated = await this.prisma.mesa.update({
       where: { id },
@@ -84,6 +81,7 @@ export class MesasService {
       where: { id, companyId: user.companyId },
     });
     if (!mesa) throw new NotFoundException('Mesa no encontrada');
+    await assertLocalAccess(this.prisma, user, mesa.localId);
     await this.prisma.mesa.delete({ where: { id } });
     return { success: true };
   }
