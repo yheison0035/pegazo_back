@@ -40,6 +40,15 @@ disponibilidad de citas. `AppointmentsService.resolveBusinessHours` es la fuente
 - `companies.hours.spec.ts` — `updateHours` sanea y guarda `weekHours` sin pisar
   el resto de `bookingConfig` y sincroniza `openHour`/`closeHour` de respaldo.
 
+## Aislamiento por local (multi-sede)
+
+`getAccessibleLocalIds` decide qué locales ve cada usuario: el dueño
+(`SUPER_ADMIN`) y los roles globales (`COORDINADOR`, `AUXILIAR`) ven todos los de
+su empresa (`null`); un `ADMIN` ve **exclusivamente el local que tiene asignado**
+(`user.localId`) y nunca otro, aunque figure como manager de otras sedes (solo si
+no tiene local asignado cae a los que administra, por compatibilidad); los demás
+roles, su local asignado. Spec: `src/common/access-locals.util.spec.ts`.
+
 ## Caja: ingresos por ventas, salidas por gastos
 
 La caja ya no tiene movimientos manuales de efectivo. Los INGRESOS entran por las

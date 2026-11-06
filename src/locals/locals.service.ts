@@ -158,16 +158,8 @@ export class LocalsService {
       };
     }
 
-    // ADMIN → solo si es manager
-    if (user.role === Role.ADMIN && local.managerId === user.id) {
-      return {
-        success: true,
-        message: 'Local obtenido correctamente',
-        data: local,
-      };
-    }
-
-    // Usuario normal → solo su local
+    // ADMIN y cualquier usuario de sede → SOLO su local asignado. Un
+    // administrador nunca accede a otra sede (aunque figure como manager).
     if (user.localId && user.localId === local.id) {
       return {
         success: true,
@@ -244,7 +236,8 @@ export class LocalsService {
       !isPlatform &&
       ![Role.SUPER_ADMIN, Role.COORDINADOR, Role.AUXILIAR].includes(user.role)
     ) {
-      if (user.role === Role.ADMIN && found.managerId !== user.id) {
+      // El administrador solo puede modificar el local que tiene ASIGNADO.
+      if (user.role === Role.ADMIN && user.localId !== found.id) {
         throw new ForbiddenException('No puedes modificar este local');
       }
     }
