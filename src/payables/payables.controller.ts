@@ -22,11 +22,13 @@ import { Roles } from '@/auth/roles.decorator';
 export class PayablesController {
   constructor(private readonly service: PayablesService) {}
 
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'COORDINADOR', 'AUXILIAR')
   @Get()
   findAll(@Req() req, @Query() query) {
     return this.service.findAllPaginated(req.user, query);
   }
 
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'COORDINADOR', 'AUXILIAR')
   @Get('summary')
   summary(@Req() req) {
     return this.service.summary(req.user);

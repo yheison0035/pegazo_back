@@ -10,6 +10,10 @@ import { PrismaService } from '@/prisma.service';
 import { ExpensesService } from '@/expenses/expenses.service';
 import { PushService } from '@/push/push.service';
 import { CreatePayableDto } from './dto/create-payable.dto';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 
 const MANAGE_ROLES: Role[] = [
   Role.SUPER_ADMIN,
@@ -56,6 +60,16 @@ export class PayablesService {
       where.paidTo = { contains: query.paidTo, mode: 'insensitive' };
     }
 
+    // Aislamiento por local.
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
+    if (query.localId && /^\d+$/.test(String(query.localId))) {
+      const req = Number(query.localId);
+      where.localId = localIds === null || localIds.includes(req) ? req : -1;
+    }
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.payable.findMany({
         where,
@@ -76,8 +90,14 @@ export class PayablesService {
   // Resumen para las tarjetas: por pagar, vencido y pagado (del periodo actual).
   // Incluye antigüedad de saldos (aging) y estado de cuenta por proveedor.
   async summary(user: any) {
+    // Aislamiento por local: el resumen solo agrega los locales accesibles.
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const pendWhere: any = { companyId: user.companyId, status: 'PENDIENTE' };
+    if (localIds !== null) {
+      pendWhere.localId = localIds.length ? { in: localIds } : -1;
+    }
     const pend = await this.prisma.payable.findMany({
-      where: { companyId: user.companyId, status: 'PENDIENTE' },
+      where: pendWhere,
       select: { amount: true, dueDate: true, paidTo: true },
     });
     const today = PayablesService.colombiaTodayMidnightUtc();
@@ -153,11 +173,8 @@ export class PayablesService {
 
   async create(dto: CreatePayableDto, user: any) {
     this.assertManage(user);
-    const local = await this.prisma.local.findFirst({
-      where: { id: Number(dto.localId), companyId: user.companyId },
-      select: { id: true },
-    });
-    if (!local) throw new BadRequestException('Local no válido');
+    // El local debe ser uno que el usuario pueda ver.
+    await assertLocalAccess(this.prisma, user, Number(dto.localId));
 
     const payable = await this.prisma.payable.create({
       data: {
@@ -181,6 +198,8 @@ export class PayablesService {
       where: { id, companyId: user.companyId },
     });
     if (!p) throw new NotFoundException('Cuenta por pagar no encontrada');
+    // Aislamiento por local: no se opera una cuenta de otra sede.
+    await assertLocalAccess(this.prisma, user, p.localId);
     return p;
   }
 
@@ -189,6 +208,10 @@ export class PayablesService {
     const p = await this.own(id, user);
     if (p.status === 'PAGADO') {
       throw new BadRequestException('Ya está pagada; no se puede editar');
+    }
+    // No permitir reasignar la cuenta a un local que el usuario no puede ver.
+    if (dto.localId !== undefined) {
+      await assertLocalAccess(this.prisma, user, Number(dto.localId));
     }
     const updated = await this.prisma.payable.update({
       where: { id },
