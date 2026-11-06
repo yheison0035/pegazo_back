@@ -1417,6 +1417,7 @@ export class AppointmentsService {
         barber: { select: { id: true, name: true } },
         service: { select: { name: true } },
         customer: { select: { name: true } },
+        local: { select: { id: true, name: true } },
       },
     });
     return { success: true, data: appts };
