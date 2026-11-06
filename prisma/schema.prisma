@@ -720,6 +720,10 @@ model Local {
   logo       String?
   nit        String?
   email      String?
+  // Apariencia del panel POR LOCAL (color y tipografía). Null = hereda la de la
+  // empresa. Cada sede es independiente: cambiar la de una no afecta a otra.
+  crmTheme   String?
+  crmFont    String?
   status     Status  @default(ACTIVO)
 
   managerId Int?
