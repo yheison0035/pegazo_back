@@ -1552,16 +1552,9 @@ export class SalesService {
         throw new NotFoundException('Venta no encontrada');
       }
 
-      const local = await tx.local.findFirst({
-        where: {
-          id: sale.localId,
-          companyId: user.companyId,
-        },
-      });
-
-      if (!local) {
-        throw new ForbiddenException('No tienes permiso para esta venta');
-      }
+      // Aislamiento por local: el ADMIN solo edita ventas de SU sede; el dueño,
+      // cualquiera de su empresa.
+      await assertLocalAccess(this.prisma, user, sale.localId);
 
       const baseUpdate = {
         paymentMethod: dto.paymentMethod ?? sale.paymentMethod,
@@ -1883,14 +1876,9 @@ export class SalesService {
 
     if (!sale) throw new NotFoundException('Venta no encontrada');
 
-    const local = await this.prisma.local.findFirst({
-      where: {
-        id: sale.localId,
-        companyId: user.companyId,
-      },
-    });
-
-    if (!local) throw new ForbiddenException('No tienes permiso');
+    // Aislamiento por local: el ADMIN solo elimina ventas de SU sede; el dueño,
+    // cualquiera de su empresa.
+    await assertLocalAccess(this.prisma, user, sale.localId);
 
     // Restaurar stock SOLO si realmente se había descontado. Un pedido de la
     // tienda online con pago en línea SIN confirmar (EN_VALIDACION) nunca

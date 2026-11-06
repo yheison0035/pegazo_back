@@ -55,8 +55,8 @@ export class CategoriesController {
     return this.categoriesService.update(id, dto, req.user);
   }
 
-  // Eliminar categoría (soft delete)
-  @Roles('SUPER_ADMIN')
+  // Eliminar categoría (soft delete) — dueño y ADMIN (el servicio valida rol/empresa).
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req) {
     return this.categoriesService.remove(id, req.user);

@@ -178,7 +178,9 @@ export class SalesController {
     return this.salesService.update(id, dto, req.user);
   }
 
-  @Roles('SUPER_ADMIN')
+  // El ADMIN es dueño de SU sede: puede eliminar ventas de su local (el servicio
+  // valida el aislamiento por local). El dueño elimina en cualquier sede.
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req) {
     return this.salesService.remove(id, req.user);
