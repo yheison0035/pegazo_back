@@ -5,6 +5,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
 import { SalesService } from '@/sales/sales.service';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 import { CheckInDto } from './dto/checkin.dto';
 import { CheckoutDto } from './dto/checkout.dto';
 import { StorageSettingsDto } from './dto/settings.dto';
@@ -21,9 +25,12 @@ export class StorageService {
     private readonly sales: SalesService,
   ) {}
 
-  private async localId(companyId: number) {
+  // Local donde se recibe el casco: el asignado del usuario (rol de sede) o el
+  // primero de la empresa (dueño sin local asignado).
+  private async localId(user: any) {
+    if (user.localId) return user.localId;
     const l = await this.prisma.local.findFirst({
-      where: { companyId },
+      where: { companyId: user.companyId },
       orderBy: { id: 'asc' },
       select: { id: true },
     });
@@ -154,10 +161,19 @@ export class StorageService {
     return map;
   }
 
-  async listActive(user: any) {
+  async listActive(user: any, localId?: string) {
     const settings = (await this.getSettings(user)).data;
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const where: any = { companyId: user.companyId, status: 'EN_CUSTODIA' };
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
+    if (localId && /^\d+$/.test(String(localId))) {
+      const req = Number(localId);
+      where.localId = localIds === null || localIds.includes(req) ? req : -1;
+    }
     const tickets = await this.prisma.storageTicket.findMany({
-      where: { companyId: user.companyId, status: 'EN_CUSTODIA' },
+      where,
       // Los recién recibidos aparecen de primero.
       orderBy: { checkInAt: 'desc' },
     });
@@ -175,9 +191,21 @@ export class StorageService {
     return { success: true, data, settings, summary };
   }
 
-  async history(user: any, limit = 30) {
+  async history(user: any, limit = 30, localId?: string) {
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const where: any = {
+      companyId: user.companyId,
+      status: { in: ['ENTREGADO'] },
+    };
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
+    if (localId && /^\d+$/.test(String(localId))) {
+      const req = Number(localId);
+      where.localId = localIds === null || localIds.includes(req) ? req : -1;
+    }
     const tickets = await this.prisma.storageTicket.findMany({
-      where: { companyId: user.companyId, status: { in: ['ENTREGADO'] } },
+      where,
       orderBy: { checkOutAt: 'desc' },
       take: Number(limit) || 30,
     });
@@ -225,7 +253,7 @@ export class StorageService {
     }
 
     const settings = (await this.getSettings(user)).data;
-    const localId = await this.localId(user.companyId);
+    const localId = await this.localId(user);
 
     // Quién recibe (asesor a cargo): el elegido si pertenece a la empresa, o el
     // que registra.
@@ -302,6 +330,7 @@ export class StorageService {
       where: { id: Number(id), companyId: user.companyId },
     });
     if (!t) throw new NotFoundException('Ticket no encontrado');
+    await assertLocalAccess(this.prisma, user, t.localId);
     const updated = await this.prisma.storageTicket.update({
       where: { id: t.id },
       data: { washDone: !!done, washRequested: done ? true : t.washRequested },
@@ -314,6 +343,7 @@ export class StorageService {
       where: { id: Number(id), companyId: user.companyId },
     });
     if (!t) throw new NotFoundException('Ticket no encontrado');
+    await assertLocalAccess(this.prisma, user, t.localId);
     const settings = (await this.getSettings(user)).data;
     return {
       success: true,
@@ -326,6 +356,7 @@ export class StorageService {
       where: { id: Number(id), companyId: user.companyId },
     });
     if (!t) throw new NotFoundException('Ticket no encontrado');
+    await assertLocalAccess(this.prisma, user, t.localId);
     if (t.status !== 'EN_CUSTODIA')
       throw new BadRequestException('El ticket ya no está en custodia.');
     await this.prisma.storageTicket.update({
@@ -342,6 +373,7 @@ export class StorageService {
       where: { id: Number(id), companyId: user.companyId },
     });
     if (!t) throw new NotFoundException('Ticket no encontrado');
+    await assertLocalAccess(this.prisma, user, t.localId);
     if (t.status !== 'EN_CUSTODIA')
       throw new BadRequestException('El ticket ya fue entregado o anulado.');
 
