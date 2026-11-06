@@ -4,6 +4,7 @@ import {
   Get,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -21,12 +22,12 @@ export class CompanySettingsController {
 
   @Roles('SUPER_ADMIN', 'ADMIN')
   @Get('settings')
-  getSettings(@Req() req) {
-    return this.service.getOwnSettings(req.user);
+  getSettings(@Req() req, @Query('localId') localId?: string) {
+    return this.service.getOwnSettings(req.user, localId);
   }
 
   // Facturación del dueño: estado de la suscripción + meses/pagos realizados.
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Get('subscription')
   getSubscription(@Req() req) {
     return this.service.getOwnSubscription(req.user);
@@ -86,13 +87,13 @@ export class CompanySettingsController {
   }
 
   // Correo propio del negocio (SMTP) para enviar sus correos.
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('mail')
   updateMail(@Body() dto: any, @Req() req) {
     return this.service.updateMailConfig(req.user, dto);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Post('mail/test')
   testMail(@Body('to') to: string, @Req() req) {
     return this.service.sendMailTest(req.user, to);
@@ -100,65 +101,65 @@ export class CompanySettingsController {
 
   // Pasarela de pagos propia de la tienda (Wompi por empresa).
   // Métodos de pago aceptados en la tienda online (COD/ONLINE/ADDI).
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Get('store-payments')
   getStorePayments(@Req() req) {
     return this.service.getStorePayments(req.user);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('store-payments')
   updateStorePayments(@Body() dto: any, @Req() req) {
     return this.service.updateStorePayments(req.user, dto);
   }
 
   // Envíos de la tienda online (métodos y tarifas).
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Get('store-shipping')
   getStoreShipping(@Req() req) {
     return this.service.getStoreShipping(req.user);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('store-shipping')
   updateStoreShipping(@Body() dto: any, @Req() req) {
     return this.service.updateStoreShipping(req.user, dto);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Get('wompi')
   getWompi(@Req() req) {
     return this.service.getWompiConfig(req.user);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('wompi')
   updateWompi(@Body() dto: any, @Req() req) {
     return this.service.updateWompiConfig(req.user, dto);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('cash-policy')
   updateCashPolicy(@Body('requireCashOpen') requireCashOpen: boolean, @Req() req) {
     return this.service.updateCashPolicy(req.user, requireCashOpen);
   }
 
   // Base contable de los reportes (CASH | ACCRUAL). Lo elige el dueño.
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('accounting-basis')
   updateAccountingBasis(@Body('basis') basis: string, @Req() req) {
     return this.service.updateAccountingBasis(req.user, basis);
   }
 
   // Cierre de periodo: fija/reabre la fecha de cierre de libros.
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('books-close')
   updateBooksClose(@Body('date') date: string | null, @Req() req) {
     return this.service.updateBooksClose(req.user, date);
   }
 
   // Interruptor de la sección Contabilidad (activos, etc.). Lo activa el dueño.
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('accounting-enabled')
   updateAccountingEnabled(
     @Body('enabled') enabled: boolean,
@@ -167,19 +168,19 @@ export class CompanySettingsController {
     return this.service.updateAccountingEnabled(req.user, enabled);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('fiscal')
   updateFiscal(@Body() dto: any, @Req() req) {
     return this.service.updateFiscal(req.user, dto);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('terminology')
   updateTerminology(@Body() dto: any, @Req() req) {
     return this.service.updateTerminology(req.user, dto);
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('profile')
   updateProfile(
     @Body()
@@ -196,6 +197,7 @@ export class CompanySettingsController {
     dto: {
       openHour?: number;
       closeHour?: number;
+      localId?: number;
       weekHours?: Record<
         string,
         { open?: number; close?: number; closed?: boolean }

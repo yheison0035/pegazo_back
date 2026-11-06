@@ -15,6 +15,7 @@ import { MailService } from '@/mail/mail.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { BUSINESS_TYPE_LABELS } from '@/business-types/business-types.seed';
+import { getAccessibleLocalIds } from '@/common/access-locals.util';
 import { Role, Status, Prisma, BusinessType } from '@prisma/client';
 
 @Injectable()
@@ -26,8 +27,22 @@ export class CompaniesService {
     private mail: MailService,
   ) {}
 
+  // Sede sobre la que se consulta/edita el HORARIO (cada local maneja el suyo):
+  // el administrador queda en SU local; el dueño usa el que indique (?localId) o
+  // el horario general de la empresa (null) si no elige/solo hay una sede.
+  private async resolveSettingsLocal(
+    user: any,
+    localId?: any,
+  ): Promise<number | null> {
+    const ids = await getAccessibleLocalIds(this.prisma, user);
+    if (ids === null) {
+      return localId && /^\d+$/.test(String(localId)) ? Number(localId) : null;
+    }
+    return ids.length ? ids[0] : null;
+  }
+
   // Configuración self-service que ve/edita el dueño de la empresa.
-  async getOwnSettings(user: any) {
+  async getOwnSettings(user: any, localId?: any) {
     const company = await this.prisma.company.findUnique({
       where: { id: user.companyId },
       select: {
@@ -81,8 +96,24 @@ export class CompaniesService {
       withPass?.mailUser &&
       withPass?.mailPassword
     );
-    const weekHours = (company?.bookingConfig as any)?.weekHours || null;
-    return { success: true, data: { ...company, weekHours, mailConfigured } };
+    // Horario por local: si hay una sede resuelta y tiene horario propio, se
+    // devuelve ese; si no, el horario general de la empresa.
+    const cfg: any = company?.bookingConfig || {};
+    const settingsLocal = await this.resolveSettingsLocal(user, localId);
+    const localWeek =
+      settingsLocal != null
+        ? cfg.localHours?.[String(settingsLocal)]?.weekHours
+        : null;
+    const weekHours = localWeek || cfg.weekHours || null;
+    return {
+      success: true,
+      data: {
+        ...company,
+        weekHours,
+        hoursLocalId: settingsLocal,
+        mailConfigured,
+      },
+    };
   }
 
   // ---- Página pública de citas (/booking/:slug) ----
@@ -567,12 +598,15 @@ export class CompaniesService {
     return { success: true, data: company };
   }
 
-  // Horario de atención (para disponibilidad de citas).
+  // Horario de atención (para disponibilidad de citas). CADA LOCAL maneja el
+  // suyo: si hay una sede resuelta se guarda en bookingConfig.localHours[localId];
+  // si no (dueño sin sede / empresa de un solo local) se guarda el general.
   async updateHours(
     user: any,
     dto: {
       openHour?: number;
       closeHour?: number;
+      localId?: number;
       // Horario por DÍA de la semana (clave 0=Dom..6=Sáb). Cada día:
       // { open, close, closed }. El negocio puede manejar horarios distintos.
       weekHours?: Record<string, { open?: number; close?: number; closed?: boolean }>;
@@ -580,12 +614,15 @@ export class CompaniesService {
   ) {
     const clamp = (h: number) => Math.min(23, Math.max(0, Math.floor(Number(h))));
     const data: any = {};
+    const settingsLocal = await this.resolveSettingsLocal(user, dto.localId);
 
-    if (dto.openHour != null) data.openHour = clamp(dto.openHour);
-    if (dto.closeHour != null) data.closeHour = clamp(dto.closeHour);
+    if (settingsLocal == null) {
+      if (dto.openHour != null) data.openHour = clamp(dto.openHour);
+      if (dto.closeHour != null) data.closeHour = clamp(dto.closeHour);
+    }
 
-    // Horario por día: se sanea y se guarda en bookingConfig.weekHours (merge
-    // para no pisar el resto de la config de la página de citas).
+    // Horario por día: se sanea y se guarda (merge para no pisar el resto de la
+    // config de la página de citas).
     if (dto.weekHours && typeof dto.weekHours === 'object') {
       const clean: Record<string, { open: number; close: number; closed: boolean }> = {};
       const opens: number[] = [];
@@ -609,13 +646,24 @@ export class CompaniesService {
         select: { bookingConfig: true },
       });
       const cfg: any = { ...((company?.bookingConfig as any) || {}) };
-      cfg.weekHours = clean;
-      data.bookingConfig = cfg;
+      const openMin = opens.length ? Math.min(...opens) : undefined;
+      const closeMax = closes.length ? Math.max(...closes) : undefined;
 
-      // Respaldo: open/close generales = rango de los días abiertos (lo usa
-      // cualquier parte que aún lea openHour/closeHour, p. ej. días sin configurar).
-      if (opens.length) data.openHour = Math.min(...opens);
-      if (closes.length) data.closeHour = Math.max(...closes);
+      if (settingsLocal != null) {
+        // Horario propio de ESTA sede.
+        cfg.localHours = { ...(cfg.localHours || {}) };
+        cfg.localHours[String(settingsLocal)] = {
+          weekHours: clean,
+          ...(openMin != null && { openHour: openMin }),
+          ...(closeMax != null && { closeHour: closeMax }),
+        };
+      } else {
+        // Horario GENERAL de la empresa (dueño sin sede / un solo local).
+        cfg.weekHours = clean;
+        if (openMin != null) data.openHour = openMin;
+        if (closeMax != null) data.closeHour = closeMax;
+      }
+      data.bookingConfig = cfg;
     }
 
     if (
@@ -631,12 +679,18 @@ export class CompaniesService {
       data,
       select: { openHour: true, closeHour: true, bookingConfig: true },
     });
+    const cfgOut: any = company.bookingConfig || {};
+    const weekOut =
+      settingsLocal != null
+        ? cfgOut.localHours?.[String(settingsLocal)]?.weekHours || null
+        : cfgOut.weekHours || null;
     return {
       success: true,
       data: {
         openHour: company.openHour,
         closeHour: company.closeHour,
-        weekHours: (company.bookingConfig as any)?.weekHours || null,
+        hoursLocalId: settingsLocal,
+        weekHours: weekOut,
       },
     };
   }
