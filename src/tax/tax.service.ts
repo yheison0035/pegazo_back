@@ -3,6 +3,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
 import { FiscalService } from '@/fiscal/fiscal.service';
 import { AccountingService } from '@/accounting/accounting.service';
+import { getAccessibleLocalIds } from '@/common/access-locals.util';
 
 const OBLIGATIONS = ['IVA', 'RENTA', 'RETEFUENTE', 'ICA', 'OTRO'];
 
@@ -30,6 +31,21 @@ export class TaxService {
     private accounting: AccountingService,
   ) {}
 
+  // Sede efectiva para los reportes tributarios: el dueño/contador ve TODA la
+  // empresa (null) o la sede que elija en el desplegable; un rol de sede queda
+  // SIEMPRE limitado a su local accesible. Devuelve null = empresa completa.
+  private async resolveTaxLocal(user: any, query: any): Promise<number | null> {
+    const accessible = await getAccessibleLocalIds(this.prisma, user);
+    const req =
+      query?.localId && /^\d+$/.test(String(query.localId))
+        ? Number(query.localId)
+        : null;
+    if (accessible === null) return req; // dueño / contador / roles globales
+    if (req && accessible.includes(req)) return req;
+    if (accessible.length === 1) return accessible[0];
+    return accessible[0] ?? -1;
+  }
+
   // ---------- Declaración de renta (F1): consolidado + borrador ----------
   // Reúne los insumos anuales (ingresos, costos, gastos, renta líquida,
   // patrimonio) del motor contable y estima el impuesto con el motor de reglas.
@@ -38,14 +54,20 @@ export class TaxService {
   async rentaDraft(user: any, query: any = {}) {
     const companyId = user.companyId;
     const year = Number(query?.year) || new Date().getUTCFullYear();
+    const localId = await this.resolveTaxLocal(user, query);
     const [c, fin] = await Promise.all([
       this.prisma.company.findUnique({
         where: { id: companyId },
         select: { personType: true, taxRegime: true, nit: true, businessName: true, name: true },
       }),
+      // Finanzas de la sede elegida (o de toda la empresa si no se eligió).
       this.accounting.financials(
-        { companyId },
-        { startDate: `${year}-01-01`, endDate: `${year}-12-31` },
+        { ...user, companyId },
+        {
+          startDate: `${year}-01-01`,
+          endDate: `${year}-12-31`,
+          ...(localId ? { localId } : {}),
+        },
       ),
     ]);
     const d: any = fin?.data || {};
@@ -93,6 +115,7 @@ export class TaxService {
       success: true,
       data: {
         year,
+        localId: localId ?? null,
         company: { nit: c?.nit || null, name: c?.businessName || c?.name || null },
         personType,
         regime,
@@ -165,12 +188,20 @@ export class TaxService {
 
   // ---------- Magnitudes anuales (para topes de renta) ----------
   // Ingresos estimados de las ventas del año (el contador puede sobreescribir).
-  private async salesIngresos(companyId: number, year: number): Promise<number> {
+  private async salesIngresos(
+    companyId: number,
+    year: number,
+    localId?: number | null,
+  ): Promise<number> {
     const from = new Date(Date.UTC(year, 0, 1));
     const to = new Date(Date.UTC(year + 1, 0, 1));
     const agg = await this.prisma.sale.aggregate({
       _sum: { totalAmount: true },
-      where: { local: { companyId }, createdAt: { gte: from, lt: to } },
+      where: {
+        // Por local cuando se elige una sede; si no, toda la empresa.
+        local: { companyId, ...(localId ? { id: localId } : {}) },
+        createdAt: { gte: from, lt: to },
+      },
     });
     return Math.round(Number(agg._sum.totalAmount) || 0);
   }
@@ -251,6 +282,7 @@ export class TaxService {
   // ---------- Obligaciones DIAN (motor de la API fiscal) ----------
   async obligations(user: any, query: any = {}) {
     const year = Number(query?.year) || new Date().getUTCFullYear();
+    const localId = await this.resolveTaxLocal(user, query);
     const c = await this.prisma.company.findUnique({
       where: { id: user.companyId },
       select: PROFILE_SELECT,
@@ -258,7 +290,11 @@ export class TaxService {
     const ty = await this.prisma.companyTaxYear.findUnique({
       where: { companyId_year: { companyId: user.companyId, year } },
     });
-    const ingresosVentas = await this.salesIngresos(user.companyId, year);
+    const ingresosVentas = await this.salesIngresos(
+      user.companyId,
+      year,
+      localId,
+    );
     const ingresosBrutos = ty?.ingresosBrutosOverride ?? ingresosVentas;
     const responsibilities = {
       responsableIVA: !!c?.responsableIVA,
@@ -292,6 +328,7 @@ export class TaxService {
       success: true,
       data: {
         year,
+        localId: localId ?? null,
         engineAvailable: !!res,
         profile: { personType, regime, ...responsibilities },
         magnitudes: {
@@ -394,7 +431,12 @@ export class TaxService {
   }
 
   async companyCalendar(user: any, query: any = {}) {
-    const data = await this.buildCalendar(user.companyId, query);
+    // Sede elegida en el desplegable (validada contra los locales accesibles).
+    const localId = await this.resolveTaxLocal(user, query);
+    const data = await this.buildCalendar(user.companyId, {
+      ...query,
+      localId: localId ?? undefined,
+    });
     return { success: true, data };
   }
 
@@ -405,7 +447,22 @@ export class TaxService {
       where: { id: companyId },
       select: { nit: true, taxRegime: true },
     });
-    const digit = this.lastNitDigit(company?.nit);
+    // Si se elige una sede con NIT propio, sus vencimientos dependen del último
+    // dígito de ESE NIT; si el local no tiene NIT propio (o no se elige sede),
+    // se usa el de la empresa. El régimen es de la empresa.
+    const localId =
+      query?.localId && /^\d+$/.test(String(query.localId))
+        ? Number(query.localId)
+        : null;
+    let effectiveNit = company?.nit || null;
+    if (localId) {
+      const local = await this.prisma.local.findFirst({
+        where: { id: localId, companyId },
+        select: { nit: true },
+      });
+      if (local?.nit) effectiveNit = local.nit;
+    }
+    const digit = this.lastNitDigit(effectiveNit);
     const regime = company?.taxRegime
       ? String(company.taxRegime).toUpperCase()
       : null;
@@ -458,6 +515,7 @@ export class TaxService {
 
     return {
       year,
+      localId: localId ?? null,
       nitDigit: digit,
       regime,
       uvt: uvt?.value || null,

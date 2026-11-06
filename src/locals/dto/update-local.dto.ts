@@ -23,6 +23,18 @@ export class UpdateLocalDto {
   phone?: string;
 
   @IsOptional()
+  @IsString()
+  logo?: string;
+
+  @IsOptional()
+  @IsString()
+  nit?: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @IsOptional()
   @IsEnum(Status)
   status?: Status;
 

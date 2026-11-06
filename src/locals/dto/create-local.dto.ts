@@ -22,6 +22,18 @@ export class CreateLocalDto {
   phone?: string;
 
   @IsOptional()
+  @IsString()
+  logo?: string;
+
+  @IsOptional()
+  @IsString()
+  nit?: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @IsOptional()
   @IsInt()
   managerId?: number;
 
