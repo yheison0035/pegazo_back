@@ -5,6 +5,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
 import { SalesService } from '@/sales/sales.service';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 
 const PARKING_SERVICE = 'Parqueadero';
 
@@ -17,9 +21,12 @@ export class ParkingService {
     private readonly sales: SalesService,
   ) {}
 
-  private async localId(companyId: number) {
+  // El local donde se registra el ingreso: el asignado del usuario (rol de sede)
+  // o el primero de la empresa (dueño sin local asignado).
+  private async localId(user: any) {
+    if (user.localId) return user.localId;
     const l = await this.prisma.local.findFirst({
-      where: { companyId },
+      where: { companyId: user.companyId },
       orderBy: { id: 'asc' },
       select: { id: true },
     });
@@ -195,8 +202,13 @@ export class ParkingService {
   // ---- Operación ----
   async listActive(user: any) {
     const settings = (await this.getSettings(user)).data;
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const where: any = { companyId: user.companyId, status: 'DENTRO' };
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
     const tickets = await this.prisma.parkingTicket.findMany({
-      where: { companyId: user.companyId, status: 'DENTRO' },
+      where,
       orderBy: { checkInAt: 'desc' },
     });
     const now = new Date();
@@ -226,8 +238,13 @@ export class ParkingService {
   }
 
   async history(user: any, limit = 30) {
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const where: any = { companyId: user.companyId, status: 'ENTREGADO' };
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
     const tickets = await this.prisma.parkingTicket.findMany({
-      where: { companyId: user.companyId, status: 'ENTREGADO' },
+      where,
       orderBy: { checkOutAt: 'desc' },
       take: Number(limit) || 30,
     });
@@ -266,7 +283,7 @@ export class ParkingService {
     if (!plate && !hasName)
       throw new BadRequestException('Indica la placa o el nombre del cliente.');
 
-    const localId = await this.localId(user.companyId);
+    const localId = await this.localId(user);
 
     // Tipo de vehículo (snapshot del nombre para histórico).
     let vehicleTypeId: number | null = null;
@@ -342,6 +359,7 @@ export class ParkingService {
       where: { id: Number(id), companyId: user.companyId },
     });
     if (!t) throw new NotFoundException('Ticket no encontrado');
+    await assertLocalAccess(this.prisma, user, t.localId);
     const settings = (await this.getSettings(user)).data;
     const type = t.vehicleTypeId
       ? await this.prisma.parkingVehicleType.findUnique({
@@ -359,6 +377,7 @@ export class ParkingService {
       where: { id: Number(id), companyId: user.companyId },
     });
     if (!t) throw new NotFoundException('Ticket no encontrado');
+    await assertLocalAccess(this.prisma, user, t.localId);
     if (t.status !== 'DENTRO')
       throw new BadRequestException('El vehículo ya salió o fue anulado.');
     await this.prisma.parkingTicket.update({
@@ -389,6 +408,7 @@ export class ParkingService {
       where: { id: Number(id), companyId: user.companyId },
     });
     if (!t) throw new NotFoundException('Ticket no encontrado');
+    await assertLocalAccess(this.prisma, user, t.localId);
     if (t.status !== 'DENTRO')
       throw new BadRequestException('El vehículo ya salió o fue anulado.');
 

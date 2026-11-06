@@ -5,7 +5,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 import { SalesService } from '@/sales/sales.service';
 
 const KITCHEN_STATUSES = ['PENDIENTE', 'PREPARANDO', 'LISTO'];
@@ -100,10 +103,8 @@ export class ComandasService {
   // Crea una comanda (pedido). Si trae mesa, la marca OCUPADA.
   async create(dto: any, user: any) {
     const localId = Number(dto.localId);
-    const local = await this.prisma.local.findFirst({
-      where: { id: localId, companyId: user.companyId },
-    });
-    if (!local) throw new ForbiddenException('Local no válido');
+    // La comanda se abre en un local que el usuario pueda ver.
+    await assertLocalAccess(this.prisma, user, localId);
     if (!dto.items?.length) {
       throw new BadRequestException('La comanda debe tener al menos un ítem');
     }
@@ -143,6 +144,7 @@ export class ComandasService {
       where: { id, companyId: user.companyId },
     });
     if (!comanda) throw new NotFoundException('Comanda no encontrada');
+    await assertLocalAccess(this.prisma, user, comanda.localId);
     if (comanda.status === 'COBRADA') {
       throw new BadRequestException('La comanda ya fue cobrada');
     }
@@ -187,12 +189,17 @@ export class ComandasService {
 
   // Comandas abiertas de una mesa.
   async byMesa(mesaId: number, user: any) {
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const where: any = {
+      mesaId,
+      companyId: user.companyId,
+      status: { notIn: ['COBRADA', 'CANCELADA'] },
+    };
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
     const comandas = await this.prisma.comanda.findMany({
-      where: {
-        mesaId,
-        companyId: user.companyId,
-        status: { notIn: ['COBRADA', 'CANCELADA'] },
-      },
+      where,
       orderBy: { createdAt: 'asc' },
       include: {
         items: true,
@@ -225,6 +232,7 @@ export class ComandasService {
       where: { id, companyId: user.companyId },
     });
     if (!comanda) throw new NotFoundException('Comanda no encontrada');
+    await assertLocalAccess(this.prisma, user, comanda.localId);
 
     // Validar que la transición desde el estado actual esté permitida
     // (una comanda cobrada o cancelada ya no se mueve).
@@ -266,6 +274,7 @@ export class ComandasService {
       include: { items: true },
     });
     if (!comanda) throw new NotFoundException('Comanda no encontrada');
+    await assertLocalAccess(this.prisma, user, comanda.localId);
     if (comanda.status === 'COBRADA') {
       throw new BadRequestException('La comanda ya fue cobrada');
     }
@@ -279,6 +288,7 @@ export class ComandasService {
       where: { id: mesaId, companyId: user.companyId },
     });
     if (!mesa) throw new NotFoundException('Mesa no encontrada');
+    await assertLocalAccess(this.prisma, user, mesa.localId);
 
     const comandas = await this.prisma.comanda.findFirst({
       where: {

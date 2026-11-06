@@ -8,6 +8,10 @@ import { Status } from '@prisma/client';
 import { CreateMembershipDto } from './dto/create-membership.dto';
 import { UpdateMembershipDto } from './dto/update-membership.dto';
 import { PayMembershipDto } from './dto/pay-membership.dto';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 
 // Membresías / mensualidades recurrentes por cliente (guarda cascos, canchas,
 // gym, parqueadero…). Se define una vez y cada mes se cobra; el estado del mes
@@ -31,16 +35,17 @@ export class MembershipsService {
     return { start, end, label: `${MES[m]} ${y}` };
   }
 
-  private async resolveLocalId(companyId: number, localId?: number) {
+  private async resolveLocalId(user: any, localId?: number) {
+    // Con local explícito: debe ser uno que el usuario pueda ver.
     if (localId) {
-      const l = await this.prisma.local.findFirst({
-        where: { id: Number(localId), companyId },
-        select: { id: true },
-      });
-      if (l) return l.id;
+      await assertLocalAccess(this.prisma, user, Number(localId));
+      return Number(localId);
     }
+    // Sin local: el asignado del usuario (rol de sede) o el primero de la
+    // empresa (dueño sin local asignado).
+    if (user.localId) return user.localId;
     const first = await this.prisma.local.findFirst({
-      where: { companyId },
+      where: { companyId: user.companyId },
       orderBy: { id: 'asc' },
       select: { id: true },
     });
@@ -60,8 +65,16 @@ export class MembershipsService {
   }
 
   async list(user: any) {
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const where: any = {
+      companyId: user.companyId,
+      status: { not: Status.ELIMINADO },
+    };
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
     const items = await this.prisma.membership.findMany({
-      where: { companyId: user.companyId, status: { not: Status.ELIMINADO } },
+      where,
       include: {
         customer: { select: { id: true, name: true, phone: true } },
         local: { select: { id: true, name: true } },
@@ -122,7 +135,7 @@ export class MembershipsService {
     if (!(Number(dto.amount) > 0))
       throw new BadRequestException('El monto debe ser mayor a 0.');
 
-    const localId = await this.resolveLocalId(user.companyId, dto.localId);
+    const localId = await this.resolveLocalId(user, dto.localId);
     const customerId = await this.assertCustomer(user.companyId, dto.customerId);
 
     const created = await this.prisma.membership.create({
@@ -144,6 +157,7 @@ export class MembershipsService {
       where: { id: Number(id), companyId: user.companyId },
     });
     if (!m) throw new NotFoundException('Membresía no encontrada');
+    await assertLocalAccess(this.prisma, user, m.localId);
 
     const data: any = {};
     if (dto.name !== undefined) data.name = dto.name.trim();
@@ -157,7 +171,7 @@ export class MembershipsService {
       );
     }
     if (dto.localId !== undefined) {
-      data.localId = await this.resolveLocalId(user.companyId, dto.localId);
+      data.localId = await this.resolveLocalId(user, dto.localId);
     }
 
     const updated = await this.prisma.membership.update({
@@ -172,6 +186,7 @@ export class MembershipsService {
       where: { id: Number(id), companyId: user.companyId },
     });
     if (!m) throw new NotFoundException('Membresía no encontrada');
+    await assertLocalAccess(this.prisma, user, m.localId);
     await this.prisma.membership.update({
       where: { id: m.id },
       data: { status: Status.ELIMINADO },
@@ -186,6 +201,7 @@ export class MembershipsService {
       where: { id: Number(id), companyId: user.companyId },
     });
     if (!m) throw new NotFoundException('Membresía no encontrada');
+    await assertLocalAccess(this.prisma, user, m.localId);
 
     const { start, end } = this.currentMonth();
     const already = await this.prisma.membershipPayment.findFirst({
@@ -219,9 +235,10 @@ export class MembershipsService {
   async uncharge(user: any, id: number) {
     const m = await this.prisma.membership.findFirst({
       where: { id: Number(id), companyId: user.companyId },
-      select: { id: true },
+      select: { id: true, localId: true },
     });
     if (!m) throw new NotFoundException('Membresía no encontrada');
+    await assertLocalAccess(this.prisma, user, m.localId);
 
     const { start, end } = this.currentMonth();
     const payment = await this.prisma.membershipPayment.findFirst({
