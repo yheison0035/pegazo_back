@@ -68,10 +68,10 @@ export class ExpensesController {
   }
 
   /**
-   * Eliminar gasto (soft delete)
-   * SOLO SUPER_ADMIN
+   * Eliminar gasto (soft delete). Dueño y ADMIN (este último en su sede; el
+   * servicio aísla por local).
    */
-  @Roles('SUPER_ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req) {
     return this.expensesService.remove(id, req.user);

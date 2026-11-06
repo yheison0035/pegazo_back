@@ -11,7 +11,10 @@ import { hasRole } from '@/common/role-check.util';
 import { InventoryVariant, Role, Status } from '@prisma/client';
 import { CloudinaryService } from '@/cloudinary/cloudinary.service';
 import { VariantsService } from './variants/variants.service';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 import { generateSlug } from '@/utils/slug.util';
 import { getPagination } from '@/common/pagination.util';
 import { generateSku } from '../../utils/sku.util';
@@ -1553,6 +1556,10 @@ export class InventoryService {
     });
 
     if (!product) throw new NotFoundException('Producto no encontrado');
+
+    // Aislamiento por local: el ADMIN solo elimina productos de SU sede; el
+    // dueño, de cualquiera de su empresa.
+    await assertLocalAccess(this.prisma, user, product.localId);
 
     for (const img of product.images) {
       await this.cloudinaryService.deleteImage(img.publicId).catch(() => null);

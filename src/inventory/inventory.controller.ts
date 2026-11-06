@@ -143,7 +143,8 @@ export class InventoryController {
     return this.inventoryService.setAvailability(id, !!available, req.user);
   }
 
-  @Roles('SUPER_ADMIN')
+  // El ADMIN elimina en SU sede (el servicio valida el aislamiento por local).
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req) {
     return this.inventoryService.remove(id, req.user);

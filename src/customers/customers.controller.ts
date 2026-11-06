@@ -132,8 +132,8 @@ export class CustomersController {
     return this.customersService.update(id, dto, req.user);
   }
 
-  // Eliminar
-  @Roles('SUPER_ADMIN')
+  // Eliminar — el ADMIN en SU sede (el servicio valida el aislamiento por local).
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req) {
     return this.customersService.remove(id, req.user);

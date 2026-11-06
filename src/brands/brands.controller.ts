@@ -55,8 +55,8 @@ export class BrandsController {
     return this.brandsService.update(id, dto, req.user);
   }
 
-  // ELIMINAR
-  @Roles('SUPER_ADMIN')
+  // ELIMINAR — dueño y ADMIN (el servicio valida el rol y la empresa).
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req) {
     return this.brandsService.remove(id, req.user);
