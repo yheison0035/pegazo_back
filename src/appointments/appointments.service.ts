@@ -11,7 +11,10 @@ import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { PublicBookingDto } from './dto/public-booking.dto';
 import { applyLocalFilter } from '@/common/local-filter.util';
 import { PlanLimitsService } from '@/common/plan-limits.service';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 import { minutesToColombiaHour, timeToMinutes } from '@/utils/format';
 import { AuditService } from '@/audit/audit.service';
 import { PushService } from '@/push/push.service';
@@ -595,11 +598,10 @@ export class AppointmentsService {
       throw new NotFoundException('Cita no encontrada');
     }
 
-    const localIds = await getAccessibleLocalIds(this.prisma, user);
-
-    if (localIds !== null && !localIds.includes(appointment.localId)) {
-      throw new BadRequestException('No tienes acceso a esta cita');
-    }
+    // Aislamiento por local Y por empresa: para los roles globales verifica que
+    // la cita sea de SU empresa (evita leer la de otra empresa por id); para los
+    // roles de sede, que sea de un local accesible.
+    await assertLocalAccess(this.prisma, user, appointment.localId);
 
     return {
       success: true,

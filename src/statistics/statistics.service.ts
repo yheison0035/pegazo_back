@@ -303,10 +303,23 @@ export class StatisticsService {
     await this.planLimits.assertModule(user.companyId, 'statistics');
     const categoryId = dto?.categoryId ? Number(dto.categoryId) : undefined;
 
+    // Aislamiento por local: el inventario valorizado se limita a los locales
+    // accesibles (el dueño puede acotar por dto.localId para comparar sedes).
+    const accessible = await getAccessibleLocalIds(this.prisma, user);
+    const localFilter: any = {};
+    const reqLocal = dto?.localId ? Number(dto.localId) : undefined;
+    if (reqLocal) {
+      localFilter.localId =
+        accessible === null || accessible.includes(reqLocal) ? reqLocal : -1;
+    } else if (accessible !== null) {
+      localFilter.localId = accessible.length ? { in: accessible } : -1;
+    }
+
     const products = await this.prisma.inventory.findMany({
       where: {
         companyId: user.companyId,
         trackStock: true,
+        ...localFilter,
         ...(categoryId ? { categoryId } : {}),
       },
       select: {

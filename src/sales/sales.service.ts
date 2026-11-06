@@ -8,7 +8,10 @@ import {
 import { PrismaService } from '@/prisma.service';
 import { CreateSaleDto, CreateSaleItemDto } from './dto/create-sale.dto';
 import { UpdateSaleDto } from './dto/update-sale.dto';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  assertLocalAccess,
+} from '@/common/access-locals.util';
 import {
   PaymentMethod,
   PaymentStatus,
@@ -939,16 +942,9 @@ export class SalesService {
       throw new NotFoundException('Venta no encontrada');
     }
 
-    const local = await this.prisma.local.findFirst({
-      where: {
-        id: sale.localId,
-        companyId: user.companyId,
-      },
-    });
-
-    if (!local) {
-      throw new ForbiddenException('No tienes acceso a esta venta');
-    }
+    // Aislamiento por local: la venta debe ser de un local accesible (para los
+    // roles de sede, solo el suyo; para el dueño, cualquiera de su empresa).
+    await assertLocalAccess(this.prisma, user, sale.localId);
 
     const items = sale.items.map((item) => {
       if (item.service) {
@@ -2023,16 +2019,8 @@ export class SalesService {
   async dailySalesReport(dto: any, user: any) {
     const { date, localId } = dto;
 
-    const local = await this.prisma.local.findFirst({
-      where: {
-        id: Number(localId),
-        companyId: user.companyId,
-      },
-    });
-
-    if (!local) {
-      throw new ForbiddenException('No tienes permiso');
-    }
+    // Aislamiento por local: el reporte es de un local accesible.
+    await assertLocalAccess(this.prisma, user, Number(localId));
 
     const { start, end } = getDayRange(date);
 
@@ -2124,16 +2112,8 @@ export class SalesService {
       throw new BadRequestException('Fechas requeridas');
     }
 
-    const local = await this.prisma.local.findFirst({
-      where: {
-        id: Number(localId),
-        companyId: user.companyId,
-      },
-    });
-
-    if (!local) {
-      throw new ForbiddenException('No tienes permiso');
-    }
+    // Aislamiento por local: el reporte es de un local accesible.
+    await assertLocalAccess(this.prisma, user, Number(localId));
 
     const { start, end } = getRangeDates(startDate, endDate);
 
@@ -2321,16 +2301,8 @@ export class SalesService {
       throw new BadRequestException('Fechas requeridas');
     }
 
-    const local = await this.prisma.local.findFirst({
-      where: {
-        id: Number(localId),
-        companyId: user.companyId,
-      },
-    });
-
-    if (!local) {
-      throw new ForbiddenException('No tienes permiso');
-    }
+    // Aislamiento por local: el reporte es de un local accesible.
+    await assertLocalAccess(this.prisma, user, Number(localId));
 
     const { start, end } = getRangeDates(startDate, endDate);
 
@@ -2420,16 +2392,8 @@ export class SalesService {
       throw new BadRequestException('Fechas y local requeridos');
     }
 
-    const local = await this.prisma.local.findFirst({
-      where: {
-        id: Number(localId),
-        companyId: user.companyId,
-      },
-    });
-
-    if (!local) {
-      throw new ForbiddenException('No tienes permiso sobre este local');
-    }
+    // Aislamiento por local: el reporte es de un local accesible.
+    await assertLocalAccess(this.prisma, user, Number(localId));
 
     const { start, end } = getRangeDates(startDate, endDate);
 
@@ -3058,9 +3022,8 @@ export class SalesService {
       },
     });
     if (!sale) throw new NotFoundException('Venta no encontrada');
-    if (sale.local.companyId !== user.companyId) {
-      throw new ForbiddenException('No tienes permiso');
-    }
+    // Aislamiento por local: solo pagos de ventas de un local accesible.
+    await assertLocalAccess(this.prisma, user, sale.localId);
     const r2 = (n: number) => Math.round(n * 100) / 100;
     const total = Number(sale.totalAmount) || 0;
     const paid = sale.payments.reduce((a, p) => a + Number(p.amount), 0);
@@ -3297,9 +3260,20 @@ export class SalesService {
   async getPaymentsHistory(user: any, query: any) {
     const limit = Math.min(Number(query.limit) || 100, 300);
     const where: any = { companyId: user.companyId };
-    if (query.customerId) {
-      where.sale = { is: { customerId: Number(query.customerId) } };
+
+    // Aislamiento por local: los abonos se acotan por el local de SU venta
+    // (SalePayment no tiene localId propio).
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const saleWhere: any = {};
+    if (query.customerId) saleWhere.customerId = Number(query.customerId);
+    if (localIds !== null) {
+      saleWhere.localId = localIds.length ? { in: localIds } : -1;
     }
+    if (query.localId && /^\d+$/.test(String(query.localId))) {
+      const req = Number(query.localId);
+      saleWhere.localId = localIds === null || localIds.includes(req) ? req : -1;
+    }
+    if (Object.keys(saleWhere).length) where.sale = { is: saleWhere };
 
     const payments = await this.prisma.salePayment.findMany({
       where,
