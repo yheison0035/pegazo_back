@@ -1342,11 +1342,19 @@ export class InventoryService {
   // para editar masivamente y reimportar. Incluye ID (producto) y SKU (variante)
   // como llaves para que al reimportar se ACTUALICE en vez de duplicar.
   async exportRows(user: any) {
+    // Aislamiento por local: se exporta solo el inventario de los locales
+    // accesibles (el dueño, el de toda su empresa).
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const where: any = {
+      companyId: user.companyId,
+      status: { not: Status.ELIMINADO },
+    };
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
+
     const products = await this.prisma.inventory.findMany({
-      where: {
-        companyId: user.companyId,
-        status: { not: Status.ELIMINADO },
-      },
+      where,
       orderBy: { name: 'asc' },
       include: {
         category: { select: { name: true } },

@@ -58,13 +58,17 @@ export class ServicesService {
       }
     }
 
-    // Filtro explícito por local
+    // Filtro explícito por local: SOLO si el usuario puede ver ese local (para
+    // un usuario de empresa). No debe pisar el aislamiento por local.
     if (query.localId) {
-      where.serviceLocals = {
-        some: {
-          localId: Number(query.localId),
-        },
-      };
+      const req = Number(query.localId);
+      const allowed =
+        !user?.companyId || localIds === null || localIds.includes(req);
+      if (allowed) {
+        where.serviceLocals = { some: { localId: req } };
+      } else {
+        where.id = -1;
+      }
     }
 
     // Filtro por barbero
@@ -195,6 +199,20 @@ export class ServicesService {
 
     if (user?.companyId && service.companyId !== user.companyId) {
       throw new ForbiddenException('No tienes acceso a este servicio');
+    }
+
+    // Aislamiento por local: un usuario de sede solo ve servicios ofrecidos en
+    // alguno de sus locales accesibles (el dueño ve todos).
+    if (user?.companyId) {
+      const localIds = await getAccessibleLocalIds(this.prisma, user);
+      if (localIds !== null) {
+        const ok = service.serviceLocals.some((sl) =>
+          localIds.includes(sl.localId),
+        );
+        if (!ok) {
+          throw new ForbiddenException('No tienes acceso a este servicio');
+        }
+      }
     }
 
     return {
