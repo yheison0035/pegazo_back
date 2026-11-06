@@ -10,6 +10,7 @@ import { PrismaService } from '@/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { PublicBookingDto } from './dto/public-booking.dto';
 import { applyLocalFilter } from '@/common/local-filter.util';
+import { resolveBranding } from '@/common/branding.util';
 import { PlanLimitsService } from '@/common/plan-limits.service';
 import {
   getAccessibleLocalIds,
@@ -383,7 +384,16 @@ export class AppointmentsService {
       include: {
         service: { select: { name: true } },
         barber: { select: { name: true } },
-        local: { select: { name: true } },
+        local: {
+          select: {
+            name: true,
+            logo: true,
+            nit: true,
+            email: true,
+            phone: true,
+            address: true,
+          },
+        },
         customer: { select: { name: true, email: true } },
       },
     });
@@ -400,10 +410,13 @@ export class AppointmentsService {
     const localCount = await this.prisma.local.count({
       where: { companyId: appt.companyId, status: { not: 'ELIMINADO' as any } },
     });
+    const brand = resolveBranding(company, appt.local, localCount > 1);
     const baseName =
-      company.mailFromName || company.websiteName || company.name;
-    const businessName =
-      localCount > 1 && appt.local?.name ? appt.local.name : baseName;
+      (localCount > 1 && appt.local?.name && appt.local.name) ||
+      company.mailFromName ||
+      company.websiteName ||
+      company.name;
+    const businessName = baseName;
 
     const smtp = company.mailHost
       ? {
@@ -436,7 +449,7 @@ export class AppointmentsService {
         companyName: businessName,
         smtp,
         brandColor: company.primaryColor,
-        logo: company.logo || null,
+        logo: brand.logo || null,
         whatsappPhone: whatsappPhone || null,
         customerName: appt.customer.name || null,
         serviceName: appt.service?.name || 'Servicio',

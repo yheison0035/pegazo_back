@@ -206,6 +206,9 @@ export class LocalsService {
         city: dto.city,
         department: dto.department,
         phone: dto.phone,
+        logo: dto.logo ?? null,
+        nit: dto.nit ?? null,
+        email: dto.email ?? null,
         status: dto.status ?? Status.ACTIVO,
         managerId: dto.managerId ?? null,
 
@@ -248,6 +251,9 @@ export class LocalsService {
       ...(dto.city !== undefined && { city: dto.city }),
       ...(dto.department !== undefined && { department: dto.department }),
       ...(dto.phone !== undefined && { phone: dto.phone }),
+      ...(dto.logo !== undefined && { logo: dto.logo }),
+      ...(dto.nit !== undefined && { nit: dto.nit }),
+      ...(dto.email !== undefined && { email: dto.email }),
       ...(dto.status !== undefined && { status: dto.status }),
     };
 

@@ -604,6 +604,16 @@ export class UsersService {
         where: { companyId: user.company.id, status: 'ACTIVE' },
       });
       (user.company as any).hasAccountant = accCount > 0;
+
+      // Nº de sedes activas: el CRM lo usa para decidir si las facturas y
+      // correos toman la marca del LOCAL (varias sedes) o la de la empresa
+      // (una sola sede).
+      (user.company as any).localCount = await this.prisma.local.count({
+        where: {
+          companyId: user.company.id,
+          status: { not: 'ELIMINADO' as any },
+        },
+      });
     }
 
     // Release global de la facturación electrónica (certificado del PT cargado).
