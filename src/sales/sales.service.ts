@@ -1456,6 +1456,7 @@ export class SalesService {
       where: { id: appointmentId, companyId },
       select: {
         service: { select: { name: true } },
+        local: { select: { name: true } },
         customer: { select: { name: true, email: true } },
       },
     });
@@ -1467,6 +1468,15 @@ export class SalesService {
     });
     if (!company) return;
 
+    // Nombre visible: el del LOCAL de la cita si la empresa tiene varias sedes.
+    const localCount = await this.prisma.local.count({
+      where: { companyId, status: { not: 'ELIMINADO' as any } },
+    });
+    const baseName =
+      company.mailFromName || company.websiteName || company.name;
+    const businessName =
+      localCount > 1 && appt.local?.name ? appt.local.name : baseName;
+
     const smtp = company.mailHost
       ? {
           host: company.mailHost,
@@ -1474,7 +1484,7 @@ export class SalesService {
           user: company.mailUser,
           pass: company.mailPassword,
           fromEmail: company.mailFromEmail,
-          fromName: company.mailFromName || company.name,
+          fromName: businessName,
         }
       : undefined;
     const override: any = company.bookingConfig || {};
@@ -1489,7 +1499,7 @@ export class SalesService {
     try {
       await this.mail.sendAppointmentThankYou({
         to: appt.customer.email,
-        companyName: company.mailFromName || company.websiteName || company.name,
+        companyName: businessName,
         smtp,
         brandColor: company.primaryColor,
         logo: company.logo || null,

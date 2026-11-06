@@ -9,8 +9,12 @@ import { PrismaService } from '@/prisma.service';
 import { getAccessibleLocalIds } from '@/common/access-locals.util';
 
 const ADMIN_ROLES: Role[] = [Role.SUPER_ADMIN, Role.ADMIN];
-// Roles que atienden citas (profesionales que pueden tener descansos).
-const PRO_ROLES: Role[] = [Role.BARBERO, Role.PROFESIONAL];
+// Descansos: aparece TODO el equipo del local (incluido el administrador) MENOS
+// el dueño (SUPER_ADMIN) y el admin de plataforma.
+const NON_TEAM_ROLES: Role[] = [
+  Role.SUPER_ADMIN,
+  Role.SUPER_PLATFORM_ADMIN,
+];
 
 @Injectable()
 export class RestDaysService {
@@ -22,12 +26,23 @@ export class RestDaysService {
     }
   }
 
-  private async proOfCompany(userId: number, companyId: number) {
+  private async proOfCompany(userId: number, requester: any) {
     const u = await this.prisma.user.findFirst({
-      where: { id: userId, companyId },
-      select: { id: true, name: true, role: true, restWeekdays: true },
+      where: { id: userId, companyId: requester.companyId },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        restWeekdays: true,
+        localId: true,
+      },
     });
     if (!u) throw new NotFoundException('Profesional no encontrado');
+    // Aislamiento por local: un administrador solo gestiona descansos de su local.
+    const localIds = await getAccessibleLocalIds(this.prisma, requester);
+    if (localIds !== null && (u.localId == null || !localIds.includes(u.localId))) {
+      throw new ForbiddenException('No tienes acceso a este usuario.');
+    }
     return u;
   }
 
@@ -45,7 +60,7 @@ export class RestDaysService {
     const localIds = await getAccessibleLocalIds(this.prisma, user);
     const where: any = {
       companyId: user.companyId,
-      role: { in: PRO_ROLES },
+      role: { notIn: NON_TEAM_ROLES },
       status: 'ACTIVO' as any,
     };
     if (localIds !== null) {
@@ -93,7 +108,7 @@ export class RestDaysService {
     const localIds = await getAccessibleLocalIds(this.prisma, user);
     const where: any = {
       companyId: user.companyId,
-      role: { in: PRO_ROLES },
+      role: { notIn: NON_TEAM_ROLES },
       status: 'ACTIVO' as any,
     };
     if (localIds !== null) {
@@ -130,7 +145,7 @@ export class RestDaysService {
 
   async getForUser(user: any, userId: number) {
     this.assertAdmin(user);
-    const u = await this.proOfCompany(userId, user.companyId);
+    const u = await this.proOfCompany(userId, user);
     const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
     const timeOff = await this.prisma.employeeTimeOff.findMany({
       where: { userId, date: { gte: today } },
@@ -145,7 +160,7 @@ export class RestDaysService {
 
   async setWeekdays(user: any, userId: number, dto: any) {
     this.assertAdmin(user);
-    await this.proOfCompany(userId, user.companyId);
+    await this.proOfCompany(userId, user);
     const raw = Array.isArray(dto?.restWeekdays) ? dto.restWeekdays : [];
     const nums = raw.map((n: any) => Number(n));
     const days: number[] = [...new Set<number>(nums)].filter(
@@ -160,7 +175,7 @@ export class RestDaysService {
 
   async addTimeOff(user: any, userId: number, dto: any) {
     this.assertAdmin(user);
-    await this.proOfCompany(userId, user.companyId);
+    await this.proOfCompany(userId, user);
     if (!dto?.date) throw new BadRequestException('Falta la fecha');
     const date = this.dayUtc(dto.date);
     const reason = dto.reason ? String(dto.reason).trim() : null;
