@@ -29,6 +29,7 @@ import {
   getRangeDates,
 } from '@/common/date-range.util';
 import { applyLocalFilter } from '@/common/local-filter.util';
+import { resolveBranding } from '@/common/branding.util';
 import { AuditService } from '@/audit/audit.service';
 import {
   replayCustomerStamps,
@@ -1456,7 +1457,16 @@ export class SalesService {
       where: { id: appointmentId, companyId },
       select: {
         service: { select: { name: true } },
-        local: { select: { name: true } },
+        local: {
+          select: {
+            name: true,
+            logo: true,
+            nit: true,
+            email: true,
+            phone: true,
+            address: true,
+          },
+        },
         customer: { select: { name: true, email: true } },
       },
     });
@@ -1472,10 +1482,12 @@ export class SalesService {
     const localCount = await this.prisma.local.count({
       where: { companyId, status: { not: 'ELIMINADO' as any } },
     });
-    const baseName =
-      company.mailFromName || company.websiteName || company.name;
+    const brand = resolveBranding(company, appt.local, localCount > 1);
     const businessName =
-      localCount > 1 && appt.local?.name ? appt.local.name : baseName;
+      (localCount > 1 && appt.local?.name && appt.local.name) ||
+      company.mailFromName ||
+      company.websiteName ||
+      company.name;
 
     const smtp = company.mailHost
       ? {
@@ -1502,7 +1514,7 @@ export class SalesService {
         companyName: businessName,
         smtp,
         brandColor: company.primaryColor,
-        logo: company.logo || null,
+        logo: brand.logo || null,
         customerName: appt.customer.name || null,
         serviceName: appt.service?.name || null,
         bookingUrl,
@@ -1947,6 +1959,7 @@ export class SalesService {
           include: {
             company: {
               select: {
+                id: true,
                 name: true,
                 logo: true,
                 nit: true,
@@ -1964,6 +1977,23 @@ export class SalesService {
     if (!sale) {
       throw new NotFoundException('Factura no encontrada');
     }
+
+    // Marca del comprobante: si la empresa tiene varias sedes, usa los datos
+    // del LOCAL de la venta (con caída a los de la empresa); si solo hay una,
+    // los de la empresa registrada.
+    const localCount = sale.local?.company?.id
+      ? await this.prisma.local.count({
+          where: {
+            companyId: sale.local.company.id,
+            status: { not: 'ELIMINADO' as any },
+          },
+        })
+      : 0;
+    const brand = resolveBranding(
+      sale.local?.company,
+      sale.local,
+      localCount > 1,
+    );
 
     const placeholders = ['ÚNICO', 'UNICO', 'GENERAL'];
     const items = sale.items.map((item) => {
@@ -2030,12 +2060,12 @@ export class SalesService {
         phone: sale.local?.phone || null,
       },
       company: {
-        name: sale.local?.company?.name || null,
+        name: brand.name || sale.local?.company?.name || null,
         businessName: sale.local?.company?.businessName || null,
-        logo: sale.local?.company?.logo || null,
-        nit: sale.local?.company?.nit || null,
-        phone: sale.local?.company?.phone || null,
-        email: sale.local?.company?.email || null,
+        logo: brand.logo || null,
+        nit: brand.nit || null,
+        phone: brand.phone || null,
+        email: brand.email || null,
       },
       items,
     };

@@ -714,6 +714,12 @@ model Local {
   department String?
   city       String?
   phone      String?
+  // Marca/datos propios del local que alimentan facturas y correos cuando la
+  // empresa tiene MÁS de una sede. Si están vacíos, se cae a los de la empresa.
+  // Con una sola sede, siempre se usan los datos de la empresa registrada.
+  logo       String?
+  nit        String?
+  email      String?
   status     Status  @default(ACTIVO)
 
   managerId Int?
