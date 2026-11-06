@@ -76,16 +76,26 @@ export class CompanySettingsController {
     return this.service.syncLoyaltyFromSales(req.user);
   }
 
+  // Apariencia por local: el admin la cambia en su sede; el dueño en la que
+  // elija (localId). Sin localId, el dueño cambia el valor por defecto (empresa).
   @Roles('SUPER_ADMIN', 'ADMIN')
   @Patch('theme')
-  updateTheme(@Body('theme') theme: string, @Req() req) {
-    return this.service.updateCrmTheme(req.user, theme);
+  updateTheme(
+    @Body('theme') theme: string,
+    @Body('localId') localId: number,
+    @Req() req,
+  ) {
+    return this.service.updateCrmTheme(req.user, theme, localId);
   }
 
   @Roles('SUPER_ADMIN', 'ADMIN')
   @Patch('font')
-  updateFont(@Body('font') font: string, @Req() req) {
-    return this.service.updateCrmFont(req.user, font);
+  updateFont(
+    @Body('font') font: string,
+    @Body('localId') localId: number,
+    @Req() req,
+  ) {
+    return this.service.updateCrmFont(req.user, font, localId);
   }
 
   // Correo propio del negocio (SMTP) para enviar sus correos.

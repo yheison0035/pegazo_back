@@ -105,12 +105,29 @@ export class CompaniesService {
         ? cfg.localHours?.[String(settingsLocal)]?.weekHours
         : null;
     const weekHours = localWeek || cfg.weekHours || null;
+
+    // Apariencia POR LOCAL: si hay una sede resuelta con tema/fuente propios se
+    // devuelven esos; si no, los de la empresa (que son el valor por defecto).
+    let crmTheme = company?.crmTheme || 'orange';
+    let crmFont = company?.crmFont || 'system';
+    if (settingsLocal != null) {
+      const loc = await this.prisma.local.findFirst({
+        where: { id: settingsLocal, companyId: user.companyId },
+        select: { crmTheme: true, crmFont: true },
+      });
+      crmTheme = loc?.crmTheme || company?.crmTheme || 'orange';
+      crmFont = loc?.crmFont || company?.crmFont || 'system';
+    }
+
     return {
       success: true,
       data: {
         ...company,
+        crmTheme,
+        crmFont,
         weekHours,
         hoursLocalId: settingsLocal,
+        appearanceLocalId: settingsLocal,
         mailConfigured,
       },
     };
@@ -879,7 +896,10 @@ export class CompaniesService {
   }
 
   // Tema de diseño del panel/CRM (colores). Solo valores permitidos.
-  async updateCrmTheme(user: any, theme: string) {
+  // Apariencia POR LOCAL: si se resuelve una sede (el admin la suya; el dueño la
+  // que elija), se guarda en ESE local y no afecta a los demás. Sin sede (dueño
+  // en "General") se guarda en la empresa, que es el valor por defecto.
+  async updateCrmTheme(user: any, theme: string, localId?: any) {
     const allowed = [
       'orange',
       'blue',
@@ -898,15 +918,25 @@ export class CompaniesService {
       'onyx',
     ];
     const value = allowed.includes(theme) ? theme : 'orange';
+    const settingsLocal = await this.resolveSettingsLocal(user, localId);
+    if (settingsLocal != null) {
+      const res = await this.prisma.local.updateMany({
+        where: { id: settingsLocal, companyId: user.companyId },
+        data: { crmTheme: value },
+      });
+      if (res.count > 0) {
+        return { success: true, data: { crmTheme: value, localId: settingsLocal } };
+      }
+    }
     const company = await this.prisma.company.update({
       where: { id: user.companyId },
       data: { crmTheme: value },
       select: { crmTheme: true },
     });
-    return { success: true, data: company };
+    return { success: true, data: { ...company, localId: null } };
   }
 
-  async updateCrmFont(user: any, font: string) {
+  async updateCrmFont(user: any, font: string, localId?: any) {
     const allowed = [
       'system',
       'inter',
@@ -921,12 +951,22 @@ export class CompaniesService {
       'jakarta',
     ];
     const value = allowed.includes(font) ? font : 'system';
+    const settingsLocal = await this.resolveSettingsLocal(user, localId);
+    if (settingsLocal != null) {
+      const res = await this.prisma.local.updateMany({
+        where: { id: settingsLocal, companyId: user.companyId },
+        data: { crmFont: value },
+      });
+      if (res.count > 0) {
+        return { success: true, data: { crmFont: value, localId: settingsLocal } };
+      }
+    }
     const company = await this.prisma.company.update({
       where: { id: user.companyId },
       data: { crmFont: value },
       select: { crmFont: true },
     });
-    return { success: true, data: company };
+    return { success: true, data: { ...company, localId: null } };
   }
 
   async updateLoyalty(
