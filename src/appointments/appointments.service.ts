@@ -254,6 +254,9 @@ export class AppointmentsService {
           phone,
           email,
           companyId: company.id,
+          // Queda asociado al local de la cita (aislamiento por local): así el
+          // personal de esa sede lo ve en el módulo de clientes.
+          localId: dto.localId,
           type_document: 'CC',
         },
         select: { id: true, email: true },
@@ -493,10 +496,19 @@ export class AppointmentsService {
       else where.customer = byRelationName(v);
     }
 
-    // Para local no sobreescribimos el filtro de acceso (where.localId);
-    // filtramos por nombre de la relación.
+    // Local: si llega un id (desplegable del dueño) se acota por ese local
+    // respetando el acceso; si llega texto, se filtra por nombre de la relación.
     if (query.localId) {
-      where.local = byRelationName(String(query.localId));
+      const v = String(query.localId).trim();
+      if (/^\d+$/.test(v)) {
+        const req = Number(v);
+        where.AND = where.AND || [];
+        where.AND.push({
+          localId: localIds === null || localIds.includes(req) ? req : -1,
+        });
+      } else {
+        where.local = byRelationName(v);
+      }
     }
 
     if (query.status) {
@@ -1380,6 +1392,12 @@ export class AppointmentsService {
     applyLocalFilter(where, user, localIds);
     if (query.barberId && /^\d+$/.test(String(query.barberId))) {
       where.barberId = Number(query.barberId);
+    }
+    // El dueño puede acotar el calendario a una sede (?localId por id).
+    if (query.localId && /^\d+$/.test(String(query.localId))) {
+      const req = Number(query.localId);
+      where.AND = where.AND || [];
+      where.AND.push({ localId: localIds === null || localIds.includes(req) ? req : -1 });
     }
     if (['BARBERO', 'PROFESIONAL'].includes(user.role)) {
       where.barberId = user.id;
