@@ -16,8 +16,22 @@ export async function getAccessibleLocalIds(
     return null; // null = sin filtro PERO luego se filtra por companyId
   }
 
-  // ADMIN = manager de uno o varios locales (SOLO de su empresa)
+  // ADMIN = administrador de UN local: ve SOLO lo relacionado con el local que
+  // tiene ASIGNADO (user.localId). El dueño (SUPER_ADMIN) es el ÚNICO que ve
+  // todos los locales de la empresa; un administrador nunca ve otro local, ni
+  // aunque figure como manager de otras sedes.
   if (user.role === Role.ADMIN) {
+    // Con local asignado: EXCLUSIVAMENTE ese local.
+    if (user.localId) {
+      const own = await prisma.local.findFirst({
+        where: { id: user.localId, companyId: user.companyId },
+        select: { id: true },
+      });
+      return own ? [own.id] : [];
+    }
+
+    // Sin local asignado: compatibilidad con setups antiguos donde el acceso del
+    // administrador se definía por los locales que administra como manager.
     const managedLocals = await prisma.local.findMany({
       where: {
         managerId: user.id,
@@ -25,7 +39,6 @@ export async function getAccessibleLocalIds(
       },
       select: { id: true },
     });
-
     return managedLocals.map((l) => l.id);
   }
 
