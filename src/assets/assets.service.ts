@@ -1,5 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
+import { getAccessibleLocalIds } from '@/common/access-locals.util';
 
 // Contabilidad · Fase A — Activos fijos.
 // La depreciación y el valor en libros se CALCULAN al vuelo (línea recta), para
@@ -70,9 +76,19 @@ export class AssetsService {
   async findAll(user: any, query: any = {}) {
     const where: any = { companyId: user.companyId };
     if (query.status) where.status = String(query.status).toUpperCase();
-    if (query.localId) where.localId = Number(query.localId);
     if (query.name)
       where.name = { contains: String(query.name), mode: 'insensitive' };
+
+    // Aislamiento por local: el rol de sede solo ve los activos de su local; el
+    // dueño ve todos y puede acotar con ?localId.
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+    }
+    if (query.localId && /^\d+$/.test(String(query.localId))) {
+      const req = Number(query.localId);
+      where.localId = localIds === null || localIds.includes(req) ? req : -1;
+    }
 
     const rows = await this.prisma.asset.findMany({
       where,
@@ -101,11 +117,21 @@ export class AssetsService {
     return { success: true, data, summary };
   }
 
+  // Aislamiento por local: un rol de sede solo accede a activos de su local.
+  private async assertAssetLocal(user: any, localId: number | null) {
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    if (localIds === null) return;
+    if (localId == null || !localIds.includes(localId)) {
+      throw new ForbiddenException('No tienes acceso a este activo.');
+    }
+  }
+
   async findOne(user: any, id: number) {
     const asset = await this.prisma.asset.findFirst({
       where: { id, companyId: user.companyId },
     });
     if (!asset) throw new NotFoundException('Activo no encontrado.');
+    await this.assertAssetLocal(user, asset.localId);
     return { success: true, data: this.withDepreciation(asset) };
   }
 
@@ -163,8 +189,21 @@ export class AssetsService {
     };
   }
 
+  // Sede efectiva del activo al crear: el dueño usa la que indique; un rol de
+  // sede queda forzado a su local accesible.
+  private async resolveAssetLocal(
+    user: any,
+    localId: number | null,
+  ): Promise<number | null> {
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    if (localIds === null) return localId ?? null;
+    if (localId && localIds.includes(Number(localId))) return Number(localId);
+    return localIds.length ? localIds[0] : null;
+  }
+
   async create(user: any, dto: any) {
     const data = this.normalize(dto);
+    data.localId = await this.resolveAssetLocal(user, data.localId);
     const asset = await this.prisma.asset.create({
       data: { ...data, companyId: user.companyId },
     });
@@ -188,6 +227,7 @@ export class AssetsService {
         const data = this.normalize(rows[i] || {});
         if (Number.isNaN(data.acquisitionDate.getTime()))
           throw new BadRequestException('La fecha de compra no es válida.');
+        data.localId = await this.resolveAssetLocal(user, data.localId);
         await this.prisma.asset.create({
           data: { ...data, companyId: user.companyId },
         });
