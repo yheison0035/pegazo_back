@@ -42,12 +42,31 @@ disponibilidad de citas. `AppointmentsService.resolveBusinessHours` es la fuente
 
 ## Aislamiento por local (multi-sede)
 
-`getAccessibleLocalIds` decide qué locales ve cada usuario: el dueño
+`getAccessibleLocalIds(prisma, user)` decide qué locales ve cada usuario: el dueño
 (`SUPER_ADMIN`) y los roles globales (`COORDINADOR`, `AUXILIAR`) ven todos los de
 su empresa (`null`); un `ADMIN` ve **exclusivamente el local que tiene asignado**
 (`user.localId`) y nunca otro, aunque figure como manager de otras sedes (solo si
 no tiene local asignado cae a los que administra, por compatibilidad); los demás
-roles, su local asignado. Spec: `src/common/access-locals.util.spec.ts`.
+roles, su local asignado. `assertLocalAccess(prisma, user, localId)` es la
+contraparte para UN registro (lanza 403 si el usuario no puede acceder a ese
+local; para roles globales verifica que el local sea de su empresa, evitando
+fugas entre empresas). Para listados se usa `applyLocalFilter` o un `where.localId
+in <accesibles>`; el dueño puede acotar con `?localId`.
+
+Este aislamiento se aplica en TODOS los módulos con datos por local: caja,
+ventas, pedidos web (source=ECOMMERCE, por el local del sitio), inventario,
+citas, gastos, compras, cotizaciones, cuentas por pagar, devoluciones,
+membresías, parqueadero, comandas, mesas, solicitudes de stock (por el
+`inventory.localId`), cobros a empleados (por el local del empleado) y clientes
+(separados por su local de registro). Los catálogos/config compartidos
+(categorías, marcas, proveedores, unidades, medios de pago, cupones, recetas,
+segmentos, banco, plan de cuentas y asientos contables, config de parqueadero)
+siguen siendo company-wide por diseño.
+
+Specs: `access-locals.util.spec.ts` (la decisión), más specs de aislamiento
+representativos por lote: `purchases.isolation`, `services.isolation`,
+`appointments.findone`, `mesas.isolation`, `employee-charges.isolation`,
+`customers.isolation`, y `cash.service.spec` (acceso denegado a otro local).
 
 ## Caja: ingresos por ventas, salidas por gastos
 
