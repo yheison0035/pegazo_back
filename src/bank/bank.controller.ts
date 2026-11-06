@@ -57,22 +57,22 @@ export class BankController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(...OWNER_ROLES)
   @Post('disable')
-  disable(@Req() req) {
-    return this.service.disable(req.user);
+  disable(@Req() req, @Body() body: any) {
+    return this.service.disable(req.user, body || {});
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(...OWNER_ROLES)
   @Post('regenerate')
-  regenerate(@Req() req) {
-    return this.service.regenerate(req.user);
+  regenerate(@Req() req, @Body() body: any) {
+    return this.service.regenerate(req.user, body || {});
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(...OWNER_ROLES)
   @Get('status')
-  status(@Req() req) {
-    return this.service.status(req.user);
+  status(@Req() req, @Query('localId') localId?: string) {
+    return this.service.status(req.user, localId);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
