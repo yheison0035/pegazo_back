@@ -30,8 +30,8 @@ export class PayablesController {
 
   @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'COORDINADOR', 'AUXILIAR')
   @Get('summary')
-  summary(@Req() req) {
-    return this.service.summary(req.user);
+  summary(@Req() req, @Query() query) {
+    return this.service.summary(req.user, query);
   }
 
   @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA')

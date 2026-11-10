@@ -13,6 +13,7 @@ import { CreatePayableDto } from './dto/create-payable.dto';
 import {
   getAccessibleLocalIds,
   assertLocalAccess,
+  resolveScopedLocalId,
 } from '@/common/access-locals.util';
 
 const MANAGE_ROLES: Role[] = [
@@ -89,13 +90,16 @@ export class PayablesService {
 
   // Resumen para las tarjetas: por pagar, vencido y pagado (del periodo actual).
   // Incluye antigüedad de saldos (aging) y estado de cuenta por proveedor.
-  async summary(user: any) {
+  async summary(user: any, query: any = {}) {
     // Aislamiento por local: el resumen solo agrega los locales accesibles.
     const localIds = await getAccessibleLocalIds(this.prisma, user);
     const pendWhere: any = { companyId: user.companyId, status: 'PENDIENTE' };
     if (localIds !== null) {
       pendWhere.localId = localIds.length ? { in: localIds } : -1;
     }
+    // Sede activa del selector global: acota a esa sede si es accesible.
+    const scoped = resolveScopedLocalId(localIds, query?.localId);
+    if (scoped) pendWhere.localId = scoped;
     const pend = await this.prisma.payable.findMany({
       where: pendWhere,
       select: { amount: true, dueDate: true, paidTo: true },

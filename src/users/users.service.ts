@@ -12,7 +12,10 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
 import { hasRole } from '@/common/role-check.util';
 import { CloudinaryService } from '@/cloudinary/cloudinary.service';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  resolveScopedLocalId,
+} from '@/common/access-locals.util';
 import { applyLocalFilter } from '@/common/local-filter.util';
 import { PlanLimitsService } from '@/common/plan-limits.service';
 import { PlansConfigService } from '@/common/plans-config.service';
@@ -391,6 +394,10 @@ export class UsersService {
     }
 
     applyLocalFilter(where, user, localIds);
+    // Sede activa del selector global: acota a esa sede (igual que el admin de
+    // ese local ve solo a su personal). Se valida que sea accesible.
+    const scopedLocal = resolveScopedLocalId(localIds, query?.localId);
+    if (scopedLocal) where.localId = scopedLocal;
 
     if (query.role) {
       const role = query.role.toUpperCase();
