@@ -8,7 +8,10 @@ import { PrismaService } from '@/prisma.service';
 import { parseBankSms } from './bank-sms.parser';
 import { PushService } from '@/push/push.service';
 import { NotificationsService } from '@/notifications/notifications.service';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  resolveScopedLocalId,
+} from '@/common/access-locals.util';
 
 @Injectable()
 export class BankService {
@@ -40,8 +43,11 @@ export class BankService {
   }
 
   // Filtro de consignaciones por local accesible (para listados/avisos).
-  private async depositLocalWhere(user: any): Promise<any> {
+  private async depositLocalWhere(user: any, localIdRaw?: any): Promise<any> {
     const ids = await getAccessibleLocalIds(this.prisma, user);
+    // Sede activa del selector global (si se eligió una accesible).
+    const scoped = resolveScopedLocalId(ids, localIdRaw);
+    if (scoped) return { localId: scoped };
     if (ids === null) return {}; // dueño: todas (incluye las del token de empresa)
     return { localId: ids.length ? { in: ids } : -1 };
   }
@@ -347,7 +353,10 @@ export class BankService {
   async list(user: any, query: any) {
     const limit = Math.min(Number(query.limit) || 50, 200);
     const deposits = await this.prisma.bankDeposit.findMany({
-      where: { companyId: user.companyId, ...(await this.depositLocalWhere(user)) },
+      where: {
+        companyId: user.companyId,
+        ...(await this.depositLocalWhere(user, query?.localId)),
+      },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });

@@ -15,6 +15,7 @@ import { PlanLimitsService } from '@/common/plan-limits.service';
 import {
   getAccessibleLocalIds,
   assertLocalAccess,
+  resolveScopedLocalId,
 } from '@/common/access-locals.util';
 import { minutesToColombiaHour, timeToMinutes } from '@/utils/format';
 import { AuditService } from '@/audit/audit.service';
@@ -1238,11 +1239,13 @@ export class AppointmentsService {
   // Agenda para el modal de inicio de sesión y los recordatorios: citas de hoy
   // y mañana (calendario Colombia), excluyendo las canceladas. Solo empresas
   // con el módulo de citas habilitado por su plan.
-  async getAgenda(user: any) {
+  async getAgenda(user: any, query: any = {}) {
     await this.planLimits.assertModule(user.companyId, 'appointments');
     await this.runAutoTransitions(user.companyId).catch(() => null);
 
     const localIds = await getAccessibleLocalIds(this.prisma, user);
+    // Sede activa del selector global (si se eligió una accesible).
+    const scoped = resolveScopedLocalId(localIds, query?.localId);
 
     const today = this.colombiaTodayMidnightUtc();
     const tomorrow = new Date(today.getTime() + 24 * 3600 * 1000);
@@ -1268,6 +1271,7 @@ export class AppointmentsService {
     };
 
     applyLocalFilter(where, user, localIds);
+    if (scoped) where.localId = scoped;
 
     // El barbero/profesional solo ve SU agenda.
     if (isBarber) {

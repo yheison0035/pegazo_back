@@ -50,8 +50,8 @@ export class InventoryController {
     'BODEGUERO',
   )
   @Get('low-stock')
-  lowStock(@Req() req) {
-    return this.inventoryService.getLowStock(req.user);
+  lowStock(@Req() req, @Query('localId') localId?: string) {
+    return this.inventoryService.getLowStock(req.user, { localId });
   }
 
   // Productos por vencer (droguería / perecederos). Antes de :id.

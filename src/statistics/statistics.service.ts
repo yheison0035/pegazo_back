@@ -378,7 +378,7 @@ export class StatisticsService {
 
   // Resumen ligero para el Home del dashboard (universal, sin gate de plan):
   // ventas de hoy (cobradas) + conteos para el checklist de primeros pasos.
-  async homeSummary(user: any) {
+  async homeSummary(user: any, query: any = {}) {
     const companyId = user.companyId;
     const now = new Date();
     const today = colombiaDay(now);
@@ -386,8 +386,22 @@ export class StatisticsService {
     const start = dayStartUtc(y, m, d);
     const end = dayStartUtc(y, m, d + 1);
 
+    // Sede activa (selector global del dueño): si eligió una sede accesible, el
+    // Inicio muestra SOLO esa; si no, todas las sedes accesibles.
     const accessible = await getAccessibleLocalIds(this.prisma, user);
-    const localFilter: any = accessible ? { localId: { in: accessible } } : {};
+    const reqLocal =
+      query?.localId && /^\d+$/.test(String(query.localId))
+        ? Number(query.localId)
+        : null;
+    const scopedLocal =
+      reqLocal && (accessible === null || accessible.includes(reqLocal))
+        ? reqLocal
+        : null;
+    const localFilter: any = scopedLocal
+      ? { localId: scopedLocal }
+      : accessible
+        ? { localId: { in: accessible } }
+        : {};
 
     const todayAgg = await this.prisma.sale.aggregate({
       where: {
@@ -418,41 +432,6 @@ export class StatisticsService {
       }))
       .filter((r) => r.total > 0)
       .sort((a, b) => b.total - a.total);
-
-    // Ventas de HOY desglosadas por sede (para el dueño con varias sedes). Se
-    // listan TODAS las sedes accesibles, incluso las que hoy van en 0, para que
-    // el dueño vea cada local de un vistazo. Respeta el aislamiento por local.
-    const localsScope: any = accessible
-      ? { id: { in: accessible } }
-      : {};
-    const activeLocals = await this.prisma.local.findMany({
-      where: { companyId, status: { not: 'ELIMINADO' as any }, ...localsScope },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
-    const byLocalRows = await this.prisma.sale.groupBy({
-      by: ['localId'],
-      where: {
-        local: { companyId },
-        ...localFilter,
-        saleDate: { gte: start, lt: end },
-        paymentStatus: 'PAGADA' as any,
-      },
-      _sum: { totalAmount: true },
-      _count: { _all: true },
-    });
-    const byLocalMap = new Map(
-      byLocalRows.map((r) => [
-        r.localId,
-        { total: r._sum.totalAmount || 0, count: r._count._all },
-      ]),
-    );
-    const todayByLocal = activeLocals.map((l) => ({
-      localId: l.id,
-      name: l.name,
-      total: byLocalMap.get(l.id)?.total || 0,
-      count: byLocalMap.get(l.id)?.count || 0,
-    }));
 
     const [localsCount, productsCount, servicesCount, salesEver] =
       await Promise.all([
@@ -671,8 +650,6 @@ export class StatisticsService {
           count: todayAgg._count._all,
           byMethod: todayByMethod,
         },
-        // Ventas de hoy por sede (el widget del dueño solo aparece con >1 sede).
-        todayByLocal,
         setup: {
           locals: localsCount,
           products: productsCount,
@@ -701,7 +678,12 @@ export class StatisticsService {
   //   'week'  → últimos 7 días (diario)
   //   'month' → últimos 30 días (diario)
   //   'year'  → últimos 12 meses (mensual)
-  async salesTrend(user: any, period?: string, offsetRaw?: any) {
+  async salesTrend(
+    user: any,
+    period?: string,
+    offsetRaw?: any,
+    localIdRaw?: any,
+  ) {
     const companyId = user.companyId;
     const today = colombiaDay(new Date());
     const [y, m, d] = today.split('-').map(Number);
@@ -713,8 +695,21 @@ export class StatisticsService {
       buckets.length
         ? `${buckets[0].label} – ${buckets[buckets.length - 1].label}`
         : '';
+    // Sede activa (selector global): si eligió una accesible, solo esa.
     const accessible = await getAccessibleLocalIds(this.prisma, user);
-    const localFilter: any = accessible ? { localId: { in: accessible } } : {};
+    const reqLocal =
+      localIdRaw && /^\d+$/.test(String(localIdRaw))
+        ? Number(localIdRaw)
+        : null;
+    const scopedLocal =
+      reqLocal && (accessible === null || accessible.includes(reqLocal))
+        ? reqLocal
+        : null;
+    const localFilter: any = scopedLocal
+      ? { localId: scopedLocal }
+      : accessible
+        ? { localId: { in: accessible } }
+        : {};
     const baseWhere: any = {
       local: { companyId },
       ...localFilter,

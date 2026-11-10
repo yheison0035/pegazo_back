@@ -14,6 +14,7 @@ import { VariantsService } from './variants/variants.service';
 import {
   getAccessibleLocalIds,
   assertLocalAccess,
+  resolveScopedLocalId,
 } from '@/common/access-locals.util';
 import { generateSlug } from '@/utils/slug.util';
 import { getPagination } from '@/common/pagination.util';
@@ -645,11 +646,13 @@ export class InventoryService {
 
   // Productos con alerta de stock bajo: minStock > 0 y stock total <= minStock.
   // Ordenados por los más críticos primero (mayor faltante).
-  async getLowStock(user: any) {
+  async getLowStock(user: any, query: any = {}) {
     // Umbral por defecto de "por agotarse" cuando el producto no tiene alerta
     // de stock configurada (le quedan 1, 2 o 3).
     const LOW_STOCK_DEFAULT = 3;
     const localIds = await getAccessibleLocalIds(this.prisma, user);
+    // Sede activa del selector global (si se eligió una accesible).
+    const scoped = resolveScopedLocalId(localIds, query?.localId);
 
     const where: any = {
       status: 'ACTIVO',
@@ -657,7 +660,9 @@ export class InventoryService {
       NOT: { trackStock: false },
       local: { companyId: user.companyId },
     };
-    if (localIds !== null) {
+    if (scoped) {
+      where.localId = scoped;
+    } else if (localIds !== null) {
       where.localId = localIds.length === 0 ? -1 : { in: localIds };
     }
 

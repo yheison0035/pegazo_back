@@ -53,8 +53,8 @@ export class AppointmentsController {
   // Agenda de hoy + mañana (modal de inicio y recordatorios). Debe declararse
   // antes de :id para que "agenda" no se interprete como un id.
   @Get('agenda')
-  agenda(@Req() req) {
-    return this.service.getAgenda(req.user);
+  agenda(@Req() req, @Query('localId') localId?: string) {
+    return this.service.getAgenda(req.user, { localId });
   }
 
   // Mis citas por rango: hoy | mañana | semana | mes. Antes de :id.

@@ -93,3 +93,18 @@ export async function assertLocalAccess(
     throw new ForbiddenException('No tienes acceso a este local');
   }
 }
+
+/**
+ * Sede activa del selector global: devuelve el id SOLO si fue pedido y es
+ * accesible (accessible === null = dueño/roles globales que ven todo). Si no se
+ * pidió o no es accesible, devuelve null (= sin acotar a una sola sede).
+ */
+export function resolveScopedLocalId(
+  accessible: number[] | null,
+  localIdRaw: any,
+): number | null {
+  const req =
+    localIdRaw && /^\d+$/.test(String(localIdRaw)) ? Number(localIdRaw) : null;
+  if (req && (accessible === null || accessible.includes(req))) return req;
+  return null;
+}

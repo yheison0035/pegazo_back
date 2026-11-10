@@ -11,6 +11,7 @@ import { UpdateSaleDto } from './dto/update-sale.dto';
 import {
   getAccessibleLocalIds,
   assertLocalAccess,
+  resolveScopedLocalId,
 } from '@/common/access-locals.util';
 import {
   PaymentMethod,
@@ -3205,6 +3206,9 @@ export class SalesService {
       where.local = { is: { companyId: user.companyId } };
     }
     applyLocalFilter(where, user, localIds, 'sale');
+    // Sede activa del selector global: acota a esa sede si es accesible.
+    const scoped = resolveScopedLocalId(localIds, query?.localId);
+    if (scoped) where.localId = scoped;
     if (query.customerId) where.customerId = Number(query.customerId);
 
     const sales = await this.prisma.sale.findMany({

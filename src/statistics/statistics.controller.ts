@@ -80,8 +80,8 @@ export class StatisticsController {
     'VENTAS',
   )
   @Get('home')
-  home(@Req() req) {
-    return this.statisticsService.homeSummary(req.user);
+  home(@Req() req, @Query('localId') localId?: string) {
+    return this.statisticsService.homeSummary(req.user, { localId });
   }
 
   // Serie de ventas para la gráfica del Home (ventas del NEGOCIO): NO para el
@@ -102,8 +102,9 @@ export class StatisticsController {
     @Req() req,
     @Query('period') period?: string,
     @Query('offset') offset?: string,
+    @Query('localId') localId?: string,
   ) {
-    return this.statisticsService.salesTrend(req.user, period, offset);
+    return this.statisticsService.salesTrend(req.user, period, offset, localId);
   }
 
   // "Mi rendimiento": SOLO lo del usuario que consulta. Cualquier empleado.
