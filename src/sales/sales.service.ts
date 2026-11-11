@@ -3345,7 +3345,15 @@ export class SalesService {
       where,
       orderBy: [{ dueDate: 'asc' }, { saleDate: 'asc' }],
       include: {
-        customer: { select: { id: true, name: true, phone: true, document: true } },
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            document: true,
+            email: true,
+          },
+        },
         payments: { select: { amount: true } },
         installments: {
           orderBy: { number: 'asc' },
@@ -3405,6 +3413,9 @@ export class SalesService {
           installmentsCount,
           installmentsPaid,
           customer: s.customer,
+          // Para el botón "Recordar ahora" del módulo Créditos.
+          hasEmail: !!s.customer?.email?.trim(),
+          lastReminderAt: s.creditReminderSentAt,
         };
       })
       .filter((r) => r.saldo > 0.01);

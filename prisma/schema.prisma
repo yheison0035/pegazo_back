@@ -303,6 +303,14 @@ model Company {
   taxAlertsEnabled Boolean @default(true)
   taxAlertEmail    Boolean @default(false)
 
+  // Recordatorios de crédito (fiado) por correo AL CLIENTE. Interruptor global
+  // de la empresa: con creditRemindersEnabled=true, un cron diario avisa al
+  // cliente de la cuota próxima a vencer (creditReminderDaysBefore días antes) y
+  // le insiste si ya quedó vencida. OPT-IN: apagado por defecto. El botón
+  // "Recordar ahora" del módulo Créditos funciona aunque esto esté apagado.
+  creditRemindersEnabled   Boolean @default(false)
+  creditReminderDaysBefore Int     @default(1)
+
   // Configuración fiscal (facturación con impuestos / electrónica DIAN).
   responsableIVA     Boolean @default(false)
   preciosIncluyenIVA Boolean @default(false)
@@ -1635,6 +1643,9 @@ model Sale {
   creditInterestAmount   Decimal? @db.Decimal(14, 2) // recargo ya calculado (pesos)
   creditDownPayment      Decimal? @db.Decimal(14, 2) // cuota inicial entregada
   creditStartDate        DateTime? // fecha de la primera cuota
+  // Última vez que se le envió al cliente un recordatorio de pago (automático o
+  // manual). Sirve para no repetir el aviso a diario; null = nunca se recordó.
+  creditReminderSentAt   DateTime?
 
   // Vínculo con la factura electrónica DIAN (Pegazo Fiscal API). Permite ver el
   // estado fiscal de la venta y anular+reemitir corregida.

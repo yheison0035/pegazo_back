@@ -22,11 +22,15 @@ import { Public } from '@/auth/decorators/public.decorator';
 import { DailySalesReportDto } from './dto/reports/daily/daily-sales-report.dto';
 import { RangeSalesReportDto } from './dto/reports/range/range-sales-report.dto';
 import { CreateSalePaymentDto } from './dto/create-sale-payment.dto';
+import { CreditRemindersService } from './credit-reminders.service';
 
 @Controller('sales')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class SalesController {
-  constructor(private readonly salesService: SalesService) {}
+  constructor(
+    private readonly salesService: SalesService,
+    private readonly creditReminders: CreditRemindersService,
+  ) {}
 
   @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA', 'VENTAS')
   @Get()
@@ -99,6 +103,14 @@ export class SalesController {
   @Get('payments/history')
   paymentsHistory(@Req() req, @Query() query) {
     return this.salesService.getPaymentsHistory(req.user, query);
+  }
+
+  // "Recordar ahora": envía al cliente el recordatorio de pago del crédito al
+  // instante (independiente del envío automático diario).
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'CAJA')
+  @Post(':id/credit-reminder')
+  sendCreditReminder(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.creditReminders.sendNow(id, req.user);
   }
 
   // ---- PLANES SEPARE (apartados). Antes de :id ----

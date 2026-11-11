@@ -423,6 +423,97 @@ export class MailService {
     return { ok: true, via: usingOwn ? 'smtp-empresa' : 'smtp-global' };
   }
 
+  // Recordatorio de pago de un crédito (fiado) AL CLIENTE. Lo dispara el cron
+  // diario (si la empresa activó los recordatorios) o el botón "Recordar ahora"
+  // del módulo Créditos. Misma prioridad de envío que la factura: Resend/Brevo
+  // (central) o el SMTP propio de la empresa. Lanza si no hay medio configurado.
+  async sendCreditReminder(opts: {
+    to: string;
+    companyName: string;
+    smtp?: SmtpConfig;
+    brandColor?: string | null;
+    logo?: string | null;
+    customerName?: string | null;
+    saleCode: string;
+    installmentLabel?: string | null; // "Cuota 2 de 6" | null (fiado simple)
+    dueDate: Date;
+    overdue: boolean;
+    overdueDays?: number;
+    amount: number; // monto de la cuota (o del saldo si es fiado simple)
+    saldo: number; // saldo total del crédito
+    supportEmail?: string | null;
+    supportPhone?: string | null;
+  }): Promise<{ ok: boolean; via: string }> {
+    const accent = opts.brandColor || '#f97316';
+    const money = (n: number) =>
+      '$' + Math.round(Number(n) || 0).toLocaleString('es-CO');
+    const dueStr = new Date(opts.dueDate).toLocaleDateString('es-CO', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+    const hi = opts.customerName
+      ? `Hola, ${this.escapeHtml(opts.customerName)}:`
+      : 'Hola:';
+    const title = opts.overdue ? 'Tienes un pago vencido' : 'Recordatorio de pago';
+    const badge = opts.overdue
+      ? `Vencido${
+          opts.overdueDays
+            ? ` hace ${opts.overdueDays} día${opts.overdueDays === 1 ? '' : 's'}`
+            : ''
+        }`
+      : `Vence el ${dueStr}`;
+    const lead = opts.overdue
+      ? `la cuota de tu compra <b>${this.escapeHtml(
+          opts.saleCode,
+        )}</b> venció el <b>${dueStr}</b> y aún figura pendiente.`
+      : `te recordamos que tienes una cuota por pagar de tu compra <b>${this.escapeHtml(
+          opts.saleCode,
+        )}</b>, con vencimiento el <b>${dueStr}</b>.`;
+    const rowsHtml = [
+      opts.installmentLabel
+        ? `<tr><td style="padding:8px 0;color:#6b7280;">Cuota</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#111827;">${this.escapeHtml(
+            opts.installmentLabel,
+          )}</td></tr>`
+        : '',
+      `<tr><td style="padding:8px 0;color:#6b7280;">Monto de la cuota</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#111827;">${money(
+        opts.amount,
+      )}</td></tr>`,
+      `<tr><td style="padding:8px 0;color:#6b7280;">Saldo total del crédito</td><td style="padding:8px 0;text-align:right;font-weight:700;color:${accent};">${money(
+        opts.saldo,
+      )}</td></tr>`,
+    ].join('');
+    const body = `
+      <p style="margin:0 0 12px;font-size:15px;color:#111827;">${hi}</p>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#374151;">${lead}</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;border-top:1px solid #eef0f3;border-bottom:1px solid #eef0f3;">${rowsHtml}</table>
+      <p style="margin:18px 0 0;font-size:14px;line-height:1.6;color:#374151;">Acércate a pagar o escríbenos para coordinar tu abono. ¡Gracias por tu compra!</p>`;
+    const html = this.emailShell({
+      accent,
+      companyName: opts.companyName,
+      logo: opts.logo,
+      preheader: opts.overdue
+        ? `Pago vencido de ${opts.saleCode}`
+        : `Tu cuota vence el ${dueStr}`,
+      title,
+      subtitle: null,
+      badge,
+      body,
+      supportEmail: opts.supportEmail,
+      supportPhone: opts.supportPhone,
+    });
+    const subject = opts.overdue
+      ? `Pago vencido · ${opts.saleCode}`
+      : `Recordatorio de pago · ${opts.saleCode}`;
+    return this.sendInvoiceEmail({
+      to: opts.to,
+      subject,
+      html,
+      companyName: opts.companyName,
+      smtp: opts.smtp,
+    });
+  }
+
   // Escapa texto para insertarlo con seguridad en el HTML del correo.
   private escapeHtml(s?: string | null): string {
     return String(s ?? '').replace(
