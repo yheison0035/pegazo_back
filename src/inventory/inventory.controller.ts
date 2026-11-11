@@ -80,8 +80,8 @@ export class InventoryController {
   // ir ANTES de :id para que "export" no se interprete como un id.
   @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA')
   @Get('export')
-  exportInventory(@Req() req) {
-    return this.inventoryService.exportRows(req.user);
+  exportInventory(@Req() req, @Query('localId') localId?: string) {
+    return this.inventoryService.exportRows(req.user, { localId });
   }
 
   @Roles(
@@ -191,7 +191,11 @@ export class InventoryController {
     'CAJA',
   )
   @Get('search/:term')
-  search(@Param('term') term: string, @Req() req) {
-    return this.inventoryService.search(term, req.user);
+  search(
+    @Param('term') term: string,
+    @Req() req,
+    @Query('localId') localId?: string,
+  ) {
+    return this.inventoryService.search(term, req.user, localId);
   }
 }

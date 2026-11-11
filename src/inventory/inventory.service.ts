@@ -196,8 +196,9 @@ export class InventoryService {
   }
 
   // Búsqueda avanzada de productos y servicios
-  async search(term: string, user: any) {
+  async search(term: string, user: any, localIdRaw?: string) {
     const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const scopedSearch = resolveScopedLocalId(localIds, localIdRaw);
 
     const searchTerm = term.trim();
 
@@ -229,11 +230,13 @@ export class InventoryService {
         companyId: user.companyId,
       },
 
-      ...(localIds !== null && {
-        localId: {
-          in: localIds,
-        },
-      }),
+      ...(scopedSearch
+        ? { localId: scopedSearch }
+        : localIds !== null && {
+            localId: {
+              in: localIds,
+            },
+          }),
 
       AND: words.map((word) => ({
         OR: [
@@ -1360,9 +1363,9 @@ export class InventoryService {
   // Exporta TODO el inventario de la empresa a filas planas (una por variante)
   // para editar masivamente y reimportar. Incluye ID (producto) y SKU (variante)
   // como llaves para que al reimportar se ACTUALICE en vez de duplicar.
-  async exportRows(user: any) {
+  async exportRows(user: any, query: any = {}) {
     // Aislamiento por local: se exporta solo el inventario de los locales
-    // accesibles (el dueño, el de toda su empresa).
+    // accesibles (el dueño, el de toda su empresa) o de la sede activa.
     const localIds = await getAccessibleLocalIds(this.prisma, user);
     const where: any = {
       companyId: user.companyId,
@@ -1371,6 +1374,8 @@ export class InventoryService {
     if (localIds !== null) {
       where.localId = localIds.length ? { in: localIds } : -1;
     }
+    const scoped = resolveScopedLocalId(localIds, query?.localId);
+    if (scoped) where.localId = scoped;
 
     const products = await this.prisma.inventory.findMany({
       where,
