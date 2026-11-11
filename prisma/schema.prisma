@@ -78,6 +78,22 @@ enum PaymentStatus {
   FIADO
 }
 
+// Frecuencia de las cuotas de una venta a crédito (fiado con plan de pagos).
+enum InstallmentFrequency {
+  SEMANAL
+  QUINCENAL
+  MENSUAL
+  ANUAL
+}
+
+// Estado de cada cuota del plan de crédito (se deriva de los abonos y la fecha).
+enum InstallmentStatus {
+  PENDIENTE
+  PARCIAL
+  PAGADA
+  VENCIDA
+}
+
 enum SaleStatus {
   NUEVA
   EN_PROCESO
@@ -1610,6 +1626,16 @@ model Sale {
   notes         String?
   cashReceived  Float? // efectivo con el que pagó el cliente (para calcular el cambio en la factura)
 
+  // Plan de crédito (fiado por cuotas). Solo se llena cuando la venta es a
+  // crédito y se pacta un número de cuotas. El cronograma vive en SaleInstallment;
+  // aquí se guardan los términos pactados para no recalcularlos.
+  creditFrequency        InstallmentFrequency? // periodicidad de las cuotas
+  creditInstallmentsCount Int? // número de cuotas pactadas
+  creditInterestPercent  Decimal? @db.Decimal(6, 2) // % de recargo/financiación
+  creditInterestAmount   Decimal? @db.Decimal(14, 2) // recargo ya calculado (pesos)
+  creditDownPayment      Decimal? @db.Decimal(14, 2) // cuota inicial entregada
+  creditStartDate        DateTime? // fecha de la primera cuota
+
   // Vínculo con la factura electrónica DIAN (Pegazo Fiscal API). Permite ver el
   // estado fiscal de la venta y anular+reemitir corregida.
   eInvoiceDocId  String? // id del documento en la Fiscal API
@@ -1658,6 +1684,7 @@ model Sale {
   cashMovements CashMovement[]
   returns       Return[]
   payments      SalePayment[]  @relation("SalePayments")
+  installments  SaleInstallment[] @relation("SaleInstallments")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1692,6 +1719,31 @@ model SalePayment {
 
   @@index([saleId])
   @@index([companyId])
+}
+
+//////////////////////////////////////////////////
+// Cuotas del plan de crédito (fiado por cuotas)
+//////////////////////////////////////////////////
+// Cronograma de una venta a crédito: una fila por cuota pactada, con su fecha de
+// vencimiento y su monto. El pagado/pendiente de cada cuota se DERIVA de los
+// abonos (SalePayment) de la venta, así que aquí no se muta por cada abono.
+model SaleInstallment {
+  id        Int      @id @default(autoincrement())
+  number    Int // número de cuota (1..N)
+  dueDate   DateTime // fecha de vencimiento de la cuota
+  amount    Decimal  @db.Decimal(14, 2) // monto pactado de la cuota
+
+  saleId    Int
+  companyId Int
+
+  sale Sale @relation("SaleInstallments", fields: [saleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([saleId])
+  @@index([companyId])
+  @@index([dueDate])
 }
 
 //////////////////////////////////////////////////

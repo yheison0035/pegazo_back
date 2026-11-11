@@ -14,6 +14,7 @@ import {
   PaymentMethod,
   PaymentStatus,
   SaleStatus,
+  InstallmentFrequency,
 } from '@prisma/client';
 
 export class CreateSaleItemDto {
@@ -111,6 +112,38 @@ export class CreateSaleDto {
   @IsOptional()
   @IsBoolean()
   noCommission?: boolean;
+
+  // --- Crédito por cuotas (solo cuando paymentMethod = CREDITO) ---
+  // Número de cuotas pactadas. Si no viene (o es <=1 sin otros términos), la
+  // venta a crédito se comporta como un fiado simple con un solo vencimiento.
+  @IsOptional()
+  @IsInt()
+  creditInstallmentsCount?: number;
+
+  // Frecuencia de las cuotas: SEMANAL | QUINCENAL | MENSUAL | ANUAL.
+  @IsOptional()
+  @IsEnum(InstallmentFrequency)
+  creditFrequency?: InstallmentFrequency;
+
+  // % de recargo/financiación sobre el saldo a financiar (opcional).
+  @IsOptional()
+  @IsNumber()
+  creditInterestPercent?: number;
+
+  // Cuota inicial que entrega el cliente al momento de la venta (opcional).
+  @IsOptional()
+  @IsNumber()
+  creditDownPayment?: number;
+
+  // Método de la cuota inicial (efectivo entra a caja). Default EFECTIVO.
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  creditDownPaymentMethod?: PaymentMethod;
+
+  // Fecha de la primera cuota (opcional; por defecto un periodo tras la venta).
+  @IsOptional()
+  @IsDateString()
+  creditStartDate?: string;
 
   @IsArray()
   @IsNotEmpty({ each: true })
