@@ -20,7 +20,9 @@ import {
   ShippingStatus,
   Prisma,
   AppointmentStatus,
+  InstallmentFrequency,
 } from '@prisma/client';
+import { buildCreditPlan, summarizeCredit } from './credit-plan.util';
 import { StockService } from '@/inventory/stock.service';
 import { PlanLimitsService } from '@/common/plan-limits.service';
 import { assertPeriodOpen } from '@/common/period-close.util';
@@ -1281,6 +1283,30 @@ export class SalesService {
       const saleDate = dto.saleDate ? new Date(dto.saleDate) : new Date();
 
       const r2 = (n: number) => Math.round(n * 100) / 100;
+
+      // Crédito por cuotas: si la venta es a crédito y se pactó un número de
+      // cuotas con su frecuencia, se arma el cronograma (fechas + montos) y se
+      // guardan los términos. La cuota inicial se registra como primer abono.
+      const creditCount = Number((dto as any).creditInstallmentsCount) || 0;
+      const useInstallments =
+        dto.paymentMethod === 'CREDITO' &&
+        creditCount >= 1 &&
+        !!(dto as any).creditFrequency;
+      const creditPlan = useInstallments
+        ? buildCreditPlan({
+            total,
+            downPayment: Number((dto as any).creditDownPayment) || 0,
+            interestPercent: Number((dto as any).creditInterestPercent) || 0,
+            count: creditCount,
+            frequency: (dto as any).creditFrequency as InstallmentFrequency,
+            startDate: (dto as any).creditStartDate || null,
+            saleDate,
+          })
+        : null;
+      const lastDue = creditPlan
+        ? creditPlan.installments[creditPlan.installments.length - 1].dueDate
+        : null;
+
       const sale = await tx.sale.create({
         data: {
           code: `SALE-${Date.now()}`,
@@ -1293,7 +1319,22 @@ export class SalesService {
           saleStatus: 'NUEVA',
           ...(dto.invoiceType && { invoiceType: dto.invoiceType }),
           saleDate: saleDate,
-          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+          // En crédito por cuotas, el vencimiento de la venta es la última cuota.
+          dueDate: creditPlan
+            ? lastDue
+            : dto.dueDate
+              ? new Date(dto.dueDate)
+              : null,
+          ...(creditPlan
+            ? {
+                creditFrequency: (dto as any).creditFrequency,
+                creditInstallmentsCount: creditCount,
+                creditInterestPercent: Number((dto as any).creditInterestPercent) || 0,
+                creditInterestAmount: creditPlan.interestAmount,
+                creditDownPayment: creditPlan.down,
+                creditStartDate: creditPlan.startDate,
+              }
+            : {}),
           notes: dto.notes,
           cashReceived:
             dto.paymentMethod === 'EFECTIVO' && dto.cashReceived
@@ -1412,6 +1453,57 @@ export class SalesService {
                   type: 'INGRESO',
                   amount: abono,
                   concept: 'Abono plan separe',
+                  saleId: sale.id,
+                  userId: dto.userId ?? user.id,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      // Crédito por cuotas: se guarda el cronograma y, si hay cuota inicial, se
+      // registra como primer abono (y entra a caja si es efectivo).
+      if (creditPlan) {
+        await tx.saleInstallment.createMany({
+          data: creditPlan.installments.map((it) => ({
+            saleId: sale.id,
+            companyId: user.companyId,
+            number: it.number,
+            dueDate: it.dueDate,
+            amount: it.amount,
+          })),
+        });
+        if (creditPlan.down > 0) {
+          const downMethod: PaymentMethod =
+            (dto as any).creditDownPaymentMethod || 'EFECTIVO';
+          await tx.salePayment.create({
+            data: {
+              saleId: sale.id,
+              companyId: user.companyId,
+              amount: creditPlan.down,
+              method: downMethod,
+              note: 'Cuota inicial',
+              paidAt: saleDate,
+              createdById: dto.userId ?? user.id ?? null,
+            },
+          });
+          if (downMethod === 'EFECTIVO') {
+            const openReg = await tx.cashRegister.findFirst({
+              where: {
+                localId: dto.localId,
+                companyId: user.companyId,
+                status: 'ABIERTA',
+              },
+              select: { id: true },
+            });
+            if (openReg) {
+              await tx.cashMovement.create({
+                data: {
+                  cashRegisterId: openReg.id,
+                  type: 'INGRESO',
+                  amount: creditPlan.down,
+                  concept: 'Cuota inicial crédito',
                   saleId: sale.id,
                   userId: dto.userId ?? user.id,
                 },
@@ -2683,7 +2775,9 @@ export class SalesService {
     }
 
     const r2 = (n: number) => Math.round(n * 100) / 100;
-    const total = Number(sale.totalAmount) || 0;
+    // En crédito por cuotas la obligación incluye el recargo (financiación).
+    const interest = Number(sale.creditInterestAmount) || 0;
+    const total = (Number(sale.totalAmount) || 0) + interest;
     const paid = sale.payments.reduce((a, p) => a + Number(p.amount), 0);
     const saldo = r2(total - paid);
     if (saldo <= 0) throw new BadRequestException('La venta ya está pagada');
@@ -3064,22 +3158,58 @@ export class SalesService {
           orderBy: { paidAt: 'desc' },
           include: { createdBy: { select: { name: true } } },
         },
+        installments: {
+          orderBy: { number: 'asc' },
+          select: { number: true, dueDate: true, amount: true },
+        },
       },
     });
     if (!sale) throw new NotFoundException('Venta no encontrada');
     // Aislamiento por local: solo pagos de ventas de un local accesible.
     await assertLocalAccess(this.prisma, user, sale.localId);
     const r2 = (n: number) => Math.round(n * 100) / 100;
-    const total = Number(sale.totalAmount) || 0;
+    const interest = Number(sale.creditInterestAmount) || 0;
+    const total = (Number(sale.totalAmount) || 0) + interest;
     const paid = sale.payments.reduce((a, p) => a + Number(p.amount), 0);
+
+    // Crédito por cuotas: se devuelve el cronograma con el estado de cada cuota
+    // (derivado de los abonos) para que la cartera lo muestre.
+    const hasPlan = (sale.installments?.length || 0) > 0;
+    const credit = hasPlan
+      ? summarizeCredit({
+          obligation: total,
+          downPayment: Number(sale.creditDownPayment) || 0,
+          totalPaid: paid,
+          installments: sale.installments.map((i) => ({
+            number: i.number,
+            dueDate: i.dueDate,
+            amount: Number(i.amount),
+          })),
+        })
+      : null;
+
     return {
       success: true,
       data: {
         total,
+        goodsTotal: Number(sale.totalAmount) || 0,
+        interestAmount: interest,
         paid: r2(paid),
         saldo: r2(total - paid),
-        dueDate: sale.dueDate,
+        dueDate: credit?.nextDueDate || sale.dueDate,
         payments: sale.payments,
+        credit: credit
+          ? {
+              frequency: sale.creditFrequency,
+              installmentsCount: sale.creditInstallmentsCount,
+              interestPercent: Number(sale.creditInterestPercent) || 0,
+              interestAmount: interest,
+              downPayment: Number(sale.creditDownPayment) || 0,
+              nextDueDate: credit.nextDueDate,
+              overdueDays: credit.overdueDays,
+              installments: credit.installments,
+            }
+          : null,
       },
     };
   }
@@ -3217,6 +3347,10 @@ export class SalesService {
       include: {
         customer: { select: { id: true, name: true, phone: true, document: true } },
         payments: { select: { amount: true } },
+        installments: {
+          orderBy: { number: 'asc' },
+          select: { number: true, dueDate: true, amount: true },
+        },
       },
     });
 
@@ -3224,20 +3358,52 @@ export class SalesService {
     const now = Date.now();
     const rows = sales
       .map((s) => {
-        const total = Number(s.totalAmount) || 0;
+        const interest = Number(s.creditInterestAmount) || 0;
+        const total = (Number(s.totalAmount) || 0) + interest;
         const paid = s.payments.reduce((a, p) => a + Number(p.amount), 0);
-        const saldo = r2(total - paid);
-        const ref = s.dueDate ? new Date(s.dueDate).getTime() : null;
-        const overdueDays = ref ? Math.floor((now - ref) / 86400000) : null;
+        const hasPlan = (s.installments?.length || 0) > 0;
+        // Con plan de cuotas: la mora y el "vence" salen de la próxima cuota con
+        // saldo. Sin plan (fiado simple): del vencimiento único de la venta.
+        let saldo = r2(total - paid);
+        let dueDate: Date | null = s.dueDate;
+        let overdueDays = 0;
+        let installmentsCount = 0;
+        let installmentsPaid = 0;
+        if (hasPlan) {
+          const sum = summarizeCredit({
+            obligation: total,
+            downPayment: Number(s.creditDownPayment) || 0,
+            totalPaid: paid,
+            installments: s.installments.map((i) => ({
+              number: i.number,
+              dueDate: i.dueDate,
+              amount: Number(i.amount),
+            })),
+          });
+          saldo = sum.saldo;
+          dueDate = sum.nextDueDate || s.dueDate;
+          overdueDays = sum.overdueDays;
+          installmentsCount = sum.installments.length;
+          installmentsPaid = sum.installments.filter(
+            (i) => i.status === 'PAGADA',
+          ).length;
+        } else {
+          const ref = s.dueDate ? new Date(s.dueDate).getTime() : null;
+          const od = ref ? Math.floor((now - ref) / 86400000) : 0;
+          overdueDays = od > 0 ? od : 0;
+        }
         return {
           id: s.id,
           code: s.code,
           saleDate: s.saleDate,
-          dueDate: s.dueDate,
-          overdueDays: overdueDays && overdueDays > 0 ? overdueDays : 0,
+          dueDate,
+          overdueDays,
           total,
           paid: r2(paid),
           saldo,
+          hasPlan,
+          installmentsCount,
+          installmentsPaid,
           customer: s.customer,
         };
       })
@@ -3269,28 +3435,53 @@ export class SalesService {
           select: { id: true, name: true, phone: true, document: true },
         },
         payments: { select: { amount: true } },
+        installments: {
+          orderBy: { number: 'asc' },
+          select: { number: true, dueDate: true, amount: true },
+        },
       },
     });
 
     const r2 = (n: number) => Math.round(n * 100) / 100;
     const now = Date.now();
     const rows = sales.map((s) => {
-      const total = Number(s.totalAmount) || 0;
+      const interest = Number(s.creditInterestAmount) || 0;
+      const total = (Number(s.totalAmount) || 0) + interest;
       const paid = s.payments.reduce((a, p) => a + Number(p.amount), 0);
       const saldo = r2(total - paid);
       const pagada = s.paymentStatus === 'PAGADA' || saldo <= 0.01;
-      const ref = s.dueDate ? new Date(s.dueDate).getTime() : null;
-      const od = !pagada && ref ? Math.floor((now - ref) / 86400000) : 0;
+      const hasPlan = (s.installments?.length || 0) > 0;
+      let dueDate: Date | null = s.dueDate;
+      let overdueDays = 0;
+      if (!pagada && hasPlan) {
+        const sum = summarizeCredit({
+          obligation: total,
+          downPayment: Number(s.creditDownPayment) || 0,
+          totalPaid: paid,
+          installments: s.installments.map((i) => ({
+            number: i.number,
+            dueDate: i.dueDate,
+            amount: Number(i.amount),
+          })),
+        });
+        dueDate = sum.nextDueDate || s.dueDate;
+        overdueDays = sum.overdueDays;
+      } else if (!pagada) {
+        const ref = s.dueDate ? new Date(s.dueDate).getTime() : null;
+        const od = ref ? Math.floor((now - ref) / 86400000) : 0;
+        overdueDays = od > 0 ? od : 0;
+      }
       return {
         id: s.id,
         code: s.code,
         saleDate: s.saleDate,
-        dueDate: s.dueDate,
-        overdueDays: od > 0 ? od : 0,
+        dueDate,
+        overdueDays,
         total,
         paid: r2(paid),
         saldo: pagada ? 0 : saldo,
         status: pagada ? 'PAGADA' : 'FIADO',
+        hasPlan,
         customer: s.customer,
       };
     });
