@@ -8,6 +8,7 @@ import { PrismaService } from '@/prisma.service';
 import {
   getAccessibleLocalIds,
   assertLocalAccess,
+  resolveScopedLocalId,
 } from '@/common/access-locals.util';
 import { SalesService } from '@/sales/sales.service';
 
@@ -167,13 +168,16 @@ export class ComandasService {
   }
 
   // Vista de cocina: comandas por preparar (por local accesible).
-  async kitchen(user: any) {
+  async kitchen(user: any, localId?: string) {
     const localIds = await getAccessibleLocalIds(this.prisma, user);
     const where: any = {
       companyId: user.companyId,
       status: { in: KITCHEN_STATUSES },
     };
     if (localIds !== null) where.localId = { in: localIds };
+    // Sede activa del selector global: solo la cocina de esa sede.
+    const scoped = resolveScopedLocalId(localIds, localId);
+    if (scoped) where.localId = scoped;
 
     const comandas = await this.prisma.comanda.findMany({
       where,

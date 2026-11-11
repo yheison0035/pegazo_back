@@ -6,7 +6,10 @@ import {
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { PrismaService } from '@/prisma.service';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  resolveScopedLocalId,
+} from '@/common/access-locals.util';
 
 const ADMIN_ROLES: Role[] = [Role.SUPER_ADMIN, Role.ADMIN];
 // Descansos: aparece TODO el equipo del local (incluido el administrador) MENOS
@@ -53,7 +56,7 @@ export class RestDaysService {
   }
 
   // Lista de profesionales con agenda (para elegir en la pantalla de descansos).
-  async professionals(user: any) {
+  async professionals(user: any, localId?: string) {
     this.assertAdmin(user);
     // Aislamiento por local: solo los profesionales de los locales accesibles
     // (un administrador ve los de SU local; el dueño, todos).
@@ -66,6 +69,9 @@ export class RestDaysService {
     if (localIds !== null) {
       where.localId = localIds.length ? { in: localIds } : -1;
     }
+    // Sede activa del selector global: solo el equipo de esa sede.
+    const scoped = resolveScopedLocalId(localIds, localId);
+    if (scoped) where.localId = scoped;
     const rows = await this.prisma.user.findMany({
       where,
       select: { id: true, name: true, avatar: true, restWeekdays: true },

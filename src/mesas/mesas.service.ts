@@ -3,16 +3,20 @@ import { PrismaService } from '@/prisma.service';
 import {
   getAccessibleLocalIds,
   assertLocalAccess,
+  resolveScopedLocalId,
 } from '@/common/access-locals.util';
 
 @Injectable()
 export class MesasService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(user: any) {
+  async findAll(user: any, localId?: string) {
     const localIds = await getAccessibleLocalIds(this.prisma, user);
     const where: any = { companyId: user.companyId };
     if (localIds !== null) where.localId = { in: localIds };
+    // Sede activa del selector global: solo las mesas de esa sede.
+    const scoped = resolveScopedLocalId(localIds, localId);
+    if (scoped) where.localId = scoped;
 
     const mesas = await this.prisma.mesa.findMany({
       where,

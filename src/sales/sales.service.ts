@@ -3257,6 +3257,8 @@ export class SalesService {
       where.local = { is: { companyId: user.companyId } };
     }
     applyLocalFilter(where, user, localIds, 'sale');
+    const scopedCredits = resolveScopedLocalId(localIds, query?.localId);
+    if (scopedCredits) where.localId = scopedCredits;
     if (query.customerId) where.customerId = Number(query.customerId);
 
     const sales = await this.prisma.sale.findMany({

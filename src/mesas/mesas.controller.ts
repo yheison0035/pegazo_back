@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -21,8 +22,8 @@ export class MesasController {
   constructor(private readonly service: MesasService) {}
 
   @Get()
-  findAll(@Req() req) {
-    return this.service.findAll(req.user);
+  findAll(@Req() req, @Query('localId') localId?: string) {
+    return this.service.findAll(req.user, localId);
   }
 
   @Roles('SUPER_ADMIN', 'ADMIN')

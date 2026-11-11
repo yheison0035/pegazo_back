@@ -6,6 +6,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -21,8 +22,8 @@ export class ComandasController {
 
   // Vista de cocina (antes de :id)
   @Get('kitchen')
-  kitchen(@Req() req) {
-    return this.service.kitchen(req.user);
+  kitchen(@Req() req, @Query('localId') localId?: string) {
+    return this.service.kitchen(req.user, localId);
   }
 
   @Get('mesa/:mesaId')

@@ -5,7 +5,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  resolveScopedLocalId,
+} from '@/common/access-locals.util';
 import { CreateSupplyDto } from './dto/create-supply.dto';
 import { UpdateSupplyDto } from './dto/update-supply.dto';
 import { AdjustSupplyDto } from './dto/adjust-supply.dto';
@@ -19,6 +22,9 @@ export class SuppliesService {
     const localIds = await getAccessibleLocalIds(this.prisma, user);
     const where: any = { companyId: user.companyId };
     if (localIds !== null) where.localId = { in: localIds };
+    // Sede activa del selector global: solo los insumos de esa sede.
+    const scoped = resolveScopedLocalId(localIds, query?.localId);
+    if (scoped) where.localId = scoped;
     if (query.search) {
       where.name = { contains: String(query.search), mode: 'insensitive' };
     }

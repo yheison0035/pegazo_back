@@ -7,7 +7,10 @@ import {
 import { EmployeeChargeType, Role } from '@prisma/client';
 import { PrismaService } from '@/prisma.service';
 import { CreateEmployeeChargeDto } from './dto/create-employee-charge.dto';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  resolveScopedLocalId,
+} from '@/common/access-locals.util';
 
 // Roles que administran los cargos (el dueño/administrador del negocio).
 const OWNER_ROLES: Role[] = [Role.SUPER_ADMIN, Role.ADMIN];
@@ -23,13 +26,22 @@ export class EmployeeChargesService {
   // Aislamiento por local: los cargos son de empleados, que pertenecen a un
   // local. EmployeeCharge no tiene localId propio, así que se acota por los
   // empleados de los locales accesibles. Devuelve null si el usuario ve todo.
-  private async accessibleEmployeeIds(user: any): Promise<number[] | null> {
+  private async accessibleEmployeeIds(
+    user: any,
+    localIdRaw?: any,
+  ): Promise<number[] | null> {
     const localIds = await getAccessibleLocalIds(this.prisma, user);
-    if (localIds === null) return null;
+    // Sede activa del selector global: acota a los empleados de esa sede.
+    const scoped = resolveScopedLocalId(localIds, localIdRaw);
+    if (localIds === null && !scoped) return null; // dueño sin sede: ve todo
     const emps = await this.prisma.user.findMany({
       where: {
         companyId: user.companyId,
-        localId: localIds.length ? { in: localIds } : -1,
+        localId: scoped
+          ? scoped
+          : localIds && localIds.length
+            ? { in: localIds }
+            : -1,
       },
       select: { id: true },
     });
@@ -55,7 +67,7 @@ export class EmployeeChargesService {
     const where: any = { companyId: user.companyId };
 
     if (this.isOwner(user)) {
-      const allowed = await this.accessibleEmployeeIds(user);
+      const allowed = await this.accessibleEmployeeIds(user, query?.localId);
       if (query.userId) {
         const req = Number(query.userId);
         where.userId = allowed === null || allowed.includes(req) ? req : -1;
@@ -98,7 +110,7 @@ export class EmployeeChargesService {
   async summary(user: any, query: any = {}) {
     const where: any = { companyId: user.companyId };
     if (this.isOwner(user)) {
-      const allowed = await this.accessibleEmployeeIds(user);
+      const allowed = await this.accessibleEmployeeIds(user, query?.localId);
       if (query.userId) {
         const req = Number(query.userId);
         where.userId = allowed === null || allowed.includes(req) ? req : -1;

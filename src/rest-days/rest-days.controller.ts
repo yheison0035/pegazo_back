@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -22,8 +23,8 @@ export class RestDaysController {
   constructor(private readonly service: RestDaysService) {}
 
   @Get('professionals')
-  professionals(@Req() req) {
-    return this.service.professionals(req.user);
+  professionals(@Req() req, @Query('localId') localId?: string) {
+    return this.service.professionals(req.user, localId);
   }
 
   // Mis propios descansos (rol barbero/profesional). Debe ir antes de :userId.
