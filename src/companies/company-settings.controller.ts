@@ -70,6 +70,17 @@ export class CompanySettingsController {
     return this.service.updateLoyalty(req.user, dto);
   }
 
+  // Recordatorios de crédito (fiado) por correo al cliente.
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Patch('credit-reminders')
+  updateCreditReminders(
+    @Body()
+    dto: { creditRemindersEnabled?: boolean; creditReminderDaysBefore?: number },
+    @Req() req,
+  ) {
+    return this.service.updateCreditReminders(req.user, dto);
+  }
+
   @Roles('SUPER_ADMIN', 'ADMIN')
   @Post('loyalty/sync')
   syncLoyalty(@Req() req) {

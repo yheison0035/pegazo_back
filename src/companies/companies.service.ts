@@ -74,6 +74,8 @@ export class CompaniesService {
         loyaltyTier2Visits: true,
         loyaltyTier2Percent: true,
         loyaltyMaxDays: true,
+        creditRemindersEnabled: true,
+        creditReminderDaysBefore: true,
         openHour: true,
         closeHour: true,
         // Horario por día (si lo configuró) vive en bookingConfig.weekHours.
@@ -861,6 +863,33 @@ export class CompaniesService {
   }
 
   // Política de caja: exigir "abrir el día" (caja) para poder vender.
+  // Recordatorios de crédito (fiado) por correo al cliente: interruptor global
+  // de la empresa + días de antelación del aviso antes de que venza la cuota.
+  async updateCreditReminders(
+    user: any,
+    dto: { creditRemindersEnabled?: boolean; creditReminderDaysBefore?: number },
+  ) {
+    const data: any = {};
+    if (typeof dto.creditRemindersEnabled === 'boolean') {
+      data.creditRemindersEnabled = dto.creditRemindersEnabled;
+    }
+    if (dto.creditReminderDaysBefore != null) {
+      data.creditReminderDaysBefore = Math.min(
+        60,
+        Math.max(0, Math.floor(Number(dto.creditReminderDaysBefore) || 0)),
+      );
+    }
+    const company = await this.prisma.company.update({
+      where: { id: user.companyId },
+      data,
+      select: {
+        creditRemindersEnabled: true,
+        creditReminderDaysBefore: true,
+      },
+    });
+    return { success: true, data: company };
+  }
+
   async updateCashPolicy(user: any, requireCashOpen: boolean) {
     const company = await this.prisma.company.update({
       where: { id: user.companyId },
