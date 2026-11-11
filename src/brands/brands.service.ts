@@ -8,7 +8,10 @@ import { CreateBrandDto } from './dto/create-brand.dto';
 import { UpdateBrandDto } from './dto/update-brand.dto';
 import { Role, Status } from '@prisma/client';
 import { hasRole } from '@/common/role-check.util';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  resolveScopedLocalId,
+} from '@/common/access-locals.util';
 import { applyLocalFilter } from '@/common/local-filter.util';
 import { AuditService } from '@/audit/audit.service';
 
@@ -30,6 +33,9 @@ export class BrandsService {
     };
 
     applyLocalFilter(where, user, localIds);
+    // Sede activa del selector global: solo las marcas de esa sede.
+    const scopedBrand = resolveScopedLocalId(localIds, query?.localId);
+    if (scopedBrand) where.localId = scopedBrand;
 
     if (query.name) {
       where.name = {

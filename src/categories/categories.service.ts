@@ -8,7 +8,10 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { Role, Status } from '@prisma/client';
 import { hasRole } from '@/common/role-check.util';
-import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import {
+  getAccessibleLocalIds,
+  resolveScopedLocalId,
+} from '@/common/access-locals.util';
 import { applyLocalFilter } from '@/common/local-filter.util';
 import { AuditService } from '@/audit/audit.service';
 
@@ -30,6 +33,9 @@ export class CategoriesService {
     };
 
     applyLocalFilter(where, user, localIds);
+    // Sede activa del selector global: solo las categorías de esa sede.
+    const scopedCat = resolveScopedLocalId(localIds, query?.localId);
+    if (scopedCat) where.localId = scopedCat;
 
     if (query.name) {
       where.name = {
