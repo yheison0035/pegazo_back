@@ -1904,8 +1904,22 @@ export class StatisticsService {
     const start = dayStartUtc(sy, sm, sd);
     const end = dayStartUtc(ey, em, ed + 1);
 
+    // Sede activa del selector global: si se pide una sede accesible, el reporte
+    // de IVA se acota a ESA sede; si no, agrega todas las accesibles.
     const accessible = await getAccessibleLocalIds(this.prisma, user);
-    const localFilter: any = accessible ? { localId: { in: accessible } } : {};
+    const reqLocal =
+      dto?.localId && /^\d+$/.test(String(dto.localId))
+        ? Number(dto.localId)
+        : null;
+    let localFilter: any = {};
+    if (reqLocal) {
+      localFilter =
+        accessible && !accessible.includes(reqLocal)
+          ? { localId: { in: [] } }
+          : { localId: reqLocal };
+    } else if (accessible) {
+      localFilter = { localId: { in: accessible } };
+    }
     const r2 = (n: number) => Math.round(n * 100) / 100;
 
     // IVA generado (ventas)
