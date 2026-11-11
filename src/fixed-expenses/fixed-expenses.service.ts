@@ -8,6 +8,11 @@ import { ExpenseType, Status } from '@prisma/client';
 import { CreateFixedExpenseDto } from './dto/create-fixed-expense.dto';
 import { UpdateFixedExpenseDto } from './dto/update-fixed-expense.dto';
 import { PayFixedExpenseDto } from './dto/pay-fixed-expense.dto';
+import {
+  getAccessibleLocalIds,
+  resolveScopedLocalId,
+} from '@/common/access-locals.util';
+import { applyLocalFilter } from '@/common/local-filter.util';
 
 // Gastos fijos / recurrentes (arriendo, servicios, internet…): se definen una
 // vez y cada mes se marcan como pagados, lo que genera un Expense real
@@ -78,9 +83,20 @@ export class FixedExpensesService {
     return first.id;
   }
 
-  async list(user: any) {
+  async list(user: any, query: any = {}) {
+    // Aislamiento por local: el dueño ve todos; un admin de sede solo los suyos.
+    const localIds = await getAccessibleLocalIds(this.prisma, user);
+    const where: any = {
+      companyId: user.companyId,
+      status: { not: Status.ELIMINADO },
+    };
+    applyLocalFilter(where, user, localIds, 'expense');
+    // Sede activa del selector global: solo los gastos fijos de esa sede.
+    const scoped = resolveScopedLocalId(localIds, query?.localId);
+    if (scoped) where.localId = scoped;
+
     const fixed = await this.prisma.fixedExpense.findMany({
-      where: { companyId: user.companyId, status: { not: Status.ELIMINADO } },
+      where,
       include: {
         expenseCategory: { select: { id: true, name: true } },
         local: { select: { id: true, name: true } },

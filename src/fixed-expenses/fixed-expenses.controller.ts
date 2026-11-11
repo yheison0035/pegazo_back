@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -25,8 +26,8 @@ export class FixedExpensesController {
 
   @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA')
   @Get()
-  list(@Req() req) {
-    return this.service.list(req.user);
+  list(@Req() req, @Query() query) {
+    return this.service.list(req.user, query);
   }
 
   @Roles('SUPER_ADMIN', 'ADMIN')
