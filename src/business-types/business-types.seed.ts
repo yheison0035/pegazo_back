@@ -114,10 +114,11 @@ export const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
     'purchases', 'customers', 'cartera', 'impuestos', 'quotes', 'sales', 'delivered_sales',
     'returns', 'expenses', 'payables', 'statistics',
   ],
-  // Distribuidora (mayorista genérico: masa/alimentos y cualquier distribuidor):
-  // pedidos B2B con cotización y venta a crédito. Mismos módulos que DISTRIBUCION.
+  // Distribuidora (mayorista: masa/alimentos y cualquier distribuidor que
+  // PRODUCE y distribuye). B2B con cotización y venta a crédito, por peso, e
+  // Insumos (materia prima + recetas) para controlar la producción.
   DISTRIBUIDORA: [
-    'locals', 'users', 'categories', 'brands', 'providers', 'inventory',
+    'locals', 'users', 'categories', 'brands', 'providers', 'inventory', 'supplies',
     'purchases', 'customers', 'cartera', 'impuestos', 'quotes', 'sales', 'delivered_sales',
     'returns', 'expenses', 'payables', 'statistics',
   ],
