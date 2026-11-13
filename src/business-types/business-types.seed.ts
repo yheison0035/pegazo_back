@@ -11,6 +11,7 @@ export const BUSINESS_TYPE_LABELS: Record<string, string> = {
   BARBERIA: 'Barbería',
   ECOMMERCE: 'Ecommerce',
   DISTRIBUCION: 'Distribución',
+  DISTRIBUIDORA: 'Distribuidora',
   ODONTOLOGIA: 'Odontología',
   SUPERMERCADO: 'Supermercado',
   DROGUERIA: 'Droguería',
@@ -109,6 +110,13 @@ export const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
     'returns', 'expenses', 'payables', 'statistics',
   ],
   DISTRIBUCION: [
+    'locals', 'users', 'categories', 'brands', 'providers', 'inventory',
+    'purchases', 'customers', 'cartera', 'impuestos', 'quotes', 'sales', 'delivered_sales',
+    'returns', 'expenses', 'payables', 'statistics',
+  ],
+  // Distribuidora (mayorista genérico: masa/alimentos y cualquier distribuidor):
+  // pedidos B2B con cotización y venta a crédito. Mismos módulos que DISTRIBUCION.
+  DISTRIBUIDORA: [
     'locals', 'users', 'categories', 'brands', 'providers', 'inventory',
     'purchases', 'customers', 'cartera', 'impuestos', 'quotes', 'sales', 'delivered_sales',
     'returns', 'expenses', 'payables', 'statistics',
