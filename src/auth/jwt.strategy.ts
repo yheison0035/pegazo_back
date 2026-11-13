@@ -34,6 +34,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Suspensión por impago: también se revalida el estado de la empresa en CADA
     // petición. El SUPER_PLATFORM_ADMIN es de plataforma y no depende de empresa.
     let paidUntil: Date | null = null;
+    let plan: string | null = null;
     let role = payload.role;
     let localId = payload.localId;
 
@@ -44,7 +45,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           role: true,
           localId: true,
           status: true,
-          company: { select: { status: true, paidUntil: true } },
+          company: { select: { status: true, paidUntil: true, plan: true } },
         },
       });
 
@@ -63,6 +64,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         // Fecha de pago para el bloqueo por impago en tiempo real
         // (el SubscriptionInterceptor bloquea las escrituras si ya venció).
         paidUntil = dbUser.company.paidUntil ?? null;
+        // Plan para el bloqueo por plan (solo ORBITA está disponible por ahora;
+        // los demás quedan bloqueados salvo días gratis vigentes).
+        plan = dbUser.company.plan ?? null;
       }
     }
 
@@ -74,6 +78,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       companyId: payload.companyId,
       localId,
       paidUntil,
+      plan,
+      // Sesión de soporte (la plataforma "entra como" la empresa): se exime de
+      // los bloqueos de escritura para poder inspeccionar/configurar.
+      impersonatedBy: payload.impersonatedBy ?? null,
     };
   }
 }
