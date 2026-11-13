@@ -523,6 +523,9 @@ export class UsersService {
             type: true,
             // El plan gobierna qué funciones/módulos ve la empresa.
             plan: true,
+            // Origen del alta: las auto-registradas solo ven el muro de
+            // adaptación hasta que la plataforma las active o les dé días gratis.
+            selfRegistered: true,
             // Control MANUAL de módulos por empresa (superplatform): el CRM lo
             // usa para mostrar/ocultar cada módulo.
             enabledModules: true,

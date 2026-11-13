@@ -10,17 +10,15 @@ import { Observable } from 'rxjs';
 // Bloqueo EN TIEMPO REAL de las operaciones de ESCRITURA (POST/PUT/PATCH/DELETE)
 // con un 402. Las lecturas (GET) siguen permitidas para que el CRM cargue y pueda
 // mostrar el muro correspondiente. Dos motivos:
-//   1) PLAN_LOCKED — plan distinto de ORBITA (único disponible por ahora) sin una
-//      ventana de días gratis vigente. La plataforma adapta el CRM al negocio y,
-//      si el cliente quiere probar, se le obsequian días gratis (paidUntil futuro).
-//   2) SUBSCRIPTION_OVERDUE — empresa ORBITA cuyo pago venció (paidUntil + gracia).
-// La plataforma (SUPER_PLATFORM_ADMIN) y las sesiones de SOPORTE (impersonación)
-// no se ven afectadas.
+//   1) REGISTRATION_PENDING — empresa AUTO-REGISTRADA (selfRegistered) sin una
+//      ventana de días gratis vigente: solo ve el muro de adaptación hasta que la
+//      plataforma la active o le obsequie días gratis (paidUntil futuro). Las
+//      creadas por la plataforma NO llevan esta marca → no se bloquean por esto.
+//   2) SUBSCRIPTION_OVERDUE — empresa GESTIONADA cuyo pago venció (paidUntil +
+//      gracia).
+// La plataforma (SUPER_PLATFORM_ADMIN) no se ve afectada. El modo SOPORTE
+// (impersonación) SÍ: debe comportarse igual que el dueño.
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-
-// Único plan disponible hoy. Debe coincidir con el front (lib/plans.js: el único
-// sin `comingSoon`). Los demás quedan bloqueados hasta tener ~100 clientes.
-const ACTIVE_PLAN = 'ORBITA';
 
 // Día(s) de gracia (calendario) DESPUÉS del vencimiento antes de bloquear. Da
 // margen para pagar: el día de vencimiento y la gracia siguen trabajando (solo
@@ -73,13 +71,14 @@ export class SubscriptionInterceptor implements NestInterceptor {
         todayYmd <= blockDeadlineYmd(new Date(user.paidUntil));
 
       if (!allowed) {
-        // 1) Bloqueo por PLAN: solo ORBITA está disponible. Cualquier otro plan
-        // (o sin plan) queda bloqueado salvo días gratis vigentes.
-        if (user.plan !== ACTIVE_PLAN && !hasActiveWindow) {
+        // 1) Bloqueo por ORIGEN: empresa auto-registrada sin días gratis vigentes.
+        // Solo ve el muro de adaptación hasta que la plataforma la active (le
+        // quita la marca selfRegistered) o le dé días gratis (paidUntil futuro).
+        if (user.selfRegistered && !hasActiveWindow) {
           throw new HttpException(
             {
               success: false,
-              error: 'PLAN_LOCKED',
+              error: 'REGISTRATION_PENDING',
               message:
                 'Estamos adaptando Pegazo a tu negocio. Escríbenos para activarte o pedir unos días gratis de prueba.',
             },
@@ -87,8 +86,12 @@ export class SubscriptionInterceptor implements NestInterceptor {
           );
         }
 
-        // 2) Bloqueo por impago (empresas ORBITA con paidUntil vencido+gracia).
-        if (user.paidUntil && todayYmd > blockDeadlineYmd(new Date(user.paidUntil))) {
+        // 2) Bloqueo por impago (empresas GESTIONADAS con paidUntil vencido+gracia).
+        if (
+          !user.selfRegistered &&
+          user.paidUntil &&
+          todayYmd > blockDeadlineYmd(new Date(user.paidUntil))
+        ) {
           throw new HttpException(
             {
               success: false,

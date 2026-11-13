@@ -1364,6 +1364,7 @@ export class CompaniesService {
         email: true,
         manager: true,
         plan: true,
+        selfRegistered: true,
         paidUntil: true,
         startDate: true,
         paymentDay: true,
@@ -2097,6 +2098,9 @@ export class CompaniesService {
         ...(dto.type !== undefined && { type: dto.type }),
         ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.plan !== undefined && { plan: dto.plan || null }),
+        ...(dto.selfRegistered !== undefined && {
+          selfRegistered: dto.selfRegistered,
+        }),
         ...(dto.billingMode !== undefined && {
           billingMode: dto.billingMode === 'paquete' ? 'paquete' : 'mensual',
         }),

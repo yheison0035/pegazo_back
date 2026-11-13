@@ -335,6 +335,12 @@ model Company {
   obligadoContabilidad  Boolean @default(false)
   facturadorElectronico Boolean @default(false)
 
+  // Origen del alta: true = la empresa se registró SOLA por /register (auto-
+  // registro público). Al entrar solo ve el muro de adaptación hasta que la
+  // plataforma la active o le dé días gratis. false (por defecto) = la creó la
+  // plataforma manualmente → entra directo, sin muro.
+  selfRegistered Boolean @default(false)
+
   // Facturación / suscripción (control de la plataforma)
   plan       String?
   // Modo de cobro: 'mensual' (mes a mes, se registra cada pago) o 'paquete'

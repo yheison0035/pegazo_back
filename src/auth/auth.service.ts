@@ -267,6 +267,9 @@ export class AuthService {
           logo: dto.logo?.trim() || null,
           status: Status.ACTIVO,
           plan: dto.plan,
+          // Auto-registro: queda marcada para que, al entrar, solo vea el muro
+          // de adaptación hasta que la plataforma la active o le dé días gratis.
+          selfRegistered: true,
           startDate: new Date(),
           ...typeDefaults,
           couponCode: coupon ? coupon.code : null,

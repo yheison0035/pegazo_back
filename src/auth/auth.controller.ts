@@ -56,14 +56,16 @@ export class AuthController {
   }
 
   // Auto-registro de negocio (público): crea empresa + admin y devuelve token.
-  // DESHABILITADO por defecto: por ahora el alta de empresas la hace SOLO la
-  // plataforma (SUPER_PLATFORM_ADMIN) desde su panel. Para reabrir el
-  // auto-registro público, poner la variable de entorno
-  // PUBLIC_REGISTRATION_ENABLED=true en Railway (no requiere cambio de código).
+  // HABILITADO: cualquiera puede registrarse por su cuenta. La empresa queda
+  // marcada como auto-registrada (selfRegistered) y, al entrar, solo ve el muro
+  // de adaptación hasta que la plataforma la active o le dé días gratis. Las
+  // empresas creadas manualmente por la plataforma NO llevan esa marca y entran
+  // directo. Si en algún momento se quiere cerrar el auto-registro, basta con
+  // poner PUBLIC_REGISTRATION_ENABLED=false en Railway.
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('register-business')
   registerBusiness(@Body() dto: RegisterBusinessDto) {
-    if (process.env.PUBLIC_REGISTRATION_ENABLED !== 'true') {
+    if (process.env.PUBLIC_REGISTRATION_ENABLED === 'false') {
       throw new ForbiddenException(
         'El registro de nuevas empresas está deshabilitado. Contáctanos para crear tu cuenta.',
       );

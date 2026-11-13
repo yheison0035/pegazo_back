@@ -40,6 +40,12 @@ export class UpdateCompanyDto {
   @IsString()
   plan?: string;
 
+  // Origen del alta. La plataforma la pone en false para ACTIVAR una empresa
+  // auto-registrada (la "deja entrar" de forma permanente, sin el muro).
+  @IsOptional()
+  @IsBoolean()
+  selfRegistered?: boolean;
+
   // Modo de cobro: 'mensual' | 'paquete'.
   @IsOptional()
   @IsString()
