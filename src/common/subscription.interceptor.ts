@@ -49,13 +49,12 @@ export class SubscriptionInterceptor implements NestInterceptor {
     const user = req?.user;
     const method = (req?.method || 'GET').toUpperCase();
 
+    // El modo soporte (impersonación) NO se exime: debe comportarse igual que el
+    // dueño. Para configurar una empresa bloqueada, primero se le dan días gratis
+    // desde la plataforma (sesión real SUPER_PLATFORM_ADMIN, exenta) y luego se
+    // entra en soporte, ya con la ventana vigente.
     const isCompanyUser =
-      user &&
-      user.role !== 'SUPER_PLATFORM_ADMIN' &&
-      !!user.companyId &&
-      // Las sesiones de soporte (impersonación) no se bloquean: la plataforma
-      // necesita poder inspeccionar/configurar la empresa aunque esté bloqueada.
-      !user.impersonatedBy;
+      user && user.role !== 'SUPER_PLATFORM_ADMIN' && !!user.companyId;
 
     if (isCompanyUser && WRITE_METHODS.has(method)) {
       const path = (req.originalUrl || req.url || '').split('?')[0];

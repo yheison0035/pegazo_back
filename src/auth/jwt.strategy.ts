@@ -79,9 +79,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       localId,
       paidUntil,
       plan,
-      // Sesión de soporte (la plataforma "entra como" la empresa): se exime de
-      // los bloqueos de escritura para poder inspeccionar/configurar.
-      impersonatedBy: payload.impersonatedBy ?? null,
     };
   }
 }
