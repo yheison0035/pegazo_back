@@ -146,6 +146,7 @@ enum BusinessType {
   BARBERIA
   ECOMMERCE
   DISTRIBUCION
+  DISTRIBUIDORA
   // Verticales específicas (multi-negocio)
   ODONTOLOGIA
   SUPERMERCADO
