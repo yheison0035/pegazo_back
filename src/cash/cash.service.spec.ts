@@ -206,6 +206,162 @@ describe('CashService · ventas en efectivo por sede (individual)', () => {
   });
 });
 
+// Red de regresión del flujo venta en efectivo -> caja. Deja clavado que la caja
+// SIEMPRE refleja las ventas en efectivo del día (se vendan antes o después de
+// abrirla), que lo que no es efectivo no entra, y que lo de otro día no se cuela.
+// Caso reportado: ventas registradas por admin/recepcionista que a veces no
+// aparecían en caja (segun el dia). La reconciliacion es por DIA de la caja.
+describe('CashService · la caja refleja las ventas en efectivo del día', () => {
+  const owner = { companyId: 1, id: 9, role: 'SUPER_ADMIN' };
+  // Caja abierta HOY (16/11) a las 08:00 Colombia (13:00Z). El inicio del día
+  // Colombia = 05:00Z; su ventana de reconciliación arranca ahí.
+  const register = {
+    id: 50,
+    localId: 1,
+    companyId: 1,
+    status: 'ABIERTA',
+    openingAmount: 0,
+    openedAt: new Date('2026-11-16T13:00:00Z'),
+    closedAt: null,
+    openedById: 9,
+  };
+
+  const within = (d: Date, w: any) => (!w?.gte || d >= w.gte) && (!w?.lt || d < w.lt);
+
+  // Prisma en memoria que respeta los filtros (localId, método, estado, fecha y
+  // "sin movimiento"). Devuelve el servicio y un lector de los movimientos.
+  const buildDb = (sales: any[], seedMovements: any[] = []) => {
+    let movements = seedMovements.map((m, i) => ({ id: i + 1, ...m }));
+    let seq = movements.length + 1;
+    return {
+      read: () => movements,
+      prisma: {
+        local: { findFirst: jest.fn(async ({ where }: any) => ({ id: where.id, companyId: register.companyId })) },
+        cashRegister: {
+          findFirst: jest.fn(async ({ where }: any) =>
+            where.localId === register.localId && where.companyId === register.companyId && where.status === register.status
+              ? register
+              : null,
+          ),
+          findUnique: jest.fn(async ({ where, include }: any) => {
+            if (where.id !== register.id) return null;
+            const out: any = { ...register };
+            if (include?.movements) out.movements = movements.filter((m) => m.cashRegisterId === register.id);
+            if (include?.openedBy) out.openedBy = { id: register.openedById, name: 'Dueño' };
+            if (include?.local) out.local = { id: register.localId, name: 'Sede' };
+            return out;
+          }),
+        },
+        sale: {
+          findMany: jest.fn(async ({ where }: any) => {
+            let res = sales.filter(
+              (s) =>
+                s.localId === where.localId &&
+                s.paymentMethod === where.paymentMethod &&
+                !where.saleStatus.notIn.includes(s.saleStatus) &&
+                s.paymentStatus !== where.paymentStatus.not &&
+                within(s.saleDate, where.saleDate),
+            );
+            if (where.cashMovements?.none) res = res.filter((s) => !movements.some((m) => m.saleId === s.id));
+            return res.map((s) => ({ id: s.id, totalAmount: s.totalAmount }));
+          }),
+        },
+        cashMovement: {
+          findMany: jest.fn(async ({ where }: any) =>
+            movements
+              .filter((m) => m.cashRegisterId === where.cashRegisterId && (!where.concept || m.concept === where.concept))
+              .map((m) => ({ id: m.id, saleId: m.saleId, amount: m.amount })),
+          ),
+          deleteMany: jest.fn(async ({ where }: any) => {
+            const ids = where.id.in;
+            const before = movements.length;
+            movements = movements.filter((m) => !ids.includes(m.id));
+            return { count: before - movements.length };
+          }),
+          create: jest.fn(async ({ data }: any) => {
+            const m = { id: seq++, ...data };
+            movements.push(m);
+            return m;
+          }),
+        },
+        expense: { aggregate: jest.fn(async () => ({ _sum: { amount: 0 } })) },
+      },
+    };
+  };
+
+  const makeSvc = async (prisma: any): Promise<CashService> => {
+    const mod = await Test.createTestingModule({
+      providers: [CashService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    return mod.get(CashService);
+  };
+
+  const cashSale = (over: any) => ({
+    localId: 1,
+    paymentMethod: 'EFECTIVO',
+    saleStatus: 'NUEVA',
+    paymentStatus: 'PAGADA',
+    saleDate: new Date('2026-11-16T14:00:00Z'),
+    ...over,
+  });
+
+  it('una venta en efectivo del día aparece en la caja', async () => {
+    const db = buildDb([cashSale({ id: 1, totalAmount: 30000 })]);
+    const svc = await makeSvc(db.prisma);
+    const res: any = await svc.getCurrent(owner, 1);
+    expect(res.data.totals.ingresos).toBe(30000);
+    expect(db.read().filter((m) => m.saleId === 1)).toHaveLength(1);
+  });
+
+  it('una venta en efectivo hecha ANTES de abrir la caja (mismo día) también aparece', async () => {
+    // Vendida 06:00 Colombia (11:00Z), antes de abrir la caja a las 08:00.
+    const db = buildDb([cashSale({ id: 2, totalAmount: 20000, saleDate: new Date('2026-11-16T11:00:00Z') })]);
+    const svc = await makeSvc(db.prisma);
+    const res: any = await svc.getCurrent(owner, 1);
+    expect(res.data.totals.ingresos).toBe(20000);
+  });
+
+  it('lo que NO es efectivo (tarjeta/transferencia) no entra a la caja', async () => {
+    const db = buildDb([
+      cashSale({ id: 3, totalAmount: 10000 }),
+      cashSale({ id: 4, totalAmount: 99999, paymentMethod: 'TARJETA' }),
+    ]);
+    const svc = await makeSvc(db.prisma);
+    const res: any = await svc.getCurrent(owner, 1);
+    expect(res.data.totals.ingresos).toBe(10000);
+  });
+
+  it('una venta anulada se PURGA de la caja (el arqueo no la cuenta)', async () => {
+    const db = buildDb(
+      [cashSale({ id: 5, totalAmount: 15000, saleStatus: 'CANCELADA' })],
+      [{ cashRegisterId: 50, type: 'INGRESO', amount: 15000, concept: 'Venta en efectivo', saleId: 5 }],
+    );
+    const svc = await makeSvc(db.prisma);
+    const res: any = await svc.getCurrent(owner, 1);
+    expect(res.data.totals.ingresos).toBe(0);
+    expect(db.read().some((m) => m.saleId === 5)).toBe(false);
+  });
+
+  it('si editan el importe de la venta, la caja se corrige (sin duplicar)', async () => {
+    const db = buildDb(
+      [cashSale({ id: 6, totalAmount: 25000 })], // importe nuevo
+      [{ cashRegisterId: 50, type: 'INGRESO', amount: 10000, concept: 'Venta en efectivo', saleId: 6 }], // viejo
+    );
+    const svc = await makeSvc(db.prisma);
+    const res: any = await svc.getCurrent(owner, 1);
+    expect(res.data.totals.ingresos).toBe(25000);
+    expect(db.read().filter((m) => m.saleId === 6)).toHaveLength(1);
+  });
+
+  it('una venta en efectivo de AYER no entra en la caja abierta HOY (cada día su caja)', async () => {
+    // 15/11 20:00 Colombia (16/11 01:00Z) → fuera de la ventana de la caja de hoy.
+    const db = buildDb([cashSale({ id: 7, totalAmount: 40000, saleDate: new Date('2026-11-15T20:00:00Z') })]);
+    const svc = await makeSvc(db.prisma);
+    const res: any = await svc.getCurrent(owner, 1);
+    expect(res.data.totals.ingresos).toBe(0);
+  });
+});
+
 // Aislamiento por local: un rol de sede no puede ver la caja de OTRO local.
 describe('CashService · aislamiento por local', () => {
   it('un rol de sede no accede a la caja de otro local (403)', async () => {
