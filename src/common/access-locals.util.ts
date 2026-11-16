@@ -43,6 +43,23 @@ export async function getAccessibleLocalIds(
     return managedLocals.map((l) => l.id);
   }
 
+  // RECEPCIONISTA (recepción / front desk): atiende la operación del negocio
+  // (ventas, clientes, elegir al profesional que atendió). CON sede asignada ve
+  // SOLO esa sede (multi-sede sigue acotado). SIN sede asignada —caso típico de
+  // un negocio de una sola sede— ve toda la empresa, para poder operar; de lo
+  // contrario su acceso quedaría en [] y, p. ej., no podría cargar la lista de
+  // atendedores para registrar una venta.
+  if (user.role === Role.RECEPCIONISTA) {
+    if (user.localId) {
+      const own = await prisma.local.findFirst({
+        where: { id: user.localId, companyId: user.companyId },
+        select: { id: true },
+      });
+      return own ? [own.id] : [];
+    }
+    return null; // sin sede: toda la empresa
+  }
+
   // Usuario con un solo local asignado
   if (user.localId) {
     // Validar que el local pertenece a su empresa

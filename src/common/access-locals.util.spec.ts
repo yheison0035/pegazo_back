@@ -91,4 +91,44 @@ describe('getAccessibleLocalIds', () => {
     });
     expect(res).toEqual([]);
   });
+
+  // --- RECEPCIONISTA (recepción) ---
+  // Bug reportado: en barbería la venta exige elegir "quién atendió"; esa lista
+  // la llena getUsers, acotada por las sedes accesibles. Una recepcionista SIN
+  // sede quedaba en [] → lista de atendedores vacía → no podía registrar ventas.
+  it('RECEPCIONISTA SIN sede asignada ve toda la empresa (null) — negocio de una sola sede', async () => {
+    const res = await getAccessibleLocalIds(makePrisma() as any, {
+      role: 'RECEPCIONISTA',
+      id: 11,
+      companyId: 1,
+      localId: null,
+    });
+    expect(res).toBeNull();
+  });
+
+  it('RECEPCIONISTA CON sede asignada ve SOLO esa sede (multi-sede acotado)', async () => {
+    const prisma = makePrisma({
+      local: { findFirst: jest.fn().mockResolvedValue({ id: 4 }) },
+    });
+    const res = await getAccessibleLocalIds(prisma as any, {
+      role: 'RECEPCIONISTA',
+      id: 11,
+      companyId: 1,
+      localId: 4,
+    });
+    expect(res).toEqual([4]);
+  });
+
+  it('RECEPCIONISTA cuya sede asignada no es de su empresa no ve nada', async () => {
+    const prisma = makePrisma({
+      local: { findFirst: jest.fn().mockResolvedValue(null) },
+    });
+    const res = await getAccessibleLocalIds(prisma as any, {
+      role: 'RECEPCIONISTA',
+      id: 11,
+      companyId: 1,
+      localId: 99,
+    });
+    expect(res).toEqual([]);
+  });
 });
