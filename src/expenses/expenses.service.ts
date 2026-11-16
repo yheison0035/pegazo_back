@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '@/prisma.service';
 import { ExpenseType, PaymentMethod, Role, Status } from '@prisma/client';
@@ -240,6 +241,46 @@ export class ExpensesService {
 
     if (localIds !== null && !localIds.includes(dto.localId)) {
       throw new ForbiddenException('No tienes acceso a este local');
+    }
+
+    // Política "abrir el día": si la empresa lo exige (requireCashOpen), NO se
+    // puede registrar NINGÚN gasto sin una caja abierta HOY (zona Colombia) en
+    // esta sede — igual que las ventas. Las empresas que NO usan abrir caja
+    // (requireCashOpen=false) no se ven afectadas.
+    const company = await this.prisma.company.findUnique({
+      where: { id: user.companyId },
+      select: { requireCashOpen: true },
+    });
+    if (company?.requireCashOpen) {
+      const now = new Date();
+      const col = new Date(now.getTime() - 5 * 3600 * 1000);
+      const dayStart = new Date(
+        Date.UTC(col.getUTCFullYear(), col.getUTCMonth(), col.getUTCDate(), 5, 0, 0),
+      );
+      const openToday = await this.prisma.cashRegister.findFirst({
+        where: {
+          localId: dto.localId,
+          companyId: user.companyId,
+          status: 'ABIERTA',
+          openedAt: { gte: dayStart },
+        },
+        select: { id: true },
+      });
+      if (!openToday) {
+        const openPrev = await this.prisma.cashRegister.findFirst({
+          where: {
+            localId: dto.localId,
+            companyId: user.companyId,
+            status: 'ABIERTA',
+          },
+          select: { id: true },
+        });
+        throw new BadRequestException(
+          openPrev
+            ? 'El día anterior no se ha cerrado. Cierra la caja del día anterior para poder registrar gastos.'
+            : 'Debes abrir el día (abrir la caja) para poder registrar gastos.',
+        );
+      }
     }
 
     const { expenseCategoryId, type } = await this.resolveCategory(
