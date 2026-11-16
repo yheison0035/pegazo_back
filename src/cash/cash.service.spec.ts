@@ -362,6 +362,131 @@ describe('CashService · la caja refleja las ventas en efectivo del día', () =>
   });
 });
 
+// Apertura de caja: al ABRIR la caja de una sede, debe cargar las ventas en
+// efectivo del día de ESA sede (la seleccionada). Es el flujo que usa el cliente
+// con "exigir abrir caja" activado: registra la venta y, al abrir el día, la caja
+// la recoge. "Exigir abrir caja" es editable por empresa (hay clientes que no lo
+// usan); esto solo prueba que, cuando se abre, el ingreso queda cargado.
+describe('CashService · al ABRIR la caja carga la venta en efectivo de la sede seleccionada', () => {
+  const owner = { companyId: 1, id: 9, role: 'SUPER_ADMIN' };
+  const OPENED_AT = new Date('2026-11-16T13:00:00Z'); // hoy 08:00 Colombia
+  const within = (d: Date, w: any) => (!w?.gte || d >= w.gte) && (!w?.lt || d < w.lt);
+
+  const cashSale = (over: any) => ({
+    localId: 1,
+    paymentMethod: 'EFECTIVO',
+    saleStatus: 'NUEVA',
+    paymentStatus: 'PAGADA',
+    saleDate: new Date('2026-11-16T14:00:00Z'),
+    ...over,
+  });
+
+  // Prisma en memoria SIN caja abierta al inicio; open() crea la caja y reconcilia.
+  const buildDb = (sales: any[]) => {
+    const registers: any[] = [];
+    let movements: any[] = [];
+    let regSeq = 100;
+    let movSeq = 1;
+    return {
+      movements: () => movements,
+      prisma: {
+        local: { findFirst: jest.fn(async ({ where }: any) => ({ id: where.id, companyId: 1 })) },
+        cashRegister: {
+          findFirst: jest.fn(async ({ where }: any) =>
+            registers.find((r) => r.localId === where.localId && r.companyId === where.companyId && r.status === where.status) || null,
+          ),
+          create: jest.fn(async ({ data }: any) => {
+            const r = { id: regSeq++, status: 'ABIERTA', openedAt: OPENED_AT, closedAt: null, ...data };
+            registers.push(r);
+            return r;
+          }),
+          findUnique: jest.fn(async ({ where, include }: any) => {
+            const r = registers.find((x) => x.id === where.id);
+            if (!r) return null;
+            const out: any = { ...r };
+            if (include?.movements) out.movements = movements.filter((m) => m.cashRegisterId === r.id);
+            return out;
+          }),
+        },
+        sale: {
+          findMany: jest.fn(async ({ where }: any) => {
+            let res = sales.filter(
+              (s) =>
+                s.localId === where.localId &&
+                s.paymentMethod === where.paymentMethod &&
+                !where.saleStatus.notIn.includes(s.saleStatus) &&
+                s.paymentStatus !== where.paymentStatus.not &&
+                within(s.saleDate, where.saleDate),
+            );
+            if (where.cashMovements?.none) res = res.filter((s) => !movements.some((m) => m.saleId === s.id));
+            return res.map((s) => ({ id: s.id, totalAmount: s.totalAmount }));
+          }),
+        },
+        cashMovement: {
+          findMany: jest.fn(async ({ where }: any) =>
+            movements.filter((m) => m.cashRegisterId === where.cashRegisterId && (!where.concept || m.concept === where.concept)),
+          ),
+          deleteMany: jest.fn(async ({ where }: any) => {
+            const ids = where.id.in;
+            const before = movements.length;
+            movements = movements.filter((m) => !ids.includes(m.id));
+            return { count: before - movements.length };
+          }),
+          create: jest.fn(async ({ data }: any) => {
+            const m = { id: movSeq++, ...data };
+            movements.push(m);
+            return m;
+          }),
+        },
+        expense: { aggregate: jest.fn(async () => ({ _sum: { amount: 0 } })) },
+      },
+    };
+  };
+
+  const makeSvc = async (prisma: any): Promise<CashService> => {
+    const mod = await Test.createTestingModule({
+      providers: [CashService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    return mod.get(CashService);
+  };
+
+  it('abrir la caja de la sede 1 carga la venta en efectivo de la sede 1 (no la de la 2)', async () => {
+    const db = buildDb([
+      cashSale({ id: 1, localId: 1, totalAmount: 30000 }),
+      cashSale({ id: 2, localId: 2, totalAmount: 50000 }),
+    ]);
+    const svc = await makeSvc(db.prisma);
+
+    const res: any = await svc.open(owner, { localId: 1, openingAmount: 100000 } as any);
+
+    // A la APERTURA, la caja ya trae la venta en efectivo de SU sede.
+    expect(res.data.totals.ingresos).toBe(30000);
+    // Esperado = base 100.000 + venta 30.000.
+    expect(res.data.totals.expected).toBe(130000);
+    // Se creó UN movimiento, por la venta de la sede 1; la de la sede 2 NO entró.
+    const movs = db.movements();
+    expect(movs).toHaveLength(1);
+    expect(movs[0].saleId).toBe(1);
+    expect(movs[0].amount).toBe(30000);
+    expect(movs.some((m) => m.saleId === 2)).toBe(false);
+  });
+
+  it('abrir la caja de la sede 2 carga la venta de la sede 2 (la seleccionada)', async () => {
+    const db = buildDb([
+      cashSale({ id: 1, localId: 1, totalAmount: 30000 }),
+      cashSale({ id: 2, localId: 2, totalAmount: 50000 }),
+    ]);
+    const svc = await makeSvc(db.prisma);
+
+    const res: any = await svc.open(owner, { localId: 2, openingAmount: 0 } as any);
+
+    expect(res.data.totals.ingresos).toBe(50000);
+    const movs = db.movements();
+    expect(movs).toHaveLength(1);
+    expect(movs[0].saleId).toBe(2);
+  });
+});
+
 // Aislamiento por local: un rol de sede no puede ver la caja de OTRO local.
 describe('CashService · aislamiento por local', () => {
   it('un rol de sede no accede a la caja de otro local (403)', async () => {
