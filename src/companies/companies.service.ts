@@ -16,6 +16,7 @@ import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { BUSINESS_TYPE_LABELS } from '@/business-types/business-types.seed';
 import { getAccessibleLocalIds } from '@/common/access-locals.util';
+import { anchorToBillingDay } from '@/common/billing-date.util';
 import { Role, Status, Prisma, BusinessType } from '@prisma/client';
 
 @Injectable()
@@ -1547,9 +1548,17 @@ export class CompaniesService {
       ? new Date(company.startDate).getUTCDate()
       : (company.paymentDay ?? new Date(startDate).getUTCDate());
 
+    // La fecha de pago SIEMPRE queda anclada al día de cobro (el ciclo):
+    //  - por meses: addMonthsAnchored.
+    //  - por días ("Días gratis"): se suman los días y se alinea al próximo día
+    //    de cobro (ej. el 19), para que el "estado / días restantes" cuadre con
+    //    el ciclo y no caiga en una fecha suelta.
     const paidUntil = months
       ? this.addMonthsAnchored(from, months, billingDay)
-      : new Date(from.getTime() + (days as number) * 86_400_000);
+      : anchorToBillingDay(
+          new Date(from.getTime() + (days as number) * 86_400_000),
+          billingDay,
+        );
 
     const updated = await this.prisma.company.update({
       where: { id },
