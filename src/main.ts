@@ -25,6 +25,18 @@ async function bootstrap() {
   // Cabeceras de seguridad HTTP
   app.use(helmet());
 
+  // La API NUNCA se cachea en el navegador: así el panel siempre ve datos
+  // frescos. Sin esto, el navegador podía servir respuestas GET viejas de su
+  // caché (p. ej. la "próxima fecha de pago" mostrando un valor anterior, o
+  // funciones que "no cargan" con datos obsoletos) mientras en incógnito —sin
+  // caché— se veía bien. Los estáticos de /public (imágenes) sí pueden cachearse.
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (!req.path.startsWith('/public')) {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+    next();
+  });
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true, // elimina campos que no estén en el DTO (protege la BD)
