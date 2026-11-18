@@ -1468,7 +1468,11 @@ export class CompaniesService {
           paidTotal: salesMonthPaid._sum.totalAmount || 0,
         },
         users,
-        payments,
+        payments: this.alignPaymentPeriods(
+          payments,
+          company.startDate,
+          company.paymentDay,
+        ),
         paymentsSummary: {
           totalPaid: payments.reduce((a, p) => a + (p.amount || 0), 0),
           count: payments.length,
@@ -1491,6 +1495,25 @@ export class CompaniesService {
     const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
     const dayOfMonth = Math.min(anchorDay, lastDay);
     return new Date(Date.UTC(year, month, dayOfMonth));
+  }
+
+  // Alinea las fechas del período cubierto de cada pago al DÍA DE COBRO, para que
+  // el historial (p. ej. "→ 11/12") sea coherente con la próxima fecha efectiva
+  // (→ 19/12). No cambia el registro en BD, solo lo que se muestra.
+  private alignPaymentPeriods(
+    payments: any[],
+    startDate: Date | null,
+    paymentDay: number | null,
+  ): any[] {
+    return (payments || []).map((p) => ({
+      ...p,
+      periodFrom: p.periodFrom
+        ? effectiveNextPayment(p.periodFrom, startDate, paymentDay)
+        : p.periodFrom,
+      periodTo: p.periodTo
+        ? effectiveNextPayment(p.periodTo, startDate, paymentDay)
+        : p.periodTo,
+    }));
   }
 
   // Registrar pago / renovar. Con `months` (recomendado) avanza `paidUntil`
@@ -1723,7 +1746,11 @@ export class CompaniesService {
         nextPaymentDate,
         daysLeft,
         overdue: daysLeft !== null && daysLeft < 0,
-        payments,
+        payments: this.alignPaymentPeriods(
+          payments,
+          company.startDate,
+          company.paymentDay,
+        ),
         totalPaid: payments.reduce((a, p) => a + (p.amount || 0), 0),
         totalMonths: payments.reduce((a, p) => a + (p.months || 0), 0),
         count: payments.length,
