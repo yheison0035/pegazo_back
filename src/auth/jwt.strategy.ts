@@ -34,6 +34,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Suspensión por impago: también se revalida el estado de la empresa en CADA
     // petición. El SUPER_PLATFORM_ADMIN es de plataforma y no depende de empresa.
     let paidUntil: Date | null = null;
+    let startDate: Date | null = null;
+    let paymentDay: number | null = null;
     let selfRegistered = false;
     let role = payload.role;
     let localId = payload.localId;
@@ -46,7 +48,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           localId: true,
           status: true,
           company: {
-            select: { status: true, paidUntil: true, selfRegistered: true },
+            select: {
+              status: true,
+              paidUntil: true,
+              startDate: true,
+              paymentDay: true,
+              selfRegistered: true,
+            },
           },
         },
       });
@@ -66,6 +74,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         // Fecha de pago para el bloqueo por impago en tiempo real
         // (el SubscriptionInterceptor bloquea las escrituras si ya venció).
         paidUntil = dbUser.company.paidUntil ?? null;
+        // Día de cobro del ciclo: el bloqueo alinea paidUntil a este día (igual
+        // que el estado que ve el dueño), para que ambos coincidan.
+        startDate = dbUser.company.startDate ?? null;
+        paymentDay = dbUser.company.paymentDay ?? null;
         // Marca de auto-registro para el bloqueo por origen (las auto-registradas
         // solo ven el muro de adaptación hasta que la plataforma las active).
         selfRegistered = dbUser.company.selfRegistered ?? false;
@@ -80,6 +92,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       companyId: payload.companyId,
       localId,
       paidUntil,
+      startDate,
+      paymentDay,
       selfRegistered,
     };
   }

@@ -16,7 +16,11 @@ import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { BUSINESS_TYPE_LABELS } from '@/business-types/business-types.seed';
 import { getAccessibleLocalIds } from '@/common/access-locals.util';
-import { anchorToBillingDay } from '@/common/billing-date.util';
+import {
+  anchorToBillingDay,
+  effectiveNextPayment,
+  daysUntilColombia,
+} from '@/common/billing-date.util';
 import { Role, Status, Prisma, BusinessType } from '@prisma/client';
 
 @Injectable()
@@ -1430,7 +1434,14 @@ export class CompaniesService {
       }),
     ]);
 
-    const daysLeft = this.daysLeftColombia(company.paidUntil);
+    // Próxima fecha de pago EFECTIVA (alineada al día de cobro, dinámica): los
+    // "días restantes" y el estado cuentan hasta esa fecha del ciclo.
+    const nextPaymentDate = effectiveNextPayment(
+      company.paidUntil,
+      company.startDate,
+      company.paymentDay,
+    );
+    const daysLeft = daysUntilColombia(nextPaymentDate);
 
     return {
       success: true,
@@ -1439,6 +1450,7 @@ export class CompaniesService {
         billing: {
           plan: company.plan,
           paidUntil: company.paidUntil,
+          nextPaymentDate,
           daysLeft,
           overdue: daysLeft !== null && daysLeft < 0,
           monthlyPrice: company.monthlyPrice,
@@ -1688,8 +1700,15 @@ export class CompaniesService {
       where: { companyId: user.companyId },
       orderBy: { paidAt: 'desc' },
     });
-    const now = new Date();
-    const daysLeft = this.daysLeftColombia(company.paidUntil);
+    // Próxima fecha de pago EFECTIVA: la fecha pagada alineada al día de cobro
+    // (dinámica: si cambia el día de cobro, se recalcula sin re-registrar). Los
+    // "días restantes" cuentan hasta esa fecha del ciclo.
+    const nextPaymentDate = effectiveNextPayment(
+      company.paidUntil,
+      company.startDate,
+      company.paymentDay,
+    );
+    const daysLeft = daysUntilColombia(nextPaymentDate);
 
     return {
       success: true,
@@ -1701,6 +1720,7 @@ export class CompaniesService {
         startDate: company.startDate,
         paymentDay: company.paymentDay,
         paidUntil: company.paidUntil,
+        nextPaymentDate,
         daysLeft,
         overdue: daysLeft !== null && daysLeft < 0,
         payments,

@@ -6,6 +6,7 @@ import {
   NestInterceptor,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
+import { effectiveNextPayment } from './billing-date.util';
 
 // Bloqueo EN TIEMPO REAL de las operaciones de ESCRITURA (POST/PUT/PATCH/DELETE)
 // con un 402. Las lecturas (GET) siguen permitidas para que el CRM cargue y pueda
@@ -64,11 +65,18 @@ export class SubscriptionInterceptor implements NestInterceptor {
       const todayYmd = new Date().toLocaleDateString('en-CA', {
         timeZone: 'America/Bogota',
       });
-      // Ventana vigente = tiene paidUntil y hoy no pasó del vencimiento+gracia.
+      // Fecha de corte EFECTIVA: la fecha pagada alineada al DÍA DE COBRO (igual
+      // que el estado que ve el dueño), para que el bloqueo coincida con lo que
+      // ve en pantalla. Dinámico: si cambia el día de cobro, se recalcula.
+      const effective = effectiveNextPayment(
+        user.paidUntil,
+        user.startDate,
+        user.paymentDay,
+      );
+      // Ventana vigente = tiene fecha efectiva y hoy no pasó del vencimiento+gracia.
       // Es lo que fija el botón "Días gratis" de la plataforma (paidUntil futuro).
       const hasActiveWindow =
-        !!user.paidUntil &&
-        todayYmd <= blockDeadlineYmd(new Date(user.paidUntil));
+        !!effective && todayYmd <= blockDeadlineYmd(effective);
 
       if (!allowed) {
         // 1) Bloqueo por ORIGEN: empresa auto-registrada sin días gratis vigentes.
@@ -86,11 +94,11 @@ export class SubscriptionInterceptor implements NestInterceptor {
           );
         }
 
-        // 2) Bloqueo por impago (empresas GESTIONADAS con paidUntil vencido+gracia).
+        // 2) Bloqueo por impago (empresas GESTIONADAS con fecha efectiva vencida+gracia).
         if (
           !user.selfRegistered &&
-          user.paidUntil &&
-          todayYmd > blockDeadlineYmd(new Date(user.paidUntil))
+          effective &&
+          todayYmd > blockDeadlineYmd(effective)
         ) {
           throw new HttpException(
             {
