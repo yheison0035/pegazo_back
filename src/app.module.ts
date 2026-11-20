@@ -9,6 +9,7 @@ import { CustomersModule } from './customers/customers.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { FixedExpensesModule } from './fixed-expenses/fixed-expenses.module';
 import { MembershipsModule } from './memberships/memberships.module';
+import { LoansModule } from './loans/loans.module';
 import { StorageModule } from './storage/storage.module';
 import { ParkingModule } from './parking/parking.module';
 import { InventoryModule } from './inventory/inventory.module';
@@ -88,6 +89,7 @@ import { VersionModule } from './version/version.module';
     ExpensesModule,
     FixedExpensesModule,
     MembershipsModule,
+    LoansModule,
     StorageModule,
     ParkingModule,
     InventoryModule,

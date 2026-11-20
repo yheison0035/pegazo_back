@@ -27,6 +27,8 @@ enum Role {
   COCINERO
   PROFESIONAL
   CONTADOR
+  COBRADOR
+  ANALISTA
 }
 
 enum AuditAction {
@@ -179,6 +181,7 @@ enum BusinessType {
   TALLER_MECANICO
   TECNOLOGIA
   VETERINARIA
+  FINANCIERA
 }
 
 enum DiscountType {
@@ -311,6 +314,11 @@ model Company {
   // "Recordar ahora" del módulo Créditos funciona aunque esto esté apagado.
   creditRemindersEnabled   Boolean @default(false)
   creditReminderDaysBefore Int     @default(1)
+
+  // Préstamos (tipo FINANCIERA): tasa por defecto, mora, gracia, frecuencia,
+  // sistema, redondeo, aprobación, usura de referencia… Claves validadas en
+  // loans.service (LOAN_SETTINGS_KEYS). null = defaults del código.
+  loanSettings Json?
 
   // Configuración fiscal (facturación con impuestos / electrónica DIAN).
   responsableIVA     Boolean @default(false)
@@ -468,6 +476,9 @@ model Company {
   bankDeposits        BankDeposit[]
   localBankNotify     LocalBankNotify[]
   bankProcessedEmails BankProcessedEmail[]
+  loanProducts        LoanProduct[]
+  loans               Loan[]
+  creditProfiles      CustomerCreditProfile[]
 
   // Notificaciones de consignaciones a la cuenta del banco (SMS/correo reenviado).
   bankNotifyEnabled          Boolean @default(false)
@@ -607,6 +618,15 @@ model User {
   stockRequestsDecided StockChangeRequest[] @relation("StockReqDecider")
   notifications        Notification[]       @relation("UserNotifications")
 
+  // Préstamos (FINANCIERA)
+  loansCreated         Loan[]                  @relation("LoanCreatedBy")
+  loansApproved        Loan[]                  @relation("LoanApprovedBy")
+  loansDisbursed       Loan[]                  @relation("LoanDisbursedBy")
+  loansAsCollector     Loan[]                  @relation("LoanCollector")
+  loanPayments         LoanPayment[]           @relation("LoanPaymentCreatedBy")
+  loanPaymentsAnnulled LoanPayment[]           @relation("LoanPaymentAnnulledBy")
+  creditProfilesAsCollector CustomerCreditProfile[] @relation("CreditProfileCollector")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -681,6 +701,8 @@ model Customer {
   appointments Appointment[]
   quotes       Quote[]
   memberships  Membership[]  @relation("CustomerMemberships")
+  creditProfile CustomerCreditProfile?
+  loans         Loan[]        @relation("CustomerLoans")
 
   // Perfil(es) de la tienda online (datos de envío/facturación) enlazados a
   // este cliente del CRM.
@@ -779,6 +801,7 @@ model Local {
   mesas           Mesa[]
   comandas        Comanda[]
   cashRegisters   CashRegister[]
+  loans           Loan[]           @relation("LocalLoans")
   purchases       Purchase[]
   quotes          Quote[]
   returns         Return[]
@@ -2643,3 +2666,244 @@ model PlatformPaymentSettings {
 // NOTA: el "plan separe" (apartado) NO usa modelo propio. Es una Sale normal
 // con paymentStatus=PLAN_SEPARE que no descuenta stock hasta ENTREGARSE; los
 // abonos usan SalePayment (el mismo modelo del fiado). Ver sales.service.ts.
+
+//////////////////////////////////////////////////
+// PRÉSTAMOS (tipo de negocio FINANCIERA)
+//////////////////////////////////////////////////
+// Motor de crédito INDEPENDIENTE del fiado de ventas (Sale/SaleInstallment).
+// Un préstamo entrega dinero (capital) a un cliente y se cobra en cuotas con
+// capital + interés; la mora se calcula al leer (src/loans/loan-plan.util.ts).
+// Enums propios para no tocar los de ventas (cero impacto en otros tipos).
+
+enum LoanFrequency {
+  DIARIA
+  SEMANAL
+  QUINCENAL
+  MENSUAL
+}
+
+enum LoanAmortization {
+  SIMPLE // interés sobre capital, cuota fija (microcrédito / paga diario)
+  FRANCES // cuota fija, interés sobre saldo
+  ALEMAN // capital fijo, interés sobre saldo (cuota decreciente)
+}
+
+enum LoanStatus {
+  SOLICITADO
+  APROBADO
+  RECHAZADO
+  DESEMBOLSADO // activo: ya se entregó el dinero y corre el plan
+  PAGADO
+  REFINANCIADO
+  CASTIGADO
+  ANULADO
+}
+
+enum LoanPaymentStatus {
+  ACTIVO
+  ANULADO
+}
+
+// Producto/categoría de crédito configurable por la empresa ("Microcrédito",
+// "Paga diario", "Cliente VIP"…): define tasa, mora, frecuencia y límites. La
+// tasa final del préstamo se resuelve en cascada: préstamo → cliente → producto
+// → empresa.
+model LoanProduct {
+  id           Int              @id @default(autoincrement())
+  name         String
+  description  String?
+  interestRate Decimal          @db.Decimal(7, 3) // % MENSUAL
+  moraRate     Decimal?         @db.Decimal(7, 3) // % mensual; null = igual a la tasa
+  graceDays    Int              @default(0)
+  frequency    LoanFrequency    @default(MENSUAL)
+  amortization LoanAmortization @default(SIMPLE)
+  minTerm      Int?
+  maxTerm      Int?
+  minAmount    Decimal?         @db.Decimal(14, 2)
+  maxAmount    Decimal?         @db.Decimal(14, 2)
+  roundTo      Int              @default(1) // múltiplo de redondeo de la cuota
+  status       Status           @default(ACTIVO)
+
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  creditProfiles CustomerCreditProfile[]
+  loans          Loan[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+}
+
+// Perfil crediticio del cliente (1 a 1 con Customer): tasa propia, cupo,
+// categoría/producto, datos de estudio (ingresos, ocupación, referencias),
+// codeudor y cobrador asignado por defecto.
+model CustomerCreditProfile {
+  id Int @id @default(autoincrement())
+
+  customerId Int      @unique
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  companyId  Int
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  productId Int?
+  product   LoanProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  customRate    Decimal? @db.Decimal(7, 3) // % mensual propio del cliente
+  creditLimit   Decimal? @db.Decimal(14, 2) // cupo máximo de capital vigente
+  riskCategory  String? // A, B, C… libre
+  score         Int?
+  monthlyIncome Decimal? @db.Decimal(14, 2)
+  occupation    String?
+  workplace     String?
+  references    Json? // [{name, phone, relation}]
+
+  guarantorName     String?
+  guarantorDocument String?
+  guarantorPhone    String?
+  guarantorAddress  String?
+
+  collectorId Int?
+  collector   User? @relation("CreditProfileCollector", fields: [collectorId], references: [id], onDelete: SetNull)
+
+  blocked Boolean @default(false)
+  notes   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([collectorId])
+}
+
+model Loan {
+  id     Int        @id @default(autoincrement())
+  code   String // consecutivo por empresa: PR-000001
+  status LoanStatus @default(DESEMBOLSADO)
+
+  // Términos pactados (snapshot: no cambian si luego cambia el producto/cliente)
+  principal    Decimal          @db.Decimal(14, 2)
+  interestRate Decimal          @db.Decimal(7, 3) // % mensual
+  moraRate     Decimal          @db.Decimal(7, 3) // % mensual
+  graceDays    Int              @default(0)
+  frequency    LoanFrequency
+  amortization LoanAmortization @default(SIMPLE)
+  termCount    Int
+  roundTo      Int              @default(1)
+  rateSource   String? // LOAN | CUSTOMER | PRODUCT | COMPANY
+  totalInterest Decimal         @db.Decimal(14, 2)
+  totalAmount   Decimal         @db.Decimal(14, 2) // principal + totalInterest
+
+  // Ciclo de vida
+  requestedAt        DateTime       @default(now())
+  approvedAt         DateTime?
+  approvedById       Int?
+  approvedBy         User?          @relation("LoanApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  disbursedAt        DateTime?
+  disbursedById      Int?
+  disbursedBy        User?          @relation("LoanDisbursedBy", fields: [disbursedById], references: [id], onDelete: SetNull)
+  disbursementMethod PaymentMethod?
+  disbursementCashMovementId Int? // movimiento de caja (EGRESO) del desembolso
+  firstDueDate       DateTime
+  paidAt             DateTime?
+  cancelledAt        DateTime?
+  cancelReason       String?
+  notes              String?
+
+  refinancedFromId Int?
+  refinancedFrom   Loan?  @relation("LoanRefinance", fields: [refinancedFromId], references: [id], onDelete: SetNull)
+  refinancedTo     Loan[] @relation("LoanRefinance")
+
+  customerId Int
+  customer   Customer @relation("CustomerLoans", fields: [customerId], references: [id], onDelete: Restrict)
+
+  productId Int?
+  product   LoanProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  collectorId Int?
+  collector   User? @relation("LoanCollector", fields: [collectorId], references: [id], onDelete: SetNull)
+
+  localId Int?
+  local   Local? @relation("LocalLoans", fields: [localId], references: [id], onDelete: SetNull)
+
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdById Int?
+  createdBy   User? @relation("LoanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  installments LoanInstallment[]
+  payments     LoanPayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([customerId])
+  @@index([collectorId])
+  @@index([status])
+  @@index([localId])
+}
+
+// Cuota del plan: capital + interés pactados y lo pagado de cada componente.
+// La mora NO se guarda (se calcula a hoy); solo se guarda la mora ya cobrada.
+model LoanInstallment {
+  id           Int      @id @default(autoincrement())
+  number       Int
+  dueDate      DateTime
+  capital      Decimal  @db.Decimal(14, 2)
+  interest     Decimal  @db.Decimal(14, 2)
+  capitalPaid  Decimal  @default(0) @db.Decimal(14, 2)
+  interestPaid Decimal  @default(0) @db.Decimal(14, 2)
+  moraPaid     Decimal  @default(0) @db.Decimal(14, 2)
+  paidAt       DateTime?
+
+  loanId    Int
+  loan      Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  companyId Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([loanId])
+  @@index([companyId])
+  @@index([dueDate])
+}
+
+// Abono a un préstamo. Guarda cómo se repartió (allocation) para poder
+// revertirlo exactamente al anular.
+model LoanPayment {
+  id     Int               @id @default(autoincrement())
+  amount Decimal           @db.Decimal(14, 2)
+  method PaymentMethod     @default(EFECTIVO)
+  paidAt DateTime          @default(now())
+  note   String?
+  status LoanPaymentStatus @default(ACTIVO)
+
+  capitalApplied  Decimal @default(0) @db.Decimal(14, 2)
+  interestApplied Decimal @default(0) @db.Decimal(14, 2)
+  moraApplied     Decimal @default(0) @db.Decimal(14, 2)
+  allocation      Json? // [{installmentId, number, mora, interest, capital}]
+  cashMovementId  Int? // INGRESO de caja asociado (si fue efectivo)
+
+  annulledAt   DateTime?
+  annulReason  String?
+  annulledById Int?
+  annulledBy   User?     @relation("LoanPaymentAnnulledBy", fields: [annulledById], references: [id], onDelete: SetNull)
+
+  loanId    Int
+  loan      Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  companyId Int
+
+  createdById Int?
+  createdBy   User? @relation("LoanPaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([loanId])
+  @@index([companyId])
+  @@index([createdById])
+  @@index([paidAt])
+}

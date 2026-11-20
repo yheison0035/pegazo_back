@@ -12,8 +12,13 @@ export async function getAccessibleLocalIds(
     return null;
   }
 
-  // Roles con acceso total dentro de SU empresa
-  if ([Role.SUPER_ADMIN, Role.COORDINADOR, Role.AUXILIAR].includes(user.role)) {
+  // Roles con acceso total dentro de SU empresa. ANALISTA (préstamos) es un
+  // rol de oficina: estudia y crea solicitudes de toda la empresa.
+  if (
+    [Role.SUPER_ADMIN, Role.COORDINADOR, Role.AUXILIAR, Role.ANALISTA].includes(
+      user.role,
+    )
+  ) {
     return null; // null = sin filtro PERO luego se filtra por companyId
   }
 
