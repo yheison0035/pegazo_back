@@ -582,6 +582,8 @@ model User {
   // que preste servicios o venda productos (dinámico, no solo barberos).
   commissionServiceRate Decimal? @db.Decimal(5, 2) // % por servicios/cortes
   commissionProductRate Decimal? @db.Decimal(5, 2) // % por productos
+  // Préstamos (FINANCIERA): % de comisión del COBRADOR sobre lo que recauda.
+  commissionCollectionRate Decimal? @db.Decimal(5, 2)
 
   // Código OTP para restablecer contraseña por celular (WhatsApp)
   resetOtpHash     String?
@@ -2807,6 +2809,7 @@ model Loan {
   disbursementCashMovementId Int? // movimiento de caja (EGRESO) del desembolso
   firstDueDate       DateTime
   paidAt             DateTime?
+  reminderSentAt     DateTime? // último recordatorio de cuota enviado al cliente (antispam)
   cancelledAt        DateTime?
   cancelReason       String?
   notes              String?

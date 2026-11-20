@@ -86,4 +86,11 @@ export class CreateUserDto {
   @Min(0)
   @Max(100)
   commissionProductRate?: number | null;
+
+  // Préstamos (FINANCIERA): % de comisión del cobrador sobre lo recaudado.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  commissionCollectionRate?: number | null;
 }

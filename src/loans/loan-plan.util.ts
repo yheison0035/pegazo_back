@@ -590,3 +590,152 @@ export function resolveInterestRate(params: {
   if (ok(params.companyRate)) return { rate: Number(params.companyRate), source: 'COMPANY' };
   return { rate: 0, source: 'NONE' };
 }
+
+// ---------------------------------------------------------------------------
+// FASE 2 · ABONO A CAPITAL, LIQUIDACIÓN ANTICIPADA
+// ---------------------------------------------------------------------------
+
+export type ReamortizeMode = 'REDUCE_INSTALLMENT' | 'REDUCE_TERM';
+
+export interface ReamortizeInput {
+  installments: InstallmentView[]; // estado actual (summarizeLoan)
+  extraCapital: number; // abono extraordinario que baja el capital
+  mode: ReamortizeMode;
+  interestRate: number; // % mensual
+  frequency: LoanFrequency;
+  amortization: LoanAmortization;
+  rateConversion?: RateConversion;
+  roundTo?: number;
+  excludeWeekdays?: number[];
+}
+
+export interface ReamortizeResult {
+  settled: boolean; // el abono cubre todo el capital pendiente
+  remainingCapital: number;
+  removedNumbers: number[]; // cuotas pendientes que se reemplazan
+  newInstallments: (LoanPlanInstallment & { number: number })[];
+  newTermCount: number; // cuotas pagadas + nuevas
+  interestBefore: number; // interés pendiente antes
+  interestAfter: number; // interés del nuevo plan
+  installmentBefore: number; // cuota antes
+  installmentAfter: number; // cuota después
+}
+
+// Re-amortiza lo pendiente tras un abono extraordinario a capital. Mantiene las
+// cuotas ya pagadas y reemplaza las pendientes por un plan nuevo sobre el capital
+// restante (el interés se recalcula: pagar capital antes SÍ baja los intereses).
+//  - REDUCE_INSTALLMENT: mismo número de cuotas, cuota más baja.
+//  - REDUCE_TERM: cuota parecida a la actual, menos cuotas.
+// Pensado para préstamos AL DÍA (sin cuotas parciales ni vencidas); el servicio
+// valida esa condición.
+export function reamortizeRemaining(input: ReamortizeInput): ReamortizeResult {
+  const ordered = [...input.installments].sort((a, b) => a.number - b.number);
+  const paid = ordered.filter((i) => i.status === 'PAGADA');
+  const unpaid = ordered.filter((i) => i.status !== 'PAGADA');
+  const pendingCapital = unpaid.reduce((a, i) => a + i.pendingCapital, 0);
+  const interestBefore = unpaid.reduce((a, i) => a + i.pendingInterest, 0);
+  const extra = peso(Math.max(0, Number(input.extraCapital) || 0));
+  const remainingCapital = Math.max(0, pendingCapital - extra);
+  const lastPaidNumber = paid.length ? paid[paid.length - 1].number : 0;
+  const installmentBefore = unpaid[0]?.total ?? 0;
+
+  if (!unpaid.length || remainingCapital <= 0) {
+    return {
+      settled: true,
+      remainingCapital: 0,
+      removedNumbers: unpaid.map((i) => i.number),
+      newInstallments: [],
+      newTermCount: paid.length,
+      interestBefore,
+      interestAfter: 0,
+      installmentBefore,
+      installmentAfter: 0,
+    };
+  }
+
+  const base = {
+    principal: remainingCapital,
+    interestRate: input.interestRate,
+    frequency: input.frequency,
+    amortization: input.amortization,
+    rateConversion: input.rateConversion,
+    roundTo: input.roundTo,
+    firstDueDate: new Date(unpaid[0].dueDate),
+    excludeWeekdays: input.excludeWeekdays,
+  };
+
+  let termCount = unpaid.length;
+  if (input.mode === 'REDUCE_TERM') {
+    // La menor cantidad de cuotas cuya cuota no supere la actual.
+    for (let n = 1; n <= unpaid.length; n++) {
+      const trial = buildLoanPlan({ ...base, termCount: n });
+      if (trial.installmentAmount <= installmentBefore) {
+        termCount = n;
+        break;
+      }
+    }
+  }
+
+  const plan = buildLoanPlan({ ...base, termCount });
+  const newInstallments = plan.installments.map((i) => ({
+    ...i,
+    number: lastPaidNumber + i.number,
+  }));
+
+  return {
+    settled: false,
+    remainingCapital,
+    removedNumbers: unpaid.map((i) => i.number),
+    newInstallments,
+    newTermCount: paid.length + termCount,
+    interestBefore,
+    interestAfter: plan.totalInterest,
+    installmentBefore,
+    installmentAfter: plan.installmentAmount,
+  };
+}
+
+export interface SettlementQuote {
+  capital: number; // todo el capital pendiente
+  interest: number; // interés causado: cuotas vencidas/parciales + la del periodo en curso
+  mora: number;
+  total: number;
+  forgivenInterest: number; // interés futuro que se perdona
+  installmentNumbersDue: number[]; // cuotas cuyo interés se cobra
+}
+
+// Cuánto cuesta saldar HOY: capital pendiente + interés de las cuotas ya
+// causadas (vencidas, parciales y la del periodo en curso) + mora. El interés
+// de las cuotas futuras se perdona.
+export function settlementQuote(installments: InstallmentView[]): SettlementQuote {
+  const ordered = [...installments].sort((a, b) => a.number - b.number);
+  const unpaid = ordered.filter((i) => i.status !== 'PAGADA');
+  const capital = unpaid.reduce((a, i) => a + i.pendingCapital, 0);
+  const mora = unpaid.reduce((a, i) => a + i.moraAccrued, 0);
+  let interest = 0;
+  let forgiven = 0;
+  let currentTaken = false;
+  const due: number[] = [];
+  for (const i of unpaid) {
+    const causada = i.status === 'VENCIDA' || i.status === 'PARCIAL';
+    if (causada) {
+      interest += i.pendingInterest;
+      due.push(i.number);
+    } else if (!currentTaken) {
+      // La primera cuota pendiente no vencida es la del periodo en curso.
+      interest += i.pendingInterest;
+      due.push(i.number);
+      currentTaken = true;
+    } else {
+      forgiven += i.pendingInterest;
+    }
+  }
+  return {
+    capital,
+    interest,
+    mora,
+    total: capital + interest + mora,
+    forgivenInterest: forgiven,
+    installmentNumbersDue: due,
+  };
+}

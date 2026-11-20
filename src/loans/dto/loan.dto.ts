@@ -260,4 +260,75 @@ export class LoanSettingsDto {
 
   @IsOptional() @IsNumber() @Min(0)
   maxAmount?: number | null;
+
+  // Recordatorio de cuota al cliente por correo (cron diario).
+  @IsOptional() @IsBoolean()
+  remindersEnabled?: boolean;
+
+  @IsOptional() @IsInt() @Min(0) @Max(60)
+  reminderDaysBefore?: number;
+
+  // Aviso interno/push de mora al dueño y a cada cobrador (cron diario).
+  @IsOptional() @IsBoolean()
+  alertsEnabled?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// FASE 2
+// ---------------------------------------------------------------------------
+export const REAMORTIZE_MODES = ['REDUCE_INSTALLMENT', 'REDUCE_TERM'] as const;
+
+// Abono extraordinario a capital (préstamo al día).
+export class ExtraCapitalDto {
+  @IsNumber() @Min(1)
+  amount: number;
+
+  @IsIn(REAMORTIZE_MODES as unknown as string[])
+  mode: (typeof REAMORTIZE_MODES)[number];
+
+  @IsOptional() @IsEnum(PaymentMethod)
+  method?: PaymentMethod;
+
+  @IsOptional() @IsDateString()
+  paidAt?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  note?: string;
+}
+
+// Liquidación anticipada (saldar hoy).
+export class SettleLoanDto {
+  @IsOptional() @IsEnum(PaymentMethod)
+  method?: PaymentMethod;
+
+  @IsOptional() @IsDateString()
+  paidAt?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  note?: string;
+}
+
+// Refinanciar: la deuda a hoy pasa a un préstamo nuevo con términos nuevos.
+export class RefinanceLoanDto {
+  @IsInt() @Min(1) @Max(1000)
+  termCount: number;
+
+  @IsOptional() @IsIn(LOAN_FREQ as unknown as string[])
+  frequency?: (typeof LOAN_FREQ)[number];
+
+  @IsOptional() @IsIn(LOAN_AMORT as unknown as string[])
+  amortization?: (typeof LOAN_AMORT)[number];
+
+  @IsOptional() @IsNumber() @Min(0) @Max(1000)
+  interestRate?: number;
+
+  @IsOptional() @IsDateString()
+  firstDueDate?: string;
+
+  // Perdonar la mora acumulada al refinanciar.
+  @IsOptional() @IsBoolean()
+  forgiveMora?: boolean;
+
+  @IsOptional() @IsString() @MaxLength(1000)
+  notes?: string;
 }

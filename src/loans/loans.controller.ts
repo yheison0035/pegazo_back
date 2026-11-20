@@ -16,11 +16,15 @@ import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
 import { Roles } from '@/auth/roles.decorator';
 import { LoansService } from './loans.service';
+import { LoanRemindersService } from './loan-reminders.service';
 import {
   CreateLoanDto,
   CreditProfileDto,
   DisburseLoanDto,
+  ExtraCapitalDto,
   LoanPaymentDto,
+  RefinanceLoanDto,
+  SettleLoanDto,
   LoanProductDto,
   LoanSettingsDto,
   ReasonDto,
@@ -39,7 +43,10 @@ const PAY = ['SUPER_ADMIN', 'ADMIN', 'CAJA', 'COBRADOR'] as const;
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('loans')
 export class LoansController {
-  constructor(private readonly service: LoansService) {}
+  constructor(
+    private readonly service: LoansService,
+    private readonly reminders: LoanRemindersService,
+  ) {}
 
   // --- Configuración ---
   @Roles(...READ)
@@ -97,6 +104,13 @@ export class LoansController {
   @Post('simulate')
   simulate(@Req() req, @Body() dto: SimulateLoanDto) {
     return this.service.simulate(req.user, dto);
+  }
+
+  // --- Reporte mensual (colocación vs recaudo) ---
+  @Roles(...READ)
+  @Get('reports/monthly')
+  reportsMonthly(@Req() req, @Query() q: any) {
+    return this.service.reportsMonthly(req.user, q);
   }
 
   // --- Resumen / KPIs, historial de abonos y ruta del cobrador ---
@@ -177,5 +191,42 @@ export class LoansController {
     @Body() dto: ReasonDto,
   ) {
     return this.service.annulPayment(req.user, id, paymentId, dto?.reason);
+  }
+
+  // --- Fase 2: abono a capital, liquidación, refinanciación, recordatorio ---
+  @Roles(...READ)
+  @Get(':id/extra-capital/quote')
+  extraCapitalQuote(@Req() req, @Param('id', ParseIntPipe) id: number, @Query('amount') amount: string, @Query('mode') mode: string) {
+    return this.service.extraCapitalQuote(req.user, id, Number(amount) || 0, mode === 'REDUCE_TERM' ? 'REDUCE_TERM' : 'REDUCE_INSTALLMENT');
+  }
+
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CAJA')
+  @Post(':id/extra-capital')
+  extraCapital(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() dto: ExtraCapitalDto) {
+    return this.service.extraCapital(req.user, id, dto);
+  }
+
+  @Roles(...READ)
+  @Get(':id/settlement/quote')
+  settlementQuote(@Req() req, @Param('id', ParseIntPipe) id: number) {
+    return this.service.settlementQuote(req.user, id);
+  }
+
+  @Roles('SUPER_ADMIN', 'ADMIN', 'CAJA')
+  @Post(':id/settle')
+  settle(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() dto: SettleLoanDto) {
+    return this.service.settle(req.user, id, dto || {});
+  }
+
+  @Roles(...OWNER)
+  @Post(':id/refinance')
+  refinance(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() dto: RefinanceLoanDto) {
+    return this.service.refinance(req.user, id, dto);
+  }
+
+  @Roles(...PAY)
+  @Post(':id/reminder')
+  reminder(@Req() req, @Param('id', ParseIntPipe) id: number) {
+    return this.reminders.sendNow(req.user, id);
   }
 }

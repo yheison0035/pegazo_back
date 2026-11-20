@@ -21,16 +21,21 @@ import {
   allocatePayment,
   buildLoanPlan,
   effectiveAnnualRate,
+  reamortizeRemaining,
   resolveInterestRate,
+  settlementQuote,
   summarizeLoan,
 } from './loan-plan.util';
 import {
   CreateLoanDto,
   CreditProfileDto,
   DisburseLoanDto,
+  ExtraCapitalDto,
   LoanPaymentDto,
   LoanProductDto,
   LoanSettingsDto,
+  RefinanceLoanDto,
+  SettleLoanDto,
   SimulateLoanDto,
 } from './dto/loan.dto';
 
@@ -61,6 +66,9 @@ export interface LoanSettings {
   maxTerm: number | null;
   minAmount: number | null;
   maxAmount: number | null;
+  remindersEnabled: boolean; // correo de cuota al cliente (cron)
+  reminderDaysBefore: number;
+  alertsEnabled: boolean; // aviso interno/push de mora a dueño y cobrador
 }
 
 export const LOAN_SETTINGS_DEFAULTS: LoanSettings = {
@@ -80,6 +88,9 @@ export const LOAN_SETTINGS_DEFAULTS: LoanSettings = {
   maxTerm: null,
   minAmount: null,
   maxAmount: null,
+  remindersEnabled: true,
+  reminderDaysBefore: 1,
+  alertsEnabled: true,
 };
 export const LOAN_SETTINGS_KEYS = Object.keys(LOAN_SETTINGS_DEFAULTS);
 
@@ -1359,11 +1370,25 @@ export class LoansService {
     const portfolio = active.reduce((a, v) => a + v.summary.pendingCapital + v.summary.pendingInterest, 0);
     const overdueAmount = overdue.reduce((a, v) => a + v.summary.overdueAmount, 0);
 
-    // Recaudo por cobrador (mes).
-    const byCollectorMap = new Map<string, { id: number | null; name: string; loans: number; portfolio: number; overdue: number }>();
+    // Recaudo por cobrador (mes) + comisión sobre lo recaudado.
+    const collectedByUser = await this.prisma.loanPayment.groupBy({
+      by: ['createdById'],
+      where: { ...payWhere, paidAt: { gte: monthStart, lt: nextMonth } },
+      _sum: { amount: true },
+      _count: { _all: true },
+    });
+    const collectorIds = [...new Set(active.map((v) => v.collectorId).filter(Boolean))] as number[];
+    const rates = collectorIds.length
+      ? await this.prisma.user.findMany({ where: { id: { in: collectorIds } }, select: { id: true, commissionCollectionRate: true } })
+      : [];
+    const rateOf = new Map(rates.map((r) => [r.id, numOrNull(r.commissionCollectionRate)]));
+    const collectedOf = new Map(collectedByUser.map((c) => [c.createdById ?? 0, { amount: num(c._sum.amount), count: c._count._all }]));
+    const byCollectorMap = new Map<string, { id: number | null; name: string; loans: number; portfolio: number; overdue: number; collectedMonth: number; collectedCount: number; commissionRate: number | null; commission: number }>();
     for (const v of active) {
       const key = String(v.collectorId ?? 0);
-      const cur = byCollectorMap.get(key) || { id: v.collectorId ?? null, name: v.collector?.name || 'Sin cobrador', loans: 0, portfolio: 0, overdue: 0 };
+      const col = collectedOf.get(v.collectorId ?? 0) || { amount: 0, count: 0 };
+      const rate = v.collectorId ? rateOf.get(v.collectorId) ?? null : null;
+      const cur = byCollectorMap.get(key) || { id: v.collectorId ?? null, name: v.collector?.name || 'Sin cobrador', loans: 0, portfolio: 0, overdue: 0, collectedMonth: col.amount, collectedCount: col.count, commissionRate: rate, commission: rate ? Math.round((col.amount * rate) / 100) : 0 };
       cur.loans += 1;
       cur.portfolio += v.summary.pendingCapital + v.summary.pendingInterest;
       cur.overdue += v.summary.overdueAmount;
@@ -1399,6 +1424,262 @@ export class LoansService {
           .sort((a, b) => b.summary.overdueDays - a.summary.overdueDays)
           .slice(0, 10)
           .map((v) => ({ id: v.id, code: v.code, customer: v.customer, overdueDays: v.summary.overdueDays, overdueAmount: v.summary.overdueAmount, collector: v.collector })),
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // FASE 2 · abono a capital, liquidación anticipada, refinanciación, reportes
+  // ---------------------------------------------------------------------------
+  private termsOf(loan: any, settings: LoanSettings) {
+    return {
+      interestRate: num(loan.interestRate),
+      frequency: loan.frequency as LoanFrequency,
+      amortization: loan.amortization as LoanAmortization,
+      rateConversion: settings.rateConversion,
+      roundTo: loan.roundTo || 1,
+      excludeWeekdays: settings.excludeWeekdays,
+    };
+  }
+
+  // Cotización del abono a capital (sin guardar): cómo quedaría el plan.
+  async extraCapitalQuote(user: any, id: number, amount: number, mode: 'REDUCE_INSTALLMENT' | 'REDUCE_TERM') {
+    await this.assertLoansEnabled(user.companyId);
+    const loan = await this.loadLoan(user, id);
+    const settings = await this.getSettings(user.companyId);
+    const view = this.loanView(loan);
+    if (loan.status !== 'DESEMBOLSADO') throw new BadRequestException('El préstamo no está vigente.');
+    if (view.summary.status !== 'AL_DIA' || view.installments.some((i: any) => i.status === 'PARCIAL')) {
+      throw new BadRequestException('Para abonar a capital el préstamo debe estar al día (sin cuotas vencidas ni parciales). Primero registra el abono normal.');
+    }
+    const r = reamortizeRemaining({
+      installments: view.installments as any,
+      extraCapital: Math.round(Number(amount) || 0),
+      mode,
+      ...this.termsOf(loan, settings),
+    });
+    return { success: true, data: { ...r, pendingCapitalBefore: view.summary.pendingCapital } };
+  }
+
+  // Abono extraordinario a capital: baja el capital y re-amortiza lo pendiente.
+  async extraCapital(user: any, id: number, dto: ExtraCapitalDto) {
+    await this.assertLoansEnabled(user.companyId);
+    this.assertRole(user, [...LOAN_OWNER_ROLES, 'CAJA']);
+    const quote = await this.extraCapitalQuote(user, id, dto.amount, dto.mode);
+    const r = quote.data;
+    const loan = await this.loadLoan(user, id);
+    const amount = Math.round(Number(dto.amount) || 0);
+    if (amount <= 0) throw new BadRequestException('El abono debe ser mayor a 0.');
+    if (amount > r.pendingCapitalBefore) {
+      throw new BadRequestException(`El abono a capital ($${amount.toLocaleString('es-CO')}) supera el capital pendiente ($${r.pendingCapitalBefore.toLocaleString('es-CO')}).`);
+    }
+    const method: PaymentMethod = dto.method ?? 'EFECTIVO';
+    const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
+
+    await this.prisma.$transaction(async (tx) => {
+      // Reemplaza las cuotas pendientes por el plan nuevo (las pagadas quedan).
+      await tx.loanInstallment.deleteMany({ where: { loanId: loan.id, number: { in: r.removedNumbers } } });
+      if (r.newInstallments.length) {
+        await tx.loanInstallment.createMany({
+          data: r.newInstallments.map((i) => ({
+            loanId: loan.id, companyId: user.companyId, number: i.number, dueDate: i.dueDate, capital: i.capital, interest: i.interest,
+          })),
+        });
+      }
+      const mv = await this.cashIn(tx, user, loan.localId, amount, method, `Abono a capital préstamo ${loan.code}`);
+      await tx.loanPayment.create({
+        data: {
+          loanId: loan.id, companyId: user.companyId, amount, method, paidAt,
+          note: dto.note ?? `Abono a capital (${dto.mode === 'REDUCE_TERM' ? 'acorta plazo' : 'baja cuota'})`,
+          capitalApplied: amount, interestApplied: 0, moraApplied: 0,
+          allocation: { type: 'CAPITAL_EXTRA', mode: dto.mode, removedNumbers: r.removedNumbers, interestBefore: r.interestBefore, interestAfter: r.interestAfter, installmentBefore: r.installmentBefore, installmentAfter: r.installmentAfter } as any,
+          cashMovementId: mv?.id ?? null, createdById: user.id ?? null,
+        },
+      });
+      // Totales del préstamo con el nuevo plan.
+      const all = await tx.loanInstallment.findMany({ where: { loanId: loan.id } });
+      const totalInterest = all.reduce((a, i) => a + num(i.interest), 0);
+      await tx.loan.update({
+        where: { id: loan.id },
+        data: {
+          termCount: all.length,
+          totalInterest,
+          totalAmount: num(loan.principal) + totalInterest,
+          ...(r.settled ? { status: 'PAGADO', paidAt } : {}),
+        },
+      });
+    });
+    await this.audit.log({ entity: 'loan', entityId: id, action: 'UPDATE', user, changes: { abonoCapital: { before: null, after: amount }, mode: dto.mode } });
+    return this.detail(user, id);
+  }
+
+  async settlementQuote(user: any, id: number) {
+    await this.assertLoansEnabled(user.companyId);
+    const loan = await this.loadLoan(user, id);
+    if (loan.status !== 'DESEMBOLSADO') throw new BadRequestException('El préstamo no está vigente.');
+    const view = this.loanView(loan);
+    const q = settlementQuote(view.installments as any);
+    return { success: true, data: { ...q, pendingTotalNormal: view.summary.pendingTotal } };
+  }
+
+  // Liquidación anticipada: paga capital + interés causado + mora; perdona el
+  // interés futuro y cierra el préstamo.
+  async settle(user: any, id: number, dto: SettleLoanDto) {
+    await this.assertLoansEnabled(user.companyId);
+    this.assertRole(user, [...LOAN_OWNER_ROLES, 'CAJA']);
+    const loan = await this.loadLoan(user, id);
+    if (loan.status !== 'DESEMBOLSADO') throw new BadRequestException('El préstamo no está vigente.');
+    const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
+    const view = this.loanView(loan, dateOnlyUTC(paidAt));
+    const q = settlementQuote(view.installments as any);
+    if (q.total <= 0) throw new BadRequestException('El préstamo no tiene saldo pendiente.');
+    const method: PaymentMethod = dto.method ?? 'EFECTIVO';
+    const dueSet = new Set(q.installmentNumbersDue);
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const inst of view.installments as any[]) {
+        if (inst.status === 'PAGADA' || !inst.id) continue;
+        const chargeInterest = dueSet.has(inst.number);
+        await tx.loanInstallment.update({
+          where: { id: inst.id },
+          data: {
+            capitalPaid: inst.capital,
+            // Interés causado se cobra; el futuro se perdona (queda en 0).
+            interest: chargeInterest ? inst.interest : inst.interestPaid,
+            interestPaid: chargeInterest ? inst.interest : inst.interestPaid,
+            moraPaid: inst.moraPaid + inst.moraAccrued,
+            paidAt,
+          },
+        });
+      }
+      const mv = await this.cashIn(tx, user, loan.localId, q.total, method, `Liquidación préstamo ${loan.code}`);
+      await tx.loanPayment.create({
+        data: {
+          loanId: loan.id, companyId: user.companyId, amount: q.total, method, paidAt,
+          note: dto.note ?? 'Liquidación anticipada',
+          capitalApplied: q.capital, interestApplied: q.interest, moraApplied: q.mora,
+          allocation: { type: 'LIQUIDACION', forgivenInterest: q.forgivenInterest, installmentNumbersDue: q.installmentNumbersDue } as any,
+          cashMovementId: mv?.id ?? null, createdById: user.id ?? null,
+        },
+      });
+      const all = await tx.loanInstallment.findMany({ where: { loanId: loan.id } });
+      const totalInterest = all.reduce((a, i) => a + num(i.interest), 0);
+      await tx.loan.update({
+        where: { id: loan.id },
+        data: { status: 'PAGADO', paidAt, totalInterest, totalAmount: num(loan.principal) + totalInterest },
+      });
+    });
+    await this.audit.log({ entity: 'loan', entityId: id, action: 'UPDATE', user, changes: { liquidacion: { before: null, after: q.total }, perdonado: q.forgivenInterest } });
+    return this.detail(user, id);
+  }
+
+  // Refinanciar: la deuda a hoy (capital + interés causado + mora, salvo que se
+  // perdone) pasa a ser el capital de un préstamo NUEVO con términos nuevos. El
+  // viejo queda REFINANCIADO (sin movimiento de caja: no se entrega dinero).
+  async refinance(user: any, id: number, dto: RefinanceLoanDto) {
+    await this.assertLoansEnabled(user.companyId);
+    this.assertRole(user, LOAN_OWNER_ROLES);
+    const loan = await this.loadLoan(user, id, { full: true });
+    if (loan.status !== 'DESEMBOLSADO') throw new BadRequestException('Solo se refinancia un préstamo vigente.');
+    const settings = await this.getSettings(user.companyId);
+    const view = this.loanView(loan);
+    const q = settlementQuote(view.installments as any);
+    const mora = dto.forgiveMora ? 0 : q.mora;
+    const principal = q.capital + q.interest + mora;
+    if (principal <= 0) throw new BadRequestException('No hay deuda para refinanciar.');
+
+    const terms = {
+      principal,
+      termCount: dto.termCount,
+      interestRate: dto.interestRate ?? num(loan.interestRate),
+      rateSource: dto.interestRate != null ? 'LOAN' : loan.rateSource,
+      moraRate: num(loan.moraRate),
+      graceDays: loan.graceDays,
+      frequency: (dto.frequency || loan.frequency) as LoanFrequency,
+      amortization: (dto.amortization || loan.amortization) as LoanAmortization,
+      roundTo: loan.roundTo,
+      rateConversion: settings.rateConversion,
+      excludeWeekdays: settings.excludeWeekdays,
+    };
+    const plan = this.planFor(terms, dateOnlyUTC(null), dto.firstDueDate);
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      let newLoan: any = null;
+      for (let attempt = 0; attempt < 3 && !newLoan; attempt++) {
+        const code = await this.nextCode(tx, user.companyId);
+        try {
+          newLoan = await tx.loan.create({
+            data: {
+              code, status: 'DESEMBOLSADO',
+              principal: plan.principal, interestRate: terms.interestRate, moraRate: terms.moraRate, graceDays: terms.graceDays,
+              frequency: terms.frequency as any, amortization: terms.amortization as any, termCount: plan.termCount, roundTo: terms.roundTo,
+              rateSource: terms.rateSource, totalInterest: plan.totalInterest, totalAmount: plan.totalAmount, firstDueDate: plan.firstDueDate,
+              notes: dto.notes ?? `Refinanciación de ${loan.code}`,
+              customerId: loan.customerId, productId: loan.productId, collectorId: loan.collectorId, localId: loan.localId,
+              companyId: user.companyId, createdById: user.id ?? null,
+              approvedAt: new Date(), approvedById: user.id ?? null, disbursedAt: new Date(), disbursedById: user.id ?? null,
+              disbursementMethod: null, refinancedFromId: loan.id,
+            },
+          });
+        } catch (e: any) {
+          if (e?.code !== 'P2002' || attempt === 2) throw e;
+        }
+      }
+      await this.writeInstallments(tx, newLoan.id, user.companyId, plan);
+      await tx.loan.update({
+        where: { id: loan.id },
+        data: { status: 'REFINANCIADO', cancelledAt: new Date(), cancelReason: `Refinanciado en ${newLoan.code}${dto.forgiveMora && q.mora ? ` (mora perdonada $${q.mora.toLocaleString('es-CO')})` : ''}` },
+      });
+      return newLoan;
+    });
+    await this.audit.log({ entity: 'loan', entityId: id, action: 'UPDATE', user, changes: { status: { before: 'DESEMBOLSADO', after: 'REFINANCIADO' }, newLoan: created.code, principal } });
+    return this.detail(user, created.id);
+  }
+
+  // Reporte mensual: colocación vs recaudo (capital, interés, mora) por mes.
+  async reportsMonthly(user: any, q: any = {}) {
+    await this.assertLoansEnabled(user.companyId);
+    const months = Math.min(24, Math.max(1, Number(q.months) || 6));
+    const now = todayCo();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1));
+    const where: any = { companyId: user.companyId };
+    const payWhere: any = { companyId: user.companyId, status: 'ACTIVO', paidAt: { gte: start } };
+    if (user.role === 'COBRADOR') {
+      where.collectorId = user.id;
+      payWhere.createdById = user.id;
+    }
+    const localIds = await this.localScope(user);
+    if (localIds !== null) {
+      where.localId = localIds.length ? { in: localIds } : -1;
+      payWhere.loan = { localId: where.localId };
+    }
+    const [loans, payments] = await Promise.all([
+      this.prisma.loan.findMany({ where: { ...where, disbursedAt: { gte: start }, status: { notIn: ['ANULADO', 'RECHAZADO'] } }, select: { principal: true, disbursedAt: true } }),
+      this.prisma.loanPayment.findMany({ where: payWhere, select: { amount: true, capitalApplied: true, interestApplied: true, moraApplied: true, paidAt: true } }),
+    ]);
+    const key = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const series: Record<string, any> = {};
+    for (let k = 0; k < months; k++) {
+      const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + k, 1));
+      series[key(d)] = { month: key(d), placed: 0, placedCount: 0, collected: 0, capital: 0, interest: 0, mora: 0, paymentsCount: 0 };
+    }
+    for (const l of loans) {
+      const k = key(new Date(l.disbursedAt as Date));
+      if (series[k]) { series[k].placed += num(l.principal); series[k].placedCount += 1; }
+    }
+    for (const p of payments) {
+      const k = key(new Date(p.paidAt));
+      if (series[k]) {
+        series[k].collected += num(p.amount); series[k].capital += num(p.capitalApplied);
+        series[k].interest += num(p.interestApplied); series[k].mora += num(p.moraApplied); series[k].paymentsCount += 1;
+      }
+    }
+    const rows = Object.values(series);
+    return {
+      success: true,
+      data: {
+        months: rows,
+        totals: rows.reduce((a: any, r: any) => ({ placed: a.placed + r.placed, collected: a.collected + r.collected, interest: a.interest + r.interest, mora: a.mora + r.mora }), { placed: 0, collected: 0, interest: 0, mora: 0 }),
       },
     };
   }
