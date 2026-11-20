@@ -1267,12 +1267,16 @@ export class LoansService {
       },
     });
     const views = rows.map((l) => this.loanView(l, day));
-    const dueToday = views.filter((v) =>
-      v.installments.some(
-        (i: any) => i.status !== 'PAGADA' && dayKeyUTC(i.dueDate) === day.getTime(),
-      ),
-    );
+    // Prioridad para el cobrador: lo que está EN MORA va primero (aunque también
+    // tenga cuota hoy); "vencen hoy" son los que están al día y les toca hoy.
     const overdue = views.filter((v) => v.summary.status === 'EN_MORA');
+    const dueToday = views.filter(
+      (v) =>
+        v.summary.status !== 'EN_MORA' &&
+        v.installments.some(
+          (i: any) => i.status !== 'PAGADA' && dayKeyUTC(i.dueDate) === day.getTime(),
+        ),
+    );
     const upcoming = views.filter(
       (v) =>
         v.summary.status === 'AL_DIA' &&
@@ -1294,13 +1298,16 @@ export class LoansService {
         date: day,
         collectorId,
         dueToday: dueToday.sort(sortByLate),
-        overdue: overdue.filter((v) => !dueToday.includes(v)).sort(sortByLate),
+        overdue: overdue.sort(sortByLate),
         upcoming: upcoming.sort(
           (a: any, b: any) => new Date(a.summary.nextDueDate).getTime() - new Date(b.summary.nextDueDate).getTime(),
         ),
         totals: {
           loans: views.length,
-          toCollectToday: dueToday.reduce((a, v) => a + v.summary.nextInstallmentAmount, 0),
+          // Lo que hay que cobrar hoy: cuotas de hoy + todo lo vencido.
+          toCollectToday:
+            dueToday.reduce((a, v) => a + v.summary.nextInstallmentAmount, 0) +
+            overdue.reduce((a, v) => a + v.summary.overdueAmount, 0),
           overdueAmount: overdue.reduce((a, v) => a + v.summary.overdueAmount, 0),
           collectedToday: collectedTotal,
           collectedCashToday: collectedCash,
