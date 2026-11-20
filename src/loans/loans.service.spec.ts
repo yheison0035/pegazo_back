@@ -347,6 +347,28 @@ describe('LoansService', () => {
     });
   });
 
+  describe('ruta del cobrador', () => {
+    it('la cuota que vence HOY aparece en "vencen hoy" (fechas solo-día, sin desplazarse un día)', async () => {
+      const prisma = buildPrisma();
+      const today = dateOnlyUTC();
+      const loan = loanFixture({
+        collectorId: 7,
+        installments: [
+          { id: 1, number: 1, dueDate: futureDate(-30), capital: 100000, interest: 10000, capitalPaid: 100000, interestPaid: 10000, moraPaid: 0 },
+          { id: 2, number: 2, dueDate: today, capital: 100000, interest: 10000, capitalPaid: 0, interestPaid: 0, moraPaid: 0 },
+          { id: 3, number: 3, dueDate: futureDate(30), capital: 100000, interest: 10000, capitalPaid: 0, interestPaid: 0, moraPaid: 0 },
+        ],
+      });
+      prisma.loan.findMany.mockResolvedValue([loan]);
+      const svc = await make(prisma);
+      const r = await svc.collectorRoute({ ...COBRADOR, localId: 2 });
+      expect(r.data.dueToday.map((l: any) => l.id)).toEqual([100]);
+      expect(r.data.overdue).toHaveLength(0);
+      expect(r.data.upcoming).toHaveLength(0);
+      expect(r.data.totals.toCollectToday).toBe(110000);
+    });
+  });
+
   describe('simulador', () => {
     it('devuelve plan, términos resueltos y avisos sin guardar nada', async () => {
       const prisma = buildPrisma();

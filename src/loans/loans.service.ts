@@ -112,6 +112,12 @@ export function dateOnlyUTC(input?: Date | string | null): Date {
   return new Date(Date.UTC(co.getUTCFullYear(), co.getUTCMonth(), co.getUTCDate()));
 }
 export const todayCo = () => dateOnlyUTC();
+// Día calendario de una fecha YA guardada como solo-día (medianoche UTC): se
+// toma tal cual, sin desplazarla a Colombia (eso la correría un día atrás).
+export const dayKeyUTC = (d: Date | string) => {
+  const x = new Date(d);
+  return Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate());
+};
 
 @Injectable()
 export class LoansService {
@@ -1263,7 +1269,7 @@ export class LoansService {
     const views = rows.map((l) => this.loanView(l, day));
     const dueToday = views.filter((v) =>
       v.installments.some(
-        (i: any) => i.status !== 'PAGADA' && dateOnlyUTC(i.dueDate).getTime() === day.getTime(),
+        (i: any) => i.status !== 'PAGADA' && dayKeyUTC(i.dueDate) === day.getTime(),
       ),
     );
     const overdue = views.filter((v) => v.summary.status === 'EN_MORA');
@@ -1271,7 +1277,7 @@ export class LoansService {
       (v) =>
         v.summary.status === 'AL_DIA' &&
         v.summary.nextDueDate &&
-        dateOnlyUTC(v.summary.nextDueDate).getTime() > day.getTime(),
+        dayKeyUTC(v.summary.nextDueDate) > day.getTime(),
     );
     const sortByLate = (a: any, b: any) => b.summary.overdueDays - a.summary.overdueDays;
 
