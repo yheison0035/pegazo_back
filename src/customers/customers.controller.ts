@@ -33,6 +33,7 @@ export class CustomersController {
     'ASESOR',
     'VENTAS',
     'BODEGUERO',
+    'ANALISTA',
   )
   @Get()
   findAll(@Req() req, @Query() query) {
@@ -49,6 +50,7 @@ export class CustomersController {
     'ASESOR',
     'VENTAS',
     'BODEGUERO',
+    'ANALISTA',
   )
   @Get('lookup')
   lookup(@Query('document') document: string, @Req() req) {
@@ -71,6 +73,7 @@ export class CustomersController {
     'ASESOR',
     'VENTAS',
     'BODEGUERO',
+    'ANALISTA',
   )
   @Get(':id/summary')
   summary(@Param('id', ParseIntPipe) id: number, @Req() req) {
@@ -86,6 +89,7 @@ export class CustomersController {
     'ASESOR',
     'VENTAS',
     'BODEGUERO',
+    'ANALISTA',
   )
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number, @Req() req) {
@@ -115,14 +119,14 @@ export class CustomersController {
   }
 
   // Crear
-  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'COORDINADOR', 'ASESOR')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'COORDINADOR', 'ASESOR', 'ANALISTA')
   @Post()
   create(@Body() dto: CreateCustomerDto, @Req() req) {
     return this.customersService.create(dto, req.user);
   }
 
   // Actualizar
-  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'RECEPCIONISTA', 'ASESOR', 'ANALISTA')
   @Put(':id')
   update(
     @Param('id', ParseIntPipe) id: number,

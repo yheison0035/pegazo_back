@@ -106,6 +106,13 @@ export class LoansController {
     return this.service.simulate(req.user, dto);
   }
 
+  // --- Cobradores (para asignar cartera) ---
+  @Roles(...READ)
+  @Get('collectors')
+  collectors(@Req() req) {
+    return this.service.listCollectors(req.user);
+  }
+
   // --- Reporte mensual (colocación vs recaudo) ---
   @Roles(...READ)
   @Get('reports/monthly')

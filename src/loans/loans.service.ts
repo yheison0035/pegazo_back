@@ -1683,4 +1683,19 @@ export class LoansService {
       },
     };
   }
+
+  // Cobradores activos de la empresa (para asignar cartera). Disponible para
+  // todos los roles del módulo: no expone el listado general de usuarios.
+  async listCollectors(user: any) {
+    await this.assertLoansEnabled(user.companyId);
+    const users = await this.prisma.user.findMany({
+      where: { companyId: user.companyId, role: 'COBRADOR' as any, status: Status.ACTIVO },
+      select: { id: true, name: true, phone: true, localId: true, commissionCollectionRate: true },
+      orderBy: { name: 'asc' },
+    });
+    return {
+      success: true,
+      data: users.map((u) => ({ ...u, commissionCollectionRate: numOrNull(u.commissionCollectionRate) })),
+    };
+  }
 }

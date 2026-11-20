@@ -84,6 +84,7 @@ export class LoanRemindersService {
       saldo: s.pendingTotal,
       supportEmail: company.email || company.mailFromEmail || null,
       supportPhone: company.phone || null,
+      kind: 'préstamo',
     });
   }
 

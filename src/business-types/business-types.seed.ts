@@ -200,6 +200,6 @@ export const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
   // dinero entra por abonos y sale por desembolsos, ambos registrados en caja.
   FINANCIERA: [
     'locals', 'users', 'customers', 'prestamos', 'cash', 'expenses', 'payables',
-    'employee-charges', 'impuestos', 'statistics',
+    'employee-charges', 'statistics',
   ],
 };
